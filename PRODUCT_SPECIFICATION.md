@@ -1,6 +1,6 @@
 # Produktspezifikation – Yellotools Market Intelligence
 
-Stand: 2026-10-18 · Phase 1 · Status: Entwurf zur Freigabe
+Stand: 2026-10-18 · Revision 2 (verbindlich: 100 % kostenloser Betrieb) · Status: Entwurf zur Freigabe
 
 ## 1. Zweck
 
@@ -16,7 +16,9 @@ sichtbar unbekannt.
 
 ## 2. Nicht-Ziele
 
-- Kein KI-Chat und keine frei formulierten KI-Antworten ohne Belege.
+- Keine verpflichtenden Kosten: keine kostenpflichtigen Such-APIs, Datenbanken, Datenanbieter,
+  KI-Dienste, Abonnements, Cloud- oder Hostingdienste (Details: `docs/DEPENDENCIES_AND_COSTS.md`).
+- Kein KI-Chat und keine frei formulierten KI-Antworten ohne Belege; KI ist optional und lokal.
 - Kein CRM (keine Kontaktpflege, keine Ansprechpartner-Datenbank, kein E-Mail-Versand). Export
   in das CRM ist möglich.
 - Keine Personenrecherche; keine Sammlung von Kontaktdaten natürlicher Personen.
@@ -88,11 +90,11 @@ Anforderungs-IDs werden in Roadmap und Tests referenziert. Priorität: **M** = M
 | FR-D-01 | Automatisierte Recherche über austauschbare Quellenadapter (siehe `RESEARCH_SOURCES.md`) | M |
 | FR-D-02 | Runs anlegen, pausieren, fortsetzen, abbrechen; Fortschritt, Kosten, Fehler und Lücken live sichtbar | M |
 | FR-D-03 | Runs laufen im Hintergrund; Oberfläche bleibt bedienbar; Neustart des Servers setzt Runs fort | M |
-| FR-D-04 | Kostenlimit je Run, Tag, Monat, Quelle; Run pausiert automatisch beim Erreichen und meldet das | M |
+| FR-D-04 | Anfragelimit je Run und Drosselung je Quelle (freie Quellen haben Abruflimits); Erreichen wird gemeldet. Es gibt keine kostenpflichtigen Abrufe | M |
 | FR-D-05 | Rate Limits, Wiederholungen, Cache, Duplikatschutz zentral | M |
 | FR-D-06 | Ausfall einer Quelle bricht den Run nicht ab; Ergebnis `completed_with_gaps` | M |
 | FR-D-07 | Dokument-Upload durch Nutzer (z. B. Jahresabschluss-PDF, Verbandsliste) als Quelle mit Herkunft „manuell bereitgestellt“ | M |
-| FR-D-08 | Extraktion aus PDF/HTML regelbasiert; optional LLM mit Zitatprüfung | S |
+| FR-D-08 | Extraktion aus PDF/HTML regelbasiert; optional **lokale** KI (z. B. Ollama) mit Zitatprüfung; alles funktioniert ohne KI | S |
 | FR-D-09 | Quellenfreigabe: nur freigegebene Quellen werden abgerufen | M |
 | FR-D-10 | Zeitgesteuerte Aktualisierung von Watchlists | S |
 
@@ -152,7 +154,7 @@ wird über die vorhandenen Gewichte renormiert und `data_completeness_pct` ausge
 | NFR-01 | Seitenaufbau Firmenprofil < 1 s bei 50 000 Firmen / 2 Mio. Beobachtungen (PostgreSQL) |
 | NFR-02 | Kein UI-Request wartet auf externe Quellen |
 | NFR-03 | Neustart/Absturz verliert keine abgeschlossene Aufgabe; laufende Aufgaben werden wiederholt (idempotent) |
-| NFR-04 | Kostenlimits werden vor dem Aufruf geprüft; Überschreitung um höchstens einen Einzelaufruf |
+| NFR-04 | Betrieb ohne jede verpflichtende Kostenposition; Anfragelimits werden vor dem Aufruf geprüft |
 | NFR-05 | Nachvollziehbarkeit: zu jedem angezeigten Wert in ≤ 2 Klicks Quelle und Zitat |
 | NFR-06 | Testabdeckung Domain/Application ≥ 90 % Zweige; jede Quelle mit Vertragstests |
 | NFR-07 | `mypy --strict`, `ruff` ohne Befunde; Abhängigkeiten gepinnt mit Prüfsummen, `pip-audit` ohne bekannte Schwachstellen |

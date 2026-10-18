@@ -1,476 +1,191 @@
 # Architektur – Yellotools Market Intelligence
 
-Stand: 2026-10-18 · Phase 1 (Planung) · Status: **Entwurf zur Freigabe**
+Stand: 2026-10-18 · Revision 2 (verbindlich: **100 % kostenloser Betrieb**) · Prototyp 0.1.0
 
-Dieses Dokument enthält (1) die Bestandsaufnahme der vorhandenen Repositories, (2) die
-begründete Grundsatzentscheidung, (3) die Architekturentscheidungen (ADRs), (4) Komponenten,
-Schnittstellen und Datenflüsse sowie (5) Risiken. Fachliche Anforderungen stehen in
-`PRODUCT_SPECIFICATION.md`, das Datenmodell in `DATA_MODEL.md`, Quellen in
-`RESEARCH_SOURCES.md`, Meilensteine in `IMPLEMENTATION_ROADMAP.md`, Sicherheit und Datenschutz in
+Dieses Dokument enthält (1) die Bestandsaufnahme, (2) die Grundsatzentscheidungen inklusive
+Kostenfreiheit, (3) die Architekturentscheidungen (ADRs), (4) Komponenten und Schnittstellen,
+wie sie im Prototyp **tatsächlich implementiert** sind, (5) Datenflüsse und (6) Risiken.
+Quellen: `RESEARCH_SOURCES.md` · Kosten und Lizenzen: `docs/DEPENDENCIES_AND_COSTS.md` ·
+Datenmodell: `DATA_MODEL.md` · Plan: `IMPLEMENTATION_ROADMAP.md` · Sicherheit:
 `SECURITY_AND_PRIVACY.md`.
 
 ---
 
-## 1. Bestandsaufnahme
+## 1. Bestandsaufnahme (unverändert gültig, Stand 2026-10-18)
 
-Alle Angaben wurden am 2026-10-18 durch Lesen der Repositories und Ausführen der Tests ermittelt.
-Nichts davon wurde verändert.
-
-### 1.1 `Ilyano165/MARKT-ANALYSE` (dieses Repository)
-
-| Prüfpunkt | Befund |
+| Repository | Befund |
 |---|---|
-| Inhalt | **leer** – kein Commit, keine Datei, Branch `claude/confident-faraday-0tsww5` ohne Historie |
-| Architektur, Code, Tests, Build, Installer | nicht vorhanden |
+| `Ilyano165/MARKT-ANALYSE` | war leer (kein Commit); enthält jetzt Planung und Prototyp |
+| `Ilyano165/AUFTRAGSIMPORT2.0`, Branch `claude/focused-tesla-q81pbc` (Commit `73249a3`) | Python ≥ 3.12, PySide6-Desktop, SQLite (WAL, Migrationen über `user_version`), Herkunftsmodell `Field`/`Evidence`, Vier-Teile-Fehlermeldungen, Passwörter im Windows-Anmeldespeicher, Protokollbereinigung, WiX-MSI-Build (laut Changelog noch nie auf echtem Windows gelaufen, Signatur fehlt). Tests am 2026-10-18 ohne GUI: **734 bestanden, 21 übersprungen, 1 xfail** |
+| `AUFTRAGSIMPORT2.0`, Branch `main` | nur .NET-Azure-Vorlage und ZIP-Archiv |
+| `Ilyano165/YT-Import-auftrag` | Vorgänger 1.1.0, durch 2.0 abgelöst |
 
-Folge: Es gibt hier nichts, was beeinträchtigt oder überschrieben werden könnte. Die
-Market-Intelligence-Anwendung beginnt in diesem Repository auf der grünen Wiese.
+Übernommene Konzepte aus dem Auftragsimport (neu implementiert, keine Laufzeitabhängigkeit):
+Herkunft je Wert, „nichts wird geraten“, SQLite mit WAL und Fremdschlüsseln, Geheimnisse nie in
+Konfigurationsdateien (`config.py` lehnt Schlüssel wie `api_key` ab), strenge Werkzeuge
+(`ruff`, `mypy --strict`, `pytest`).
 
-### 1.2 `Ilyano165/AUFTRAGSIMPORT2.0` (bestehender Yellotools-Auftragsimport, aktueller Stand)
+## 2. Grundsatzentscheidungen
 
-| Prüfpunkt | Befund |
+### 2.1 Eigenständige Anwendung (unverändert)
+
+Market Intelligence ist eine eigene Anwendung ohne gemeinsame Datenbank, Prozesse oder
+Codeabhängigkeit zum Auftragsimport. Hauptgrund: Der Auftragsimport sichert zu, keine Daten an
+Dritte zu übertragen und keine KI-Dienste zu nutzen; Market Intelligence lebt von ausgehenden
+Internetabrufen. Weitere Gründe: anderes Betriebsmodell (lange Hintergrundläufe), offenes
+Release-Risiko des Auftragsimports, keine fachliche Überschneidung außer dem Artikelstamm
+(Dateiimport, Meilenstein M10).
+
+### 2.2 Verbindlich: 100 % kostenloser Betrieb
+
+| Regel | Umsetzung im Code |
 |---|---|
-| Branch `main` | nur `.github/workflows/azure-functions-app-dotnet.yml` (unveränderte GitHub-Vorlage für .NET 6 / Azure Functions mit Platzhalter `your-app-name`, passt nicht zum Python-Projekt) und das Archiv `icware-auftragsimport-2.0-windows-build-vorbereitet.zip` |
-| Branch `claude/focused-tesla-q81pbc` (Commit `73249a3`, 2026-10-07) | vollständiges Projekt `icware-auftragsimport` 2.0, Herausgeber IC-Ware |
-| Sprache, Laufzeit | Python ≥ 3.12.6 (`.python-version` 3.14.4), `src`-Layout, Paket `icware_auftragsimport` |
-| Umfang | ca. 23 200 Zeilen Code in `src/`, ca. 9 500 Zeilen Tests in `tests/` |
-| Abhängigkeiten | Kern nur `defusedxml==0.7.1`; optional `PySide6==6.11.2` (GUI), `keyring==25.7.0` (Windows-Anmeldespeicher); Dev: `pytest`, `pytest-cov`, `mypy` (strict), `ruff`, `pip-audit`; Build: `pyinstaller`, WiX 5 |
-| Oberfläche | PySide6-Desktopanwendung (`gui/`), lange Vorgänge in eigenem `QThread` (`gui/fetch.py`), High-DPI-Screenshots in `docs/gui/` |
-| Datenhaltung | lokale SQLite-Datei (WAL, `synchronous=FULL`, Fremdschlüssel), Migrationen über `PRAGMA user_version` mit Sicherung vor Migration (`infrastructure/db.py`), Journal-Tabelle, Idempotenzschlüssel, Revisionstabelle für Aufträge |
-| Herkunftsmodell | `domain/provenance.py`: `Field` mit Zustand (erkannt/prüfen/unbekannt/manuell) und `Evidence` (Regel, Begründung, Sicherheit, Fundstelle) – Grundsatz „Nichts wird geraten“ |
-| Konfiguration | validierte `settings.json` ohne Geheimnisse (`config/schema.py`), IT-Richtlinie `policy.json` in `%PROGRAMDATA%` (`config/policy.py`), Ablageorte nach Windows-Konvention (`infrastructure/paths.py`) |
-| Sicherheit | Passwörter nur im Windows-Anmeldespeicher (`security/credentials.py`), Protokollbereinigung (`security/redaction.py`), sicheres XML (`security/safe_xml.py`), Grenzwerte, Absturzberichte ohne Variableninhalte, Bedrohungsmodell und Sicherheitsbericht in `docs/security/` |
-| Fehlerbehandlung | `domain/errors.py`: jede erwartete Fehlermeldung besteht aus *was*, *warum*, *was unverändert blieb*, *was zu tun ist* |
-| Tests | `tests/unit`, `integration`, `regression`, `security`, `gui`, `export`; Ausführung am 2026-10-18 unter Linux/Python 3.13 ohne GUI-Tests: **734 bestanden, 21 übersprungen, 1 xfail**. Übersprungen: echte IMAP-Anbieter ohne Zugangsdaten. Nicht ausgeführt: `tests/gui`, `tests/unit/test_packaging_contracts.py`, `tests/unit/test_release_audit.py` (benötigen Qt-Grafikbibliotheken, im Container nicht vorhanden) |
-| Build, Installer | `tools/release/build.py`, PyInstaller-Spec, WiX-MSI (`packaging/wix/AuftragsImport.wxs`), Workflow `windows-release.yml` (Actions auf Commit-SHAs gepinnt); laut `CHANGELOG.md` **lief der Windows-Build noch nie unter Windows, Code-Signatur nicht konfiguriert** |
-| Updates | `services/updates.py`: nur Manifest-Prüfung und Versionsvergleich, bewusst ohne Download; Zielbild TUF/`tufup`; heute Verteilung über die IT (MSI) |
-| Produktversprechen | README: „Es werden keine Daten an Dritte übertragen und keine KI-Dienste verwendet.“ |
-| Hinweis | `integration/lexware/reference/248090.xml` enthält echte Firmendaten von Yellotools |
+| Keine kostenpflichtige Quelle, API, Datenbank, KI oder Cloud als Voraussetzung | Quellenregister `sources/registry.py`: kostenpflichtige Anbieter haben `legal_status = excluded_paid`, `implemented = False`; das Gateway verweigert jeden Abruf (Test `test_blocked_source_makes_no_network_call`) |
+| Nichts Kostenpflichtiges wird automatisch aktiviert | Es gibt keinen Codepfad, der einen Bezahl-Schlüssel liest. Einziger optionaler Schlüssel ist der **kostenlose** Companies-House-Schlüssel (Umgebungsvariable); ohne ihn ist die Quelle aus |
+| Keine Abhängigkeit von Claude oder anderen KI-Abos | Standard ist `NullLLM`; optionale lokale KI nur über Loopback (`llm/local.py` lehnt Cloud-Hosts ab) |
+| Nur freie Open-Source-Software | Laufzeit: `httpx` (BSD-3), `SQLAlchemy` (MIT), `openpyxl` (MIT) + Python-Standardbibliothek; vollständige Liste mit geprüften Lizenzen: `docs/DEPENDENCIES_AND_COSTS.md` |
+| Betrieb auf eigenem Windows-PC oder eigenem Server | SQLite-Datei lokal; PostgreSQL optional selbst gehostet (`pip install .[postgres]`, psycopg LGPL-3.0) |
 
-### 1.3 `Ilyano165/YT-Import-auftrag` (Vorgänger, Version 1.1.0)
+**Was „kostenlos“ nicht bedeutet:** unbegrenzte Daten. Freie Quellen haben Abruflimits und
+Lücken (insbesondere Umsatz und Mitarbeiter deutscher KMU). Die Anwendung macht diese Lücken
+sichtbar, statt sie zu füllen. Strom, Internetanschluss, vorhandene Hardware und ggf. eine
+eigene Domain verursachen weiterhin Kosten außerhalb der Software.
 
-Ältere, kleinere Fassung (ca. 3 800 Zeilen, Paket `yt_orders`, PySide6, `pypdf`, `openpyxl`,
-`keyring`, IMAP, openTRANS-Export). Funktional durch 2.0 abgelöst. Enthält nur eine
-Beispiel-Artikelliste (`article_catalog.example.json`, drei Artikel wie `YT23WSLOAN01`
-„WrapStick Sloan“). Für Market Intelligence nur als Hinweis auf das Artikelnummernschema relevant.
+## 3. Architekturentscheidungen (ADRs, Revision 2)
 
-### 1.4 Wiederverwendbare Bausteine aus dem Auftragsimport 2.0
-
-| Baustein im Auftragsimport | Wiederverwendung in Market Intelligence | Art |
+| ADR | Entscheidung | Stand im Prototyp |
 |---|---|---|
-| `domain/provenance.py` (Field, Evidence, Confidence) | Vorbild für `Evidence` und Beobachtungsstatus; erweitert um Quelle, Zeitraum, Herkunftsklasse | Konzept übernehmen, neu implementieren |
-| `domain/errors.py` (UserMessage mit vier Teilen) | identisches Fehlermeldungsschema in UI und API | kopieren und anpassen |
-| `infrastructure/db.py` (Migration mit Sicherung, `BEGIN IMMEDIATE`) | Prinzipien übernehmen; technisch Alembic (siehe ADR-04) | Konzept |
-| Journal-Tabelle, Idempotenzschlüssel | `audit_log`, Idempotenz bei Recherche-Aufgaben | Konzept |
-| `security/redaction.py` | Protokollbereinigung | kopieren, Regeln um API-Schlüssel-Formate ergänzen |
-| `security/credentials.py` (keyring-Store, Env-Fallback, Memory-Store für Tests) | API-Schlüssel der Datenquellen | kopieren und anpassen |
-| `infrastructure/atomic.py`, `lock.py` | Exportdateien, Einzelinstanz im lokalen Modus | kopieren |
-| `infrastructure/logging_setup.py`, Rotation, Absturzberichte | Protokollierung | kopieren und anpassen |
-| `config/policy.py` (IT-Richtlinie, verbotene Geheimnis-Schlüssel) | Richtlinie für Kostenlimits und erlaubte Quellen | Konzept |
-| Qualitätswerkzeuge (`ruff`-Regelsatz, `mypy --strict`, gepinnte Actions, Sperrdateien mit Prüfsummen, `pip-audit`) | identisch übernehmen | kopieren |
-| Katalog-Import (`catalog/xlsx.py`, `mapping.py`, `validation.py`) | Import des Yellotools-Artikelstamms als Grundlage für `ProductCategory` | Konzept, ggf. Kopie |
+| ADR-01 | Python ≥ 3.12, `ruff`, `mypy --strict`, `pytest` | umgesetzt; `mypy --strict` und `ruff` ohne Befund |
+| ADR-02 | Modularer Monolith mit klarer Schichtung: `domain` ← `repo`/Dienste ← `sources`/`http`/`llm` ← `cli` | umgesetzt; Schichtprüfung per `import-linter` folgt in M0b |
+| ADR-03 | Oberfläche: Prototyp = Kommandozeile `mi` + HTML-Bericht + XLSX/CSV/JSON. Web-UI (FastAPI, Jinja2, HTMX – alle frei, MIT/BSD) ab M6, lokal an `127.0.0.1` | CLI und Berichte umgesetzt |
+| ADR-04 | SQLAlchemy 2.0 Core; **SQLite** für Einzelplatz (Standard), **PostgreSQL** selbst gehostet für Team; Beträge exakt (Dezimal-Text bzw. `NUMERIC`) | SQLite umgesetzt und getestet; PostgreSQL-DDL (inkl. Trigger) vorhanden, **noch nicht gegen echte PostgreSQL-Instanz getestet** |
+| ADR-05 | Runs aus persistenten Aufgaben, pausierbar (Strg+C) und fortsetzbar (`mi resume`), ohne Redis/Celery | umgesetzt (sequenziell, ein Prozess); Lease/Mehr-Worker ab M3b |
+| ADR-06 | Ein zentrales `FetchGateway` für jeden Internetzugriff | umgesetzt, siehe §4.2 |
+| ADR-07 | Beobachtungen append-only; Korrekturen als neue Zeilen; gültiger Wert ist abgeleitet | umgesetzt inkl. SQLite-Triggern (Test `test_observations_are_append_only`) |
+| ADR-08 | Extraktion regelbasiert; **optionale lokale KI** (Ollama) nur mit geprüftem wörtlichem Zitat; ohne KI voll funktionsfähig | umgesetzt (`extraction/text.py`, `llm/local.py`) |
+| ADR-09 | Entity Resolution: automatische Zuordnung nur über starke Identifikatoren (LEI, Wikidata-QID, SEC-CIK …); Namensähnlichkeit → Kandidat zur Prüfung | umgesetzt (`resolution.py`, `repo.resolve_or_create`, `profile.py`) |
+| ADR-10 | Scoring transparent, versioniert, renormiert bei fehlenden Indikatoren | umgesetzt (`scoring.py`, Modell `v1-entwurf`) |
+| ADR-11 | Benutzer/Rollen erst mit Teambetrieb (OIDC über eigenen/freien Identity-Provider, z. B. vorhandenes Entra ID oder selbst gehostetes Keycloak – Apache-2.0) | geplant (M15) |
+| ADR-12 | Keine Geheimnisse in Dateien; nur Umgebungsvariablen bzw. Windows-Anmeldespeicher | umgesetzt für Konfiguration |
+| ADR-13 *(neu)* | **Keine kostenpflichtige Such-API.** Internetrecherche = Kombination freier, rechtlich nutzbarer Quellen (Register, Wikidata, Ausschreibungen, Nachrichtenindex, Unternehmenswebseiten). Allgemeine Websuche à la Google ist bewusst **nicht** Teil des Kerns | umgesetzt, siehe §5 und `RESEARCH_SOURCES.md` §3 |
 
-Code wird **kopiert, nicht importiert** (keine Laufzeitabhängigkeit zwischen den Produkten).
-Beide Repositories gehören demselben Inhaber; vor dem Kopieren wird die Lizenzzeile geprüft
-(„Proprietär“, IC-Ware). Erst wenn beide Produkte stabil sind, kann ein gemeinsames Paket
-(`icware-core`) ausgelagert werden – nicht in Phase 1–3.
-
----
-
-## 2. Grundsatzentscheidung: eigenständige Anwendung
-
-**Entscheidung:** Market Intelligence wird als **eigenständige Anwendung in diesem Repository**
-gebaut – ohne gemeinsame Datenbank, ohne gemeinsamen Prozess und ohne Codeabhängigkeit zum
-Auftragsimport.
-
-**Begründung:**
-
-1. **Produktversprechen und Bedrohungsmodell.** Der Auftragsimport sichert zu, keine Daten an
-   Dritte zu übertragen und keine KI-Dienste zu nutzen; sein Bedrohungsmodell setzt das voraus.
-   Market Intelligence lebt von ausgehenden Internetanfragen und nutzt optional ein
-   Sprachmodell. Ein Modul im selben Produkt würde dieses Versprechen brechen und die
-   Sicherheitsfreigabe des Auftragsimports entwerten.
-2. **Betriebsmodell.** Der Auftragsimport ist eine Einzelplatz-Desktopanwendung (Daten je
-   Windows-Benutzer in `%LOCALAPPDATA%`, Instanzsperre). Market Intelligence braucht
-   stundenlange Hintergrundrecherchen, die unabhängig von einem geöffneten Fenster laufen,
-   nächtliche Aktualisierungen von Watchlists und gemeinsame Daten für ein Vertriebsteam.
-3. **Release-Risiko.** Der Windows-Build des Auftragsimports ist noch nicht auf echtem Windows
-   gelaufen, die Signatur fehlt. Zusätzliche Abhängigkeiten (HTTP-Client, PDF-Verarbeitung,
-   LLM-SDK, Webserver) würden Installer, Audit-Umfang und Angriffsfläche vergrößern und die
-   ohnehin offene Freigabe verzögern.
-4. **Keine fachliche Überschneidung.** Gemeinsam ist nur der Artikelstamm. Er wird als Datei
-   (CSV/XLSX-Export aus Lexware bzw. dem Katalog) importiert – eine Einbahnstraße ohne
-   Kopplung.
-5. **Ausfallsicherheit.** Ein Fehler oder eine Überlast in der Recherche kann die
-   Auftragserfassung so nachweislich nicht beeinträchtigen.
-
-Verworfene Alternative „Modul im Auftragsimport“: kurzfristig weniger Infrastruktur, aber
-Gründe 1–3 sind Ausschlusskriterien.
-
----
-
-## 3. Architekturentscheidungen (ADRs)
-
-Jede ADR hat Status *vorgeschlagen*, bis die Phase-1-Freigabe erfolgt.
-
-### ADR-01 Sprache und Werkzeuge: Python 3.12+
-
-Gleiche Sprache und Qualitätsregeln wie der Auftragsimport (`ruff`, `mypy --strict`, `pytest`,
-Sperrdateien mit Prüfsummen, `pip-audit`). Python hat die besten Bibliotheken für HTTP,
-PDF/HTML-Extraktion, Datenanalyse und das offizielle Anthropic-SDK. Das Team kennt die
-Konventionen bereits.
-
-### ADR-02 Modularer Monolith mit Ports und Adaptern, zwei Prozesse
-
-Eine Codebasis, streng geschichtet:
-
-```
-domain  ←  application  ←  adapters (persistence, http, sources, extraction, search)
-                         ←  web (FastAPI)   ←  worker (Job-Runner)   ←  cli
-```
-
-- `domain` kennt weder Datenbank noch HTTP noch UI.
-- `application` orchestriert Anwendungsfälle über Protokolle (`ports`).
-- Die Schichtregeln werden mit `import-linter`-Verträgen im CI erzwungen.
-
-Laufzeit: zwei Prozesse aus derselben Codebasis – **`web`** (Oberfläche und API) und
-**`worker`** (Recherche, Extraktion, Scoring, Zeitpläne). Die Oberfläche blockiert dadurch nie;
-ein abstürzender Worker beeinträchtigt die Oberfläche nicht.
-
-Microservices wurden verworfen: für ein kleines Team und eine Nutzerzahl im ein- bis
-zweistelligen Bereich ist der Betriebsaufwand nicht gerechtfertigt.
-
-### ADR-03 Oberfläche: Web-UI (FastAPI + serverseitige Templates + HTMX)
-
-- FastAPI, Jinja2-Templates mit Autoescaping, HTMX für Teilaktualisierungen, Diagramme mit einer
-  lokal ausgelieferten Chart-Bibliothek (Apache ECharts, Version gepinnt, kein CDN).
-- Kein Single-Page-Framework und keine Node-Buildkette: weniger Abhängigkeiten, Python-only-Team.
-- Gründe gegen PySide6 wie im Auftragsimport: Mehrbenutzerbetrieb, Hintergrundjobs ohne offenes
-  Fenster, einfacher Zugriff für Außendienst und Geschäftsführung über den Browser.
-- Lokaler Einzelplatzmodus: Server bindet ausschließlich an `127.0.0.1`, Zugang mit
-  Sitzungsschlüssel, Schutz gegen DNS-Rebinding (Host-Header-Prüfung) und CSRF.
-
-### ADR-04 Datenbank: SQLAlchemy 2.0 Core + Alembic; PostgreSQL produktiv, SQLite für Einzelplatz
-
-- **PostgreSQL ≥ 16** ist das Zielsystem für Teambetrieb (Nebenläufigkeit, `SKIP LOCKED` für die
-  Jobwarteschlange, JSONB, Volltextsuche, `pg_trgm` für unscharfe Namenssuche).
-- **SQLite (WAL)** für Einzelplatz-Pilot und Entwicklung, mit genau einem Worker.
-- SQLAlchemy **Core** (kein ORM-Zustand), explizite Repository-Funktionen; Migrationen mit
-  Alembic, Sicherung vor jeder Migration (Prinzip aus dem Auftragsimport).
-- Beträge als `NUMERIC(24,6)` (PostgreSQL) bzw. als Dezimal-Text über einen `TypeDecorator`
-  (SQLite) – niemals `float`.
-- CI testet jede Migration und jede Repository-Funktion gegen **beide** Datenbanken.
-
-### ADR-05 Persistente Jobwarteschlange in der Datenbank (kein Redis/Celery)
-
-- `research_run` (Auftrag) → `research_task` (Einzelschritte, Graph mit Abhängigkeiten).
-- Worker holt Aufgaben mit Lease (`leased_until`, Heartbeat). Abgelaufene Leases werden nach
-  Absturz neu vergeben; jede Aufgabe ist idempotent (Idempotenzschlüssel aus Typ + Parametern).
-- Pausieren, Fortsetzen, Abbrechen sind Zustandswechsel in der Datenbank; laufende Aufgaben
-  prüfen vor jedem externen Aufruf den Zustand ihres Runs (kooperatives Anhalten).
-- Zeitpläne (Watchlist-Aktualisierung) als Tabelle `schedule`, ausgewertet vom Worker.
-- Begründung: eine Infrastrukturkomponente weniger, Zustand vollständig nachvollziehbar und
-  transaktional mit den Ergebnissen gespeichert.
-
-### ADR-06 Ein zentrales Fetch-Gateway für jeden externen Zugriff
-
-Kein Adapter öffnet selbst Netzwerkverbindungen. Alle Anfragen laufen durch das `FetchGateway`
-(`httpx`), das nacheinander prüft und erzwingt:
-
-1. **Quellenfreigabe** – Quelle in `source_registry` aktiv und rechtlich freigegeben.
-2. **SSRF-Schutz** – nur `https` (Ausnahmen je Quelle konfigurierbar), keine privaten,
-   Loopback-, Link-Local- oder Multicast-Adressen, Prüfung nach DNS-Auflösung, Weiterleitungen
-   werden erneut geprüft.
-3. **robots.txt** – für Webseiten-Crawling verbindlich (Cache 24 h); Nutzungsvorbehalte für Text
-   und Data Mining (§ 44b UrhG) werden beachtet (siehe `SECURITY_AND_PRIVACY.md`).
-4. **Budget** – Kostenlimit je Run, je Tag, je Monat und je Quelle; Anfrage wird abgelehnt,
-   bevor Kosten entstehen.
-5. **Rate Limit** – Token-Bucket je Quelle und je Host, Zustand in der Datenbank, damit
-   mehrere Worker sich das Limit teilen.
-6. **Cache und Duplikatschutz** – Schlüssel aus normalisierter URL + Parametern; frische Treffer
-   werden ohne Netzwerkzugriff geliefert; ältere Einträge mit `If-None-Match` /
-   `If-Modified-Since` validiert; identische parallele Anfragen werden zusammengelegt.
-7. **Wiederholung** – nur bei 408/429/5xx und Verbindungsfehlern, exponentiell mit Zufallsanteil,
-   `Retry-After` wird respektiert, Obergrenze je Anfrage.
-8. **Circuit Breaker** je Quelle – nach wiederholten Fehlern wird die Quelle für eine Zeit
-   gesperrt; der Run läuft mit anderen Quellen weiter und vermerkt die Lücke.
-9. **Grenzen** – maximale Antwortgröße, Zeitlimits, erlaubte Inhaltstypen.
-10. **Identifizierung** – eindeutiger User-Agent mit Kontaktadresse (Pflicht z. B. bei SEC EDGAR).
-
-Jede Antwort wird als `source_document` mit SHA-256, Abrufzeit und HTTP-Metadaten gespeichert
-(Inhalt je nach Aufbewahrungsregel, siehe `SECURITY_AND_PRIVACY.md`).
-
-### ADR-07 Beobachtungen sind unveränderlich (append-only)
-
-- Kennzahlen werden nie überschrieben. Jede neue Angabe ist eine neue Zeile mit Quelle,
-  Bezugszeitraum, Erfassungszeitpunkt, Herkunftsklasse und Prüfstatus.
-- Korrekturen sind neue Zeilen mit Verweis `supersedes_id`.
-- Der „aktuell gültige Wert“ ist eine **abgeleitete Sicht** nach festen, dokumentierten Regeln
-  (`DATA_MODEL.md` §6). Widersprüche werden nicht automatisch „weggerechnet“, sondern als
-  `conflicting` markiert und in die Prüfliste gestellt.
-- PostgreSQL: Trigger verhindert `UPDATE`/`DELETE` auf Beobachtungstabellen außer für die
-  Statusspalten des Prüfprozesses; SQLite: Repository-API ohne Update-Funktion plus Test.
-
-### ADR-08 Extraktion: regelbasiert zuerst, LLM optional und überprüft
-
-- Strukturierte Quellen (APIs, XBRL) werden ohne LLM verarbeitet.
-- Für unstrukturierte Dokumente (Geschäftsberichte, Pressemitteilungen, Webseiten) gibt es
-  zuerst regelbasierte Extraktoren (Tabellen, Muster wie „Umsatz … Mio. EUR“).
-- Optional ein **LLM-Extraktor** über das offizielle Anthropic-SDK mit strukturierten Ausgaben.
-  Modell konfigurierbar; Vorgabe `claude-opus-5-5` (Kosten pro Dokument werden in M8 gemessen,
-  danach entscheidet Yellotools über das Modell). Nicht zeitkritische Massenextraktion über die
-  Batch-API (50 % günstiger).
-- **Harte Regel:** Das Modell bekommt nur den Dokumenttext und darf ausschließlich daraus
-  extrahieren. Jede Zahl muss mit einem **wörtlichen Zitat** geliefert werden; das System prüft
-  das Zitat gegen den gespeicherten Text (normalisierter Abgleich) und prüft, dass die Zahl im
-  Zitat vorkommt. Scheitert die Prüfung, wird der Wert verworfen und protokolliert. Das Modell
-  liefert nie Werte aus eigenem Wissen.
-- Das Modell hat keine Werkzeuge und keinen Netzwerkzugriff; Dokumentinhalt wird als Daten
-  gekennzeichnet (Schutz gegen Prompt-Injection, siehe `SECURITY_AND_PRIVACY.md`).
-
-### ADR-09 Entity Resolution: Identifikatoren vor Ähnlichkeit, Zusammenführung reversibel
-
-Automatisch zusammengeführt wird nur bei übereinstimmendem starken Identifikator (LEI,
-Registergericht + Registernummer, USt-IdNr., SEC CIK, Companies-House-Nummer, KvK-Nummer,
-Wikidata-QID). Namensähnlichkeit erzeugt nur **Kandidaten** zur Prüfung. Zusammenführungen
-werden als `entity_merge` protokolliert und sind umkehrbar. Details: `DATA_MODEL.md` §7.
-
-### ADR-10 Scoring transparent und versioniert
-
-Chancenbewertung als gewichtete Summe nachvollziehbarer Einzelindikatoren; jeder Indikator
-verweist auf Beobachtungen/Signale. Gewichte liegen versioniert in `scoring_model`; jede
-Bewertung speichert die verwendete Version und alle Teilwerte. Kein undurchsichtiges ML-Modell
-in Version 1.
-
-### ADR-11 Benutzer und Rechte
-
-- Einzelplatzmodus: ein lokaler Administrator.
-- Teambetrieb: Anmeldung über OpenID Connect (voraussichtlich Microsoft Entra ID; zu klären),
-  Rollen `viewer`, `analyst`, `admin`; Audit-Log aller schreibenden Aktionen.
-- Notizen (`user_note`) haben Sichtbarkeit `private` oder `team`.
-
-### ADR-12 Konfiguration und Geheimnisse
-
-- Einstellungen als validierte Datei (TOML) ohne Geheimnisse, Umgebungsvariablen für Betrieb.
-- API-Schlüssel nur im Anmeldespeicher (Einzelplatz: `keyring`) bzw. als Secret der
-  Serverumgebung; nie in Datenbank, Logs oder Exporten.
-
----
-
-## 4. Komponenten
-
-```mermaid
-flowchart LR
-  subgraph Nutzer
-    B[Browser]
-  end
-  subgraph App[Market Intelligence]
-    W[web: FastAPI + Templates]
-    API[(REST/JSON API)]
-    WK[worker: Job-Runner + Scheduler]
-    APP[application services]
-    D[domain]
-    FG[FetchGateway]
-    SA[Source-Adapter]
-    EX[Extraktion]
-    ER[Entity Resolution]
-    SC[Scoring + Analytics]
-    EXP[Export]
-    DB[(PostgreSQL / SQLite)]
-    FS[(Dokumentablage)]
-  end
-  subgraph Extern
-    REG[Register und Statistik-APIs]
-    WEB[Unternehmenswebseiten]
-    SRCH[Such-API]
-    LLM[Anthropic API optional]
-  end
-  B --> W --> APP
-  W --> API --> APP
-  WK --> APP
-  APP --> D
-  APP --> SA --> FG
-  APP --> EX
-  EX --> LLM
-  APP --> ER
-  APP --> SC
-  APP --> EXP
-  FG --> REG
-  FG --> WEB
-  FG --> SRCH
-  APP --> DB
-  FG --> FS
-```
-
-### 4.1 Paketstruktur (geplant)
+## 4. Komponenten (implementiert)
 
 ```
 src/market_intel/
-  domain/            Entitäten, Wertobjekte, Status, Herkunft, Fehler (rein, ohne I/O)
-  ports/             Protokolle: SourceAdapter, FetchGateway, SearchPort, ExtractionPort,
-                     Repositories, Clock, CredentialStore
-  application/
-    research/        Run-Planung, Aufgabengraph, Orchestrierung
-    resolution/      Entity Resolution, Merge/Unmerge
-    observations/    Aufnahme, Konfliktprüfung, gültige Werte, Änderungen
-    discovery/       Customer Discovery, Produktfit
-    scoring/         Indikatoren, Bewertung, Modellversionen
-    analytics/       Zeitreihen, Wachstum, Vergleiche, Datenlücken
-    export/          CSV, XLSX, JSON
-  adapters/
-    http/            FetchGateway, Cache, Rate Limit, robots, SSRF-Schutz, Budget
-    sources/         gleif, wikidata, ecb_fx, sec_edgar, companies_house, kvk, eurostat,
-                     destatis, ted, website, search_brave, (ba_jobsuche – gesperrt bis Freigabe)
-    extraction/      html, pdf, xbrl, rules, llm_anthropic, quote_verifier
-    persistence/     Tabellen (SQLAlchemy Core), Repositories, Alembic
-  worker/            Runner, Lease-Verwaltung, Scheduler
-  web/               Routen, Templates, statische Dateien, Auth
-  security/          redaction, credentials, limits
-  cli/               Verwaltung: migrate, source-check, run, export
-tests/ unit/ integration/ contract/ e2e/ eval/ security/
+  domain.py          Herkunftsklassen, Prüfstatus, Zeiträume, Entwürfe (ObservationDraft, EvidenceDraft)
+  config.py          TOML-Einstellungen ohne Geheimnisse; LLM standardmäßig aus
+  db.py              Schema (SQLAlchemy Core), append-only-Trigger (SQLite + PostgreSQL)
+  repo.py            einziger Schreibweg: Firmen, IDs, Aliase, Belege, Beobachtungen, Konflikte, Lücken
+  resolution.py      Namensnormalisierung, Rechtsformen, Ähnlichkeit, Domains
+  http/gateway.py    FetchGateway (siehe 4.2)
+  sources/
+    registry.py      Quellenregister mit Lizenz, kostenlosem Umfang, Grenzen, Rechtsstatus
+    gleif.py         LEI-Suche, Datensatz, Mutterbeziehungen
+    wikidata.py      Suche, EntityData, Kennzahlenreihen (P1128, P2139), SPARQL nach Branche
+    sec_edgar.py     XBRL companyfacts (Umsatzreihen), CIK-Kandidaten
+    ecb.py           EZB-Jahreskurse für abgeleitete EUR-Werte
+    ted.py           EU-Ausschreibungen → öffentliche Auftraggeber + Signale
+    gdelt.py         Nachrichtenindex → Marktsignale
+    website.py       Unternehmenswebseiten (robots/TDM), Mitarbeiter-Selbstangaben, Anwendungsfall-Belege
+  extraction/text.py HTML→Text, Zitatprüfung, Zahlenformate, Regeln (Mitarbeiter, Suchbegriffe)
+  llm/local.py       LocalLLM-Schnittstelle, NullLLM (Standard), OllamaLLM (optional, nur lokal)
+  usecases.py + data/use_cases.toml   Anwendungsfälle (Hypothesen) mit Suchbegriffen je Quelle
+  profile.py         Firmenprofil: GLEIF → Wikidata → GLEIF per LEI → SEC → Webseite → EUR → Lücken
+  discovery.py       Customer Discovery mit Fit-Regeln strong/plausible/weak
+  analytics.py       Zeitreihen, YoY, CAGR nur zwischen vergleichbaren Werten, Vergleich, Datenqualität
+  scoring.py         Chancenbewertung mit Zerlegung
+  export.py          CSV, XLSX, JSON, HTML-Bericht (Formel-Injektion entschärft)
+  research.py        Runs/Aufgaben, Pause/Fortsetzen
+  proof.py           Funktionsnachweis: Kriterien 1–9 aus Datenbank und Dateien
+  cli.py             mi sources | run | prove | resume | llm-status
 ```
 
-### 4.2 Zentrale Schnittstellen (Ports)
+### 4.1 Kommandos
 
-```python
-class SourceAdapter(Protocol):
-    source_key: str                      # z. B. "gleif"
-    capabilities: frozenset[Capability]  # IDENTIFIERS, PARENTS, FINANCIALS, EMPLOYEES, ...
+| Befehl | Wirkung |
+|---|---|
+| `mi sources` | zeigt jede Quelle mit Status, kostenlosem Umfang, Registrierung, optionalen Kosten |
+| `mi run --compare … --use-case … --country DE` | Recherchelauf (Profil + Discovery + Scoring + Export) |
+| `mi prove` | wie `run`, ohne KI, prüft die neun Nachweiskriterien und schreibt `proof/PROOF_REPORT.md` |
+| `mi resume <run>` | setzt einen pausierten Lauf fort |
+| `mi llm-status` | prüft die optionale lokale KI |
 
-    def search_companies(self, query: CompanyQuery, ctx: TaskContext) -> list[CandidateRecord]: ...
-    def fetch_company(self, ref: ExternalRef, ctx: TaskContext) -> AdapterResult: ...
+### 4.2 FetchGateway (implementiert, getestet)
 
-@dataclass(frozen=True)
-class AdapterResult:
-    documents: list[SourceDocumentRef]     # alles, was abgerufen wurde (mit Hash)
-    identifiers: list[IdentifierClaim]
-    observations: list[ObservationDraft]   # noch nicht gespeichert, jede mit Evidence
-    relationships: list[RelationshipDraft]
-    gaps: list[DataGapDraft]               # gezielt gesucht, nicht gefunden
-    warnings: list[str]
+Reihenfolge je Abruf: Quellenfreigabe (Register + aktiviert) → SSRF-Schutz (nur `https`, Port
+443, keine privaten/Loopback/Link-Local-Adressen nach DNS-Auflösung, keine internen Namen,
+keine Zugangsdaten in URLs) → robots.txt (bei Webseiten) → Cache (frisch: kein Netz; sonst
+`If-None-Match`/`If-Modified-Since`) → Anfragelimit je Run → Drosselung je Quelle/Host →
+Abruf mit Größenlimit → Wiederholung bei 408/425/429/5xx und Netzwerkfehlern (max. 3 Versuche,
+`Retry-After` max. 60 s) → TDM-Vorbehalt (`tdm-reservation` Header/Meta) → Speicherung als
+`source_document` (SHA-256) → Protokoll in `fetch_log`. **Jeder** Aufruf, auch ein gesperrter
+oder gescheiterter, wird protokolliert. Weiterleitungen werden nicht blind verfolgt; der
+Webseiten-Adapter folgt nur innerhalb derselben Domain und lässt jedes Ziel neu prüfen.
 
-class FetchGateway(Protocol):
-    def get(self, source_key: str, url: str, *, params: Mapping[str, str] = ...,
-            purpose: str, ctx: TaskContext) -> FetchResult: ...
+### 4.3 Optionale lokale KI
 
-class ExtractionPort(Protocol):
-    def extract(self, doc: StoredDocument, schema: ExtractionSchema,
-                ctx: TaskContext) -> list[ObservationDraft]: ...
-
-class SearchPort(Protocol):
-    def search(self, query: str, *, market: str, ctx: TaskContext) -> list[SearchHit]: ...
-```
-
-`TaskContext` trägt Run-ID, Task-ID, Budget-Handle, Abbruchsignal und Uhr. Adapter liefern nur
-**Entwürfe**; gespeichert wird ausschließlich durch `application/observations`, das validiert,
-Duplikate erkennt, Konflikte markiert und Änderungen erzeugt.
-
-### 4.3 REST-API (Auszug, Version `v1`)
-
-| Methode | Pfad | Zweck |
-|---|---|---|
-| GET | `/api/v1/companies?q=&country=&industry=` | Suche |
-| GET | `/api/v1/companies/{id}` | Profil inkl. gültiger Werte und Datenlücken |
-| GET | `/api/v1/companies/{id}/observations?metric=` | vollständige Historie mit Quellen |
-| GET | `/api/v1/companies/{id}/changes` | Veränderungen zwischen Analysezeiträumen |
-| POST | `/api/v1/research-runs` | Recherche anlegen (Typ, Ziel, Budget) |
-| POST | `/api/v1/research-runs/{id}/pause` · `/resume` · `/cancel` | Steuerung |
-| GET | `/api/v1/research-runs/{id}` | Fortschritt, Kosten, Fehler, Lücken |
-| GET | `/api/v1/review-items` | Prüfliste (Konflikte, Merge-Kandidaten, unsichere Extraktionen) |
-| POST | `/api/v1/review-items/{id}/decision` | Entscheidung mit Begründung |
-| GET | `/api/v1/opportunities?market=&product_category=` | priorisierte Chancen |
-| POST | `/api/v1/exports` | Export erzeugen (asynchron) |
-| GET/POST | `/api/v1/watchlists` … | Watchlists |
-
-Fehlerantworten nutzen das Vier-Teile-Schema (`what`, `why`, `unchanged`, `action`) plus
-maschinenlesbaren `code`.
-
----
+`LocalLLM`-Protokoll mit `available()` und `classify_use_cases()`. Implementierungen:
+`NullLLM` (Standard) und `OllamaLLM` (`/api/tags`, `/api/chat` mit JSON-Schema im Feld
+`format`, Temperatur 0). Ergebnisse ohne wörtliches, im Seitentext gefundenes Zitat werden
+verworfen (Test `test_ollama_results_need_verified_quotes`). Ist Ollama nicht erreichbar,
+läuft alles regelbasiert weiter. Modell- und Hardwarehinweise: `docs/DEPENDENCIES_AND_COSTS.md` §3.
 
 ## 5. Datenflüsse
 
-### 5.1 Recherche-Run (Beispiel „Marktführer Branche X in Land Y“)
+### 5.1 Firmenprofil (`profile.py`)
 
-```mermaid
-sequenceDiagram
-  participant U as Nutzer
-  participant W as web
-  participant DB as Datenbank
-  participant K as worker
-  participant G as FetchGateway
-  participant Q as Quellen
-  U->>W: Run anlegen (Branche, Land, Budget)
-  W->>DB: research_run(status=queued) + Aufgabengraph
-  K->>DB: Aufgabe leasen
-  K->>G: Anfrage (Quelle, URL, Zweck)
-  G->>DB: Budget, Rate Limit, Cache prüfen
-  G->>Q: HTTP (nur wenn nötig)
-  Q-->>G: Antwort
-  G->>DB: source_document (Hash, Zeit, Meta)
-  K->>K: Adapter erzeugt Entwürfe
-  K->>DB: Entity Resolution, Beobachtungen, Konflikte, Änderungen (eine Transaktion)
-  K->>DB: Aufgabe erledigt, Folgeaufgaben freigeben
-  U->>W: Fortschritt / Pause / Fortsetzen
-```
+1. GLEIF-Volltextsuche; Übernahme nur bei Namensähnlichkeit ≥ 0,85, sonst Kandidat.
+2. Wikidata-Suche; Zusammenführung nur bei gleichem LEI; neue Firma nur, wenn noch keine
+   existiert und Label-Ähnlichkeit ≥ 0,95 und der Eintrag Firmenmerkmale hat.
+3. Liefert Wikidata einen LEI, wird der GLEIF-Datensatz direkt per LEI geladen.
+4. SEC-Umsatzreihe nur bei CIK aus starkem Identifikator (Wikidata P5531); Namenstreffer → Kandidat.
+5. Webseite (aus Wikidata P856) → Mitarbeiter-Selbstangaben, Anwendungsfall-Belege.
+6. Nicht-EUR-Umsätze → abgeleitete EUR-Werte mit EZB-Jahresdurchschnitt (Methodik gespeichert).
+7. Fehlende Kernkennzahlen → `data_gap` mit geprüften Quellen.
 
-Aufgabentypen eines Runs: `discover_candidates` → `resolve_entity` → `fetch_identifiers` →
-`fetch_structure` (Mutter/Töchter) → `fetch_financials` → `fetch_employees` → `fetch_locations`
-→ `fetch_signals` → `extract_documents` → `derive_metrics` → `score` → `summarize_gaps`.
-Jede Aufgabe ist einzeln wiederholbar.
+### 5.2 Customer Discovery (`discovery.py`)
 
-### 5.2 Aufnahme einer Beobachtung
+Anwendungsfall × Land → (a) GLEIF-Namenssuche mit `name_terms` → Fit `plausible`;
+(b) Wikidata-Branchen aus `industry_terms` → SPARQL Firmen des Landes → Fit `weak`;
+(c) Webseiten dieser Firmen → Fit `strong` (≥ 2 Begriffe) bzw. `plausible` (1 Begriff);
+(d) TED-Ausschreibungen → öffentliche Auftraggeber + Signal, Fit `weak` (der Auftraggeber zeigt
+Bedarf; Kunde von Yellotools ist eher der ausführende Betrieb); (e) GDELT → Marktsignale.
+Danach Scoring je Anwendungsfall.
 
-1. Entwurf validieren (Einheit, Währung, Zeitraum, Plausibilitätsgrenzen, Pflicht-Evidence).
-2. Gleiche Quelle + gleicher Inhalt schon vorhanden → nur `last_seen_at` aktualisieren
-   (Bestätigung, kein Duplikat).
-3. Neue Zeile speichern (`verification_status` nach Regeln in `DATA_MODEL.md` §5).
-4. Mit bestehenden Werten desselben Schlüssels (Firma, Kennzahl, Zeitraum, Konsolidierungskreis)
-   vergleichen → bei Abweichung über Toleranz `conflicting` + Prüfeintrag.
-5. Gültigen Wert neu ableiten; bei Änderung `change_event` schreiben (Watchlist-Hinweis).
+### 5.3 Aufnahme einer Beobachtung (`repo.ingest_observation`)
 
-### 5.3 Customer Discovery
+Validierung im `ObservationDraft` (Methodik bei abgeleiteten Werten, Währung bei Beträgen,
+Zeitraumlogik) → Duplikat (gleicher Inhalts-Hash) nur `last_seen_at` → Ablehnung ohne
+verifiziertes Zitat → Speichern mit Startstatus nach Herkunftsklasse → Konfliktprüfung mit
+Toleranz; unbekannter Konsolidierungskreis gilt als vergleichbar mit jedem (sonst blieben
+Widersprüche unsichtbar – im Test gefunden und behoben).
 
-Produktkategorie → Anwendungsfälle → Zielbranchen (NACE) und Suchbegriffe → Kandidaten aus
-Registern/Suche/Ausschreibungen → Entity Resolution → Belege für Anwendungsfall sammeln
-(Webseite, Stellenanzeigen, Ausschreibungen) → `company_product_fit` mit Begründung →
-`opportunity_assessment`.
+## 6. Fehlerbehandlung und Nachvollziehbarkeit
 
----
+- Fällt eine Quelle aus, scheitert nur der Abruf; der Run läuft weiter und endet mit
+  `completed_with_gaps`. Hinweise stehen im Run-Bericht, jeder Abruf im `fetch_log`.
+- Eine Aufgabe, die unerwartet scheitert (z. B. Formatänderung einer API), wird mit Fehler
+  gespeichert; die übrigen Aufgaben laufen weiter.
+- Gemessenes Verhalten ohne Internetzugang: siehe `IMPLEMENTATION_ROADMAP.md` §0.
 
-## 6. Fehlerbehandlung, Stabilität, Protokollierung
+## 7. Betriebsarten (ohne Pflicht-Cloud)
 
-- Fehlerklassen: `SourceUnavailable`, `RateLimited`, `BudgetExceeded`, `LegalBlocked`,
-  `ParseError`, `ValidationError`, `ConflictDetected` (kein Fehler, sondern Zustand).
-- Fällt eine Quelle aus, endet die Aufgabe mit `failed_retryable`; der Run läuft mit anderen
-  Quellen weiter und erhält am Ende den Status `completed_with_gaps` inklusive Liste der
-  Lücken. Nie wird ein fehlender Wert durch einen geratenen ersetzt.
-- Strukturierte Protokolle (JSON) mit Run-/Task-ID, bereinigt (`security/redaction.py`),
-  Rotation wie im Auftragsimport.
-- Kennzahlen für den Betrieb: Aufgaben je Status, Fehlerquote je Quelle, Cache-Trefferquote,
-  Kosten je Quelle und Tag – sichtbar in einer Admin-Seite.
-
-## 7. Betriebsarten
-
-| Modus | Datenbank | Prozesse | Zielgruppe |
+| Modus | Datenbank | Ablauf | Kosten der Software |
 |---|---|---|---|
-| Entwicklung | SQLite | `web` + `worker` lokal | Entwickler |
-| Einzelplatz-Pilot | SQLite | beide als lokaler Dienst, Bindung an 127.0.0.1 | 1 Analyst |
-| Team | PostgreSQL | Container (`docker compose`) auf internem Server oder Cloud-VM, Reverse Proxy mit TLS, OIDC | Vertrieb, GF |
-
-Updates im Teambetrieb über neue Container-Images (signiert, gepinnte Basis-Images);
-Migrationen laufen kontrolliert per `cli migrate` mit vorheriger Sicherung.
+| Einzelplatz Windows/Linux | SQLite-Datei | `mi run` / `mi prove`, Aufgabenplanung über Windows-Aufgabenplanung oder cron | 0 € |
+| Teamserver (eigene Hardware/VM) | PostgreSQL selbst gehostet | Web-UI + Worker (ab M6/M15) im LAN, Zugriff per VPN statt öffentlicher Erreichbarkeit | 0 € |
+| Öffentliche Erreichbarkeit | – | nicht erforderlich; falls gewünscht über vorhandene Infrastruktur, nie Voraussetzung | – |
 
 ## 8. Risiken
 
-| # | Risiko | Wirkung | Gegenmaßnahme |
-|---|---|---|---|
-| R1 | Wichtige Daten (Umsatz/Mitarbeiter von KMU) sind nicht frei verfügbar | Lücken, geringere Aussagekraft | Lücken sichtbar machen; lizenzierte Anbieter (North Data o. ä.) als bezahlte Option bewerten; Größenklassen statt Punktwerte |
-| R2 | Nutzungsbedingungen/Urheberrecht einzelner Quellen | Rechtsrisiko | Quellenfreigabe-Gate im Code, rechtliche Prüfung vor Aktivierung, robots/TDM-Vorbehalt |
-| R3 | Fehlerhafte Zusammenführung von Unternehmen | falsche Profile | nur Identifikator-Merges automatisch, Prüfliste, Unmerge |
-| R4 | LLM-Halluzination | erfundene Zahlen | Zitatprüfung, keine Werte ohne Beleg, Eval-Set mit Abnahmegrenze |
-| R5 | Prompt-Injection über Webinhalte | manipulierte Extraktion | Modell ohne Werkzeuge, nur strukturierte Ausgabe, Zitatprüfung, Plausibilitätsgrenzen |
-| R6 | Kostenexplosion (Such-API, LLM, Datenanbieter) | Budget | harte Limits vor jedem Aufruf, Cache, Kostenbuch je Run |
-| R7 | Änderung/Abschaltung externer APIs (z. B. Bing 08/2025, Google CSE 01/2027) | Ausfall einzelner Funktionen | Adapter austauschbar, Vertragstests mit Aufzeichnungen, Circuit Breaker |
-| R8 | Zeitreihenbrüche (z. B. NACE Rev. 2 → 2.1 ab 2025, Konsolidierungskreis, Geschäftsjahr) | falsche Wachstumsraten | Zeitraum- und Scope-Felder Pflicht, Wachstum nur bei vergleichbaren Paaren |
-| R9 | Zwei Datenbanken (SQLite/PostgreSQL) erhöhen Testaufwand | Verzögerung | CI-Matrix; SQLite-Modus kann gestrichen werden, wenn Teambetrieb früh verfügbar ist |
-| R10 | Unklare Infrastruktur bei Yellotools (Server, SSO) | Verzögerung Teambetrieb | offene Fragen in `IMPLEMENTATION_ROADMAP.md` §1 klären, Einzelplatz-Pilot zuerst |
+| # | Risiko | Gegenmaßnahme |
+|---|---|---|
+| R1 | Freie Quellen decken Umsatz/Mitarbeiter deutscher KMU nur lückenhaft ab | Lücken sichtbar; Webseiten-Selbstangaben; Nutzer-Upload von Jahresabschluss-PDFs (M8) |
+| R2 | Keine freie, kommerziell nutzbare allgemeine Websuche | Discovery über strukturierte Quellen; Webseiten nur von bekannten Domains; Dokumentation der Grenze |
+| R3 | API-Formatänderungen (TED-Feldnamen, Wikidata, GDELT) | Vertragstests, tolerante Parser, Aufgabe scheitert isoliert; Live-Smoke-Test `mi prove` |
+| R4 | Rechtsstatus einzelner Quellen ändert sich | Register mit Rechtsstatus; Abruf nur bei Freigabe |
+| R5 | Fehlzuordnung von Firmen | nur starke IDs automatisch; Kandidaten im Run-Bericht |
+| R6 | Lokale KI langsam/fehlerhaft | optional; Zitatprüfung; Regeln bleiben die Grundlage |
+| R7 | PostgreSQL-Pfad ungetestet | CI-Matrix mit PostgreSQL-Service (M0b) |
+| R8 | Proxy-/Firmennetz blockiert Quellen | `mi prove` zeigt je Quelle, was blockiert ist; Freigabe der Hosts in der Firewall |

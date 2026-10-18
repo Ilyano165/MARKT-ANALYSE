@@ -1,6 +1,6 @@
 # Datenmodell – Yellotools Market Intelligence
 
-Stand: 2026-10-18 · Phase 1 · relational, Zielsystem PostgreSQL ≥ 16 (SQLite für Einzelplatz,
+Stand: 2026-10-18 · Revision 2 · relational, Zielsystem PostgreSQL ≥ 16 (SQLite für Einzelplatz,
 siehe `ARCHITECTURE.md` ADR-04)
 
 ## 1. Grundregeln
@@ -338,8 +338,9 @@ Ein konkret abgerufenes Dokument (Seite, API-Antwort, PDF).
 `failed_permanent`, `skipped`, `cancelled`), attempt, max_attempts, leased_by, leased_until,
 next_attempt_at, depends_on (uuid[]), error_code, error_detail, cost, started_at, finished_at.
 
-`cost_ledger`: **id**, **run_id**, task_id, **source_id**, **kind** (`api_call`, `llm_tokens`,
-`search_query`, `data_provider`), quantity, **amount**, currency, at.
+`fetch_log` (Revision 2, implementiert; ersetzt das frühere `cost_ledger`, da es keine kostenpflichtigen Abrufe gibt): **id**, run_id, **source_key**, **method**, **url**, **purpose**, **status** (`ok`, `cached`, `not_modified`, `http_error`, `network_error`, `blocked_policy`, `blocked_robots`, `blocked_tdm`, `blocked_ssrf`, `too_large`), http_status, error, **attempt**, **duration_ms**, document_id, **at**.
+
+Implementierungsstand Prototyp 0.1.0: Tabellen aus §3.1–3.4, 3.5 (industry, company_industry), 3.8, 3.10–3.12, 3.15–3.22 sowie `fetch_log`, `http_cache`, `schema_info` sind in `src/market_intel/db.py` umgesetzt. Offen (M1b): CompanyAlias-Gültigkeit, CountryMarket, Hiring-/LayoffObservation, UserNote, Watchlist, ChangeEvent, ReviewItem, MatchCandidate/Merge, ScoringModel als Tabelle (heute Version im Code).
 
 ### 3.21 `company_product_fit`
 
