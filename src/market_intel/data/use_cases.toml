@@ -1,0 +1,66 @@
+# Anwendungsfälle für Customer Discovery – STARTHYPOTHESEN, nicht belegt.
+# Status "hypothesis": vom Yellotools-Vertrieb zu bestätigen oder zu verwerfen.
+# Produktkategorien: Arbeitsnamen aus dem öffentlichen Shop (Schneiden, Rakel, Entfernen,
+# Messen, Car-Wrapping-Hilfsmittel); Ersatz durch den echten Artikelstamm in Meilenstein M10.
+#
+# Felder:
+#   website_terms   Begriffe, die auf der eigenen Webseite eines Unternehmens den Anwendungsfall belegen
+#   name_terms      Begriffe in Firmennamen (GLEIF-Namenssuche)
+#   tender_terms    Volltextbegriffe für EU-Ausschreibungen (TED)
+#   news_terms      Begriffe für die Nachrichtensuche (GDELT)
+#   industry_terms  Suchbegriffe, um Wikidata-Branchen zu finden (Zuordnung wird protokolliert)
+
+[[use_case]]
+key = "fahrzeugfolierung"
+name = "Fahrzeugbeschriftung und Car Wrapping"
+evidence_status = "hypothesis"
+product_categories = ["Rakel", "Schneidwerkzeuge", "Car-Wrapping-Hilfsmittel", "Entfernen"]
+website_terms = ["Fahrzeugfolierung", "Fahrzeugbeschriftung", "Car Wrapping", "Vollfolierung", "Teilfolierung", "Autofolierung", "Flottenbeschriftung", "vehicle wrap"]
+name_terms = ["Fahrzeugfolierung", "Folierung", "Car Wrapping", "Werbetechnik"]
+tender_terms = ["Fahrzeugbeschriftung", "Folierung"]
+news_terms = ["Fahrzeugfolierung"]
+industry_terms = ["Werbetechnik", "sign industry"]
+
+[[use_case]]
+key = "glasfolien"
+name = "Sonnenschutz-, Sicht- und Sicherheitsfolien auf Glas"
+evidence_status = "hypothesis"
+product_categories = ["Rakel", "Schneidwerkzeuge", "Entfernen"]
+website_terms = ["Sonnenschutzfolie", "Sichtschutzfolie", "Sicherheitsfolie", "Fensterfolie", "Glasfolie", "Splitterschutzfolie", "window film"]
+name_terms = ["Sonnenschutz", "Glasfolien", "Fensterfolien"]
+tender_terms = ["Sonnenschutzfolie", "Fensterfolie"]
+news_terms = ["Sonnenschutzfolie"]
+industry_terms = ["Glaserei", "glazing"]
+
+[[use_case]]
+key = "lackschutz_aufbereitung"
+name = "Lackschutzfolie (PPF) und Fahrzeugaufbereitung"
+evidence_status = "hypothesis"
+product_categories = ["Rakel", "Schneidwerkzeuge", "Car-Wrapping-Hilfsmittel"]
+website_terms = ["Lackschutzfolie", "Paint Protection Film", "PPF", "Steinschlagschutzfolie", "Fahrzeugaufbereitung"]
+name_terms = ["Lackschutz", "Fahrzeugaufbereitung"]
+tender_terms = ["Lackschutzfolie"]
+news_terms = ["Lackschutzfolie"]
+industry_terms = ["Fahrzeugaufbereitung", "auto detailing"]
+
+[[use_case]]
+key = "werbetechnik_beschriftung"
+name = "Werbetechnik, Schilder und Beschriftung"
+evidence_status = "hypothesis"
+product_categories = ["Schneidwerkzeuge", "Rakel", "Messen", "Entfernen"]
+website_terms = ["Werbetechnik", "Beschriftung", "Schilder", "Plotterfolie", "Digitaldruck", "Leuchtreklame", "Schaufensterbeschriftung"]
+name_terms = ["Werbetechnik", "Beschriftung", "Schilder"]
+tender_terms = ["Beschilderung", "Beschriftung"]
+news_terms = ["Werbetechnik"]
+industry_terms = ["Werbetechnik", "signage"]
+
+[[use_case]]
+key = "interior_folien"
+name = "Möbel-, Innenausbau- und Architekturfolien"
+evidence_status = "hypothesis"
+product_categories = ["Rakel", "Schneidwerkzeuge", "Car-Wrapping-Hilfsmittel"]
+website_terms = ["Möbelfolierung", "Architekturfolie", "Interior-Folie", "Küchenfolierung", "Türenfolierung", "Dekorfolie"]
+name_terms = ["Möbelfolierung", "Folientechnik"]
+tender_terms = ["Folierung Türen", "Dekorfolie"]
+news_terms = ["Möbelfolierung"]
+industry_terms = ["Innenausbau", "interior design"]

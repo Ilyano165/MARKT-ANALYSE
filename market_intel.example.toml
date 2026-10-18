@@ -1,0 +1,24 @@
+# Einstellungen für Market Intelligence – als market_intel.toml kopieren.
+# KEINE Zugangsdaten in diese Datei schreiben (wird beim Laden abgelehnt).
+
+# Pflicht für einen fairen Abruf: SEC und Wikimedia verlangen einen User-Agent mit Kontakt.
+contact_email = "vertrieb@example.com"
+
+# Einzelplatz: SQLite-Datei. Teamserver: postgresql+psycopg://user@server/market_intel
+# (pip install -e ".[postgres]"; Passwort über PGPASSWORD oder .pgpass, nicht hier).
+database_url = "sqlite:///market_intel.db"
+
+# Quellen ein-/ausschalten (Liste: mi sources). Kostenpflichtige Quellen lassen sich nicht einschalten.
+enabled_sources = []
+disabled_sources = []
+
+# Höchstzahl Netzabrufe je Run und Seiten je Unternehmenswebseite.
+max_requests_per_run = 2000
+website_max_pages = 8
+
+[llm]
+# Optionale lokale KI über Ollama (https://ollama.com). Ohne KI funktioniert alles regelbasiert.
+enabled = false
+base_url = "http://127.0.0.1:11434"
+model = "qwen3:8b"
+timeout_seconds = 120

@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "market-intel"
+dynamic = ["version"]
+description = "Yellotools Market Intelligence: kostenlose, quellenbelegte Markt- und Unternehmensrecherche."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietär" }
+# Nur freie Open-Source-Pakete ohne Lizenzgebühren; Lizenzen siehe docs/DEPENDENCIES_AND_COSTS.md.
+dependencies = [
+    "httpx==0.28.1",
+    "SQLAlchemy==2.0.43",
+    "openpyxl==3.1.5",
+]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]==3.2.10"]
+dev = ["pytest==8.4.2", "ruff==0.13.0", "mypy==1.18.1", "types-openpyxl==3.1.5.20250919", "pip-licenses==5.0.0"]
+
+[project.scripts]
+mi = "market_intel.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "market_intel.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"market_intel" = ["data/*.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q --strict-markers -p no:cacheprovider"
+markers = ["live: echte Internetabrufe, nur manuell (pytest -m live)"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+packages = ["market_intel"]
