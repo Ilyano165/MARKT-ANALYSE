@@ -11,6 +11,7 @@ from .. import db, repo
 from ..context import Ctx
 from ..domain import EvidenceDraft, ProvenanceClass
 from ..resolution import normalize_name
+from .common import json_object
 
 SOURCE = "gdelt"
 URL = "https://api.gdeltproject.org/api/v2/doc/doc"
@@ -40,10 +41,10 @@ class Article:
 
 
 def search(
-    ctx: Ctx, term: str, country_iso2: str, timespan: str = "12m"
+    ctx: Ctx, term: str, country_iso2: str | None, timespan: str = "12m"
 ) -> tuple[list[Article], int | None, str]:
     """Artikel zu einem Begriff in der Landessprache."""
-    language = LANG.get(country_iso2)
+    language = LANG.get(country_iso2 or "")
     query = f'"{term}"' + (f" sourcelang:{language}" if language else "")
     result = ctx.gateway.get(
         SOURCE,
@@ -63,7 +64,7 @@ def search(
         ctx.note(f"GDELT „{term}“ fehlgeschlagen: {result.status.value} {result.error}")
         return [], None, ""
     try:
-        data = result.json()
+        data = json_object(ctx, result)
     except ValueError:
         ctx.note(f"GDELT „{term}“: keine JSON-Antwort ({result.text[:120]!r})")
         return [], result.document_id, ""
@@ -81,7 +82,11 @@ def search(
 
 
 def ingest_articles(
-    ctx: Ctx, articles: list[Article], document_id: int, use_case_key: str, country_iso2: str
+    ctx: Ctx,
+    articles: list[Article],
+    document_id: int,
+    use_case_key: str | None,
+    country_iso2: str | None,
 ) -> int:
     """Meldungen als Marktsignale; Zuordnung zu bekannten Firmen nur bei Namensnennung."""
     with ctx.engine.connect() as conn:

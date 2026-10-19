@@ -1,10 +1,41 @@
 # Umsetzungsplan – Yellotools Market Intelligence
 
-Stand: 2026-10-18 · Revision 2 (verbindlich: **100 % kostenloser Betrieb**)
+Stand: 2026-10-19 · Revision 3 (Phase 2 Research Engine; verbindlich: **100 % kostenloser Betrieb**)
 
 Grundsätze: kleine, abnehmbare Meilensteine; jeder endet mit grünen Tests. **Gate „Kosten“
 gilt für jeden Meilenstein: keine neue Abhängigkeit, Quelle oder Infrastruktur mit
 verpflichtenden Kosten** – Prüfung über `docs/DEPENDENCIES_AND_COSTS.md`.
+
+## 0a. Stand nach Phase 2 – Research Engine (2026-10-19, Version 0.2.0)
+
+Umgesetzt und mit Mock-Daten getestet (**130 automatische Tests grün**, `ruff` und
+`mypy --strict` ohne Befund):
+
+- Rechercheaufträge aus Freitext und Filtern (`mi research`), Strategie mit Fachlexikon und
+  Herkunft jedes Suchbegriffs; die sieben Beispielaufträge der Anforderung sind als Tests
+  hinterlegt (`tests/test_strategy_llm.py`)
+- Einheitliche Adapter-Schnittstelle; neun Adapter (GLEIF, Wikidata, SEC EDGAR, Companies
+  House, Unternehmenswebseiten inkl. IR-PDFs/Karriere/Presse, TED, GDELT, Eurostat,
+  Firmenlisten) – Details und Grenzen in `docs/PROVIDERS.md`
+- Acht Schritte als persistente Aufgaben mit Fortschritt, getrennter Kennzeichnung (ok /
+  Fehler / übersprungen), Pause/Fortsetzen, Budget (Abrufe, Aufgaben, Zeit, KI-Aufrufe,
+  Kosten 0 €), Erkennung bereits untersuchter Quellen, konfigurierbare Rate Limits,
+  Wiederholungen und Timeouts
+- Deterministische Extraktion (Geld/Skala/Währung/Zeitraum, Mitarbeiter, Impressum-IDs,
+  JSON-LD-Stellen, Pressemeldungen, PDF), Plausibilitätsprüfung beim Speichern,
+  Dubletten-/Tochter-Kandidaten, Änderungsereignisse, Bericht mit Quellen- und
+  Berechnungskennzeichnung
+- LLM-Provider-System (keiner / Ollama / OpenAI-kompatibel lokal) mit geprüften KI-Aufgaben
+
+**Nicht erledigt / ehrlich offen:**
+- Kein Anbieter ist live getestet; der manuelle Integrationstest
+  (`docs/MANUAL_INTEGRATION_TEST.md`) scheiterte in der Entwicklungsumgebung an der
+  Netzwerkrichtlinie (GLEIF/Wikidata: `ProxyError 403`) und muss auf einem Rechner mit
+  Internetzugang ausgeführt werden (= Abnahme A0)
+- Keine allgemeine Websuche (keine kostenlose zulässige API) und kein lizenzierter
+  Datenanbieter (kein Vertrag) – Schnittstelle vorhanden
+- Eurostat-Datensatzcode und TED-Gewinnerfeld live ungeprüft
+- PostgreSQL weiterhin nicht gegen echte Instanz getestet; Web-UI (M6) offen
 
 ## 0. Stand nach Prototyp P1 (2026-10-18)
 

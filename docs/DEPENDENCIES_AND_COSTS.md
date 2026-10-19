@@ -1,6 +1,6 @@
 # Verbindliche Übersicht: Abhängigkeiten, Datenquellen und Kosten
 
-Stand: 2026-10-18 · gilt für market-intel 0.1.0
+Stand: 2026-10-19 · gilt für market-intel 0.2.0
 
 **Ergebnis:** Die Kernanwendung benötigt **keine** kostenpflichtige Software, keinen
 kostenpflichtigen Dienst, kein Abonnement, keine Cloud und keinen KI-Zugang. Optionale Kosten
@@ -25,6 +25,7 @@ Domain/Zertifikat für einen Teamserver.
 | typing_extensions | 4.16.0 | PSF-2.0 | von SQLAlchemy | ja | 0 € | nein |
 | openpyxl | 3.1.5 | MIT | XLSX-Export | ja | 0 € | nein |
 | et_xmlfile | 2.0.0 | MIT | von openpyxl | ja | 0 € | nein |
+| pypdf | 6.1.1 | BSD-3-Clause (geprüft 2026-10-19) | Text aus Geschäftsbericht-PDFs | ja | 0 € | nein |
 | psycopg[binary] | 3.2.10 | LGPL-3.0 (bündelt libpq, PostgreSQL License) | nur für PostgreSQL | nein (`.[postgres]`) | 0 € | nein |
 | pytest, mypy, ruff, pip-licenses | 8.4.2 / 1.18.1 / 0.13.0 / 5.0.0 | MIT | Entwicklung | nein (`.[dev]`) | 0 € | nein |
 | types-openpyxl | 3.1.5.20250919 | Apache-2.0 | Entwicklung | nein | 0 € | nein |
@@ -47,9 +48,9 @@ Apache ECharts (Apache-2.0), PostgreSQL (PostgreSQL License), Keycloak (Apache-2
 | TED Search API | Wiederverwendung mit Quellenangabe | vollständig | 100 Treffer/Seite | nein | nein | keine | ja | aktiv |
 | GDELT DOC 2.0 | frei mit Zitat/Link | gedrosselt | nur Metadaten speichern | nein | nein | keine (GDELT Cloud wäre separat kostenpflichtig – nicht genutzt) | ja | aktiv |
 | Unternehmenswebseiten | Urheberrecht; TDM nach § 44b UrhG | 8 Seiten/Domain | robots.txt, TDM-Vorbehalt | nein | nein | keine | ja | aktiv |
-| Companies House | OGL | 600 Anfragen/5 min | nur UK | ja, kostenlos | kostenloser Schlüssel | keine | ja | aus |
+| Companies House | OGL | 600 Anfragen/5 min | nur UK | ja, kostenlos | kostenloser Schlüssel | keine | ja | aktiv, sobald Schlüssel gesetzt |
 | Destatis GENESIS | DL-DE BY 2.0 | vollständig | Token über kostenloses Konto (S) | ja, kostenlos | Token | keine | ja | geplant |
-| Eurostat | Wiederverwendung mit Quellenangabe | vollständig | NACE-Bruch 2025 | nein | nein | keine | ja | geplant |
+| Eurostat | Wiederverwendung mit Quellenangabe | vollständig | NACE-Bruch 2025; Datensatzcode live ungeprüft | nein | nein | keine | ja | aktiv (nur bei NACE-Codes) |
 | Handelsregister | amtlich | Einzelabrufe | 60/h, kein Massenabruf | – | – | Dokumente teils gebührenpflichtig | – | gesperrt |
 | BA Jobsuche | ungeklärt | – | keine offizielle API | – | – | – | – | gesperrt |
 | Marginalia | CC BY-NC-SA 4.0 (kostenloser Schlüssel) | nur nicht-kommerziell | kommerziell kostenpflichtig | E-Mail | Schlüssel | ja | – | ausgeschlossen |
@@ -63,6 +64,7 @@ Abruf; der Lauf endet mit `completed_with_gaps`, und die Lücke steht im Bericht
 
 | Komponente | Lizenz | Kosten | Hinweis |
 |---|---|---|---|
+| OpenAI-kompatibler lokaler Server (llama.cpp-Server MIT, LM Studio, vLLM Apache-2.0) | je Produkt prüfen | 0 € | Provider `openai_compatible`, nur Loopback/LAN |
 | Ollama (Server, lokal) | MIT (laut GitHub-Repository; vor Installation prüfen) | 0 € | nur Loopback (`127.0.0.1:11434`); andere Hosts nur mit `allow_non_loopback = true` (eigener LAN-Server) |
 | Modell `qwen3:8b` (Voreinstellung) | Apache-2.0 (S) | 0 € | Download ca. 5 GB; laut Drittquellen ca. 8 GB GPU-Speicher oder ca. 10 GB RAM bei reinem CPU-Betrieb |
 | Modell `qwen3:4b` | Apache-2.0 (S) | 0 € | kleiner, für Rechner mit wenig Speicher; geringere Qualität |

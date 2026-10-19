@@ -7,14 +7,13 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-import httpx
 import pytest
 from sqlalchemy import insert, text
 from sqlalchemy.exc import DBAPIError
 
 from market_intel import db, repo
 from market_intel.analytics import growth
-from market_intel.config import ConfigError, LLMSettings, load_settings
+from market_intel.config import ConfigError, load_settings
 from market_intel.domain import (
     Confidence,
     EvidenceDraft,
@@ -32,7 +31,6 @@ from market_intel.extraction.text import (
     parse_number,
     quote_in_text,
 )
-from market_intel.llm.local import LLMConfigError, NullLLM, OllamaLLM, build_llm
 from market_intel.resolution import legal_form_of, name_similarity, normalize_name
 from market_intel.scoring import assess
 from market_intel.usecases import load_use_cases, register
@@ -263,44 +261,3 @@ def test_config_rejects_secrets(tmp_path: Path):
         load_settings(path)
     path.write_text('contact_email = "a@b.de"\n[llm]\nenabled = true\n', encoding="utf-8")
     assert load_settings(path).llm.enabled
-
-
-def test_null_llm_is_default_and_remote_hosts_are_rejected():
-    assert build_llm(LLMSettings()).name == "none"
-    assert NullLLM().classify_use_cases("Text", {"a": "b"}) == []
-    with pytest.raises(LLMConfigError):
-        OllamaLLM(LLMSettings(enabled=True, base_url="https://api.cloud.example"))
-
-
-def test_ollama_results_need_verified_quotes():
-    def handler(request):
-        if request.url.path == "/api/tags":
-            return httpx.Response(200, json={"models": [{"name": "qwen3:8b"}]})
-        content = json.dumps(
-            {
-                "matches": [
-                    {"use_case_key": "glasfolien", "quote": "Wir montieren Sonnenschutzfolie"},
-                    {"use_case_key": "glasfolien", "quote": "erfundenes Zitat"},
-                    {"use_case_key": "unbekannt", "quote": "Wir montieren"},
-                ]
-            }
-        )
-        return httpx.Response(200, json={"message": {"content": content}})
-
-    llm = OllamaLLM(LLMSettings(enabled=True), transport=httpx.MockTransport(handler))
-    assert llm.available()
-    matches = llm.classify_use_cases(
-        "Wir montieren Sonnenschutzfolie in Büros.", {"glasfolien": "Glasfolien"}
-    )
-    assert [(m.use_case_key, m.quote) for m in matches] == [
-        ("glasfolien", "Wir montieren Sonnenschutzfolie")
-    ]
-
-
-def test_ollama_unavailable_falls_back():
-    def handler(request):
-        raise httpx.ConnectError("kein Server", request=request)
-
-    llm = OllamaLLM(LLMSettings(enabled=True), transport=httpx.MockTransport(handler))
-    assert not llm.available()
-    assert llm.classify_use_cases("x", {"a": "b"}) == []

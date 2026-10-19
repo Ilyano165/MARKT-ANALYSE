@@ -12,6 +12,7 @@ from .. import repo
 from ..context import Ctx
 from ..domain import ProvenanceClass
 from ..resolution import legal_form_of
+from .common import json_object
 
 BASE = "https://api.gleif.org/api/v1"
 SOURCE = "gleif"
@@ -35,18 +36,27 @@ class GleifRecord:
     entity_status: str | None
 
 
-def parse_record(item: dict[str, Any]) -> GleifRecord | None:
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _list(value: Any) -> list[dict[str, Any]]:
+    return [v for v in value if isinstance(v, dict)] if isinstance(value, list) else []
+
+
+def parse_record(item: Any) -> GleifRecord | None:
     """Einen ``lei-records``-Eintrag auswerten; ``None`` bei unerwartetem Format."""
-    attributes = item.get("attributes") or {}
-    entity = attributes.get("entity") or {}
+    item = _dict(item)
+    attributes = _dict(item.get("attributes"))
+    entity = _dict(attributes.get("entity"))
     lei = attributes.get("lei") or item.get("id")
-    name = (entity.get("legalName") or {}).get("name")
-    if not lei or not name:
+    name = _dict(entity.get("legalName")).get("name")
+    if not isinstance(lei, str) or not isinstance(name, str) or not lei or not name:
         return None
-    legal = entity.get("legalAddress") or {}
-    hq = entity.get("headquartersAddress") or {}
-    others = tuple(o.get("name", "") for o in entity.get("otherNames") or [] if o.get("name"))
-    lines = legal.get("addressLines") or []
+    legal = _dict(entity.get("legalAddress"))
+    hq = _dict(entity.get("headquartersAddress"))
+    others = tuple(str(o["name"]) for o in _list(entity.get("otherNames")) if o.get("name"))
+    lines = [str(x) for x in legal.get("addressLines") or [] if isinstance(x, str)]
     return GleifRecord(
         lei=str(lei),
         legal_name=str(name),
@@ -80,7 +90,8 @@ def search(
     if not result.ok:
         ctx.note(f"GLEIF-Suche „{query}“ fehlgeschlagen: {result.status.value} {result.error}")
         return [], None
-    records = [r for r in (parse_record(i) for i in result.json().get("data") or []) if r]
+    items = json_object(ctx, result).get("data")
+    records = [r for r in (parse_record(i) for i in _list(items)) if r]
     return records, result.document_id
 
 
@@ -92,7 +103,7 @@ def fetch_by_lei(ctx: Ctx, lei: str) -> tuple[GleifRecord | None, int | None]:
     if not result.ok:
         ctx.note(f"GLEIF-Datensatz {lei} nicht abrufbar: {result.status.value} {result.error}")
         return None, None
-    data = result.json().get("data")
+    data = json_object(ctx, result).get("data")
     return (parse_record(data) if isinstance(data, dict) else None), result.document_id
 
 
@@ -108,7 +119,7 @@ def fetch_parent(ctx: Ctx, lei: str, kind: str) -> tuple[GleifRecord | None, int
         return None, None, "keine Mutter gemeldet (oder Meldeausnahme)"
     if not result.ok:
         return None, None, f"Abruf fehlgeschlagen: {result.status.value}"
-    data = result.json().get("data")
+    data = json_object(ctx, result).get("data")
     return (parse_record(data) if isinstance(data, dict) else None), result.document_id, ""
 
 

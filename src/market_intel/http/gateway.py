@@ -91,6 +91,7 @@ class GatewayStats:
     by_status: dict[str, int] = field(default_factory=dict)
     by_source: dict[str, dict[str, int]] = field(default_factory=dict)
     requests: int = 0
+    cost_eur: float = 0.0
 
     def count(self, source_key: str, status: FetchStatus) -> None:
         self.by_status[status.value] = self.by_status.get(status.value, 0) + 1
@@ -113,8 +114,14 @@ class FetchGateway:
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
         timeout: float = 30.0,
+        max_attempts: int = MAX_ATTEMPTS,
+        min_intervals: Mapping[str, float] | None = None,
+        cost_limit_eur: float = 0.0,
     ) -> None:
         self._engine = engine
+        self._max_attempts = max(1, max_attempts)
+        self._min_intervals = dict(min_intervals or {})
+        self._cost_limit = cost_limit_eur
         self._enabled = enabled_sources
         self._max_requests = max_requests
         self._resolver = resolver or _system_resolver
@@ -124,6 +131,7 @@ class FetchGateway:
         self._robots: dict[str, urllib.robotparser.RobotFileParser | None] = {}
         self.user_agent = user_agent
         self.run_id: int | None = None
+        self.requests_offset = 0  # bereits in früheren Sitzungen des Auftrags verbrauchte Abrufe
         self.stats = GatewayStats()
         self._client = httpx.Client(
             transport=transport,
@@ -131,6 +139,16 @@ class FetchGateway:
             follow_redirects=False,
             headers={"User-Agent": user_agent, "Accept-Encoding": "gzip, deflate"},
         )
+
+    @property
+    def max_requests(self) -> int:
+        """Abruflimit für die laufende Sitzung (Gesamtlimit minus frühere Sitzungen)."""
+        return max(0, self._max_requests - self.requests_offset)
+
+    @property
+    def enabled_sources(self) -> frozenset[str]:
+        """Aktivierte Quellen."""
+        return self._enabled
 
     def close(self) -> None:
         """Schließt die Verbindungen."""
@@ -246,8 +264,8 @@ class FetchGateway:
 
         last_error = ""
         last_status: int | None = None
-        for attempt in range(1, MAX_ATTEMPTS + 1):
-            if self.stats.requests >= self._max_requests:
+        for attempt in range(1, self._max_attempts + 1):
+            if self.stats.requests + self.requests_offset >= self._max_requests:
                 return self._log(
                     source_key,
                     method,
@@ -260,8 +278,23 @@ class FetchGateway:
                     0,
                     None,
                 )
+            cost = SOURCE_BY_KEY[source_key].cost_per_call_eur
+            if cost > 0 and self.stats.cost_eur + cost > self._cost_limit:
+                return self._log(
+                    source_key,
+                    method,
+                    url,
+                    purpose,
+                    FetchStatus.BLOCKED_POLICY,
+                    None,
+                    f"Kostenbudget des Auftrags ({self._cost_limit:.2f} €) würde überschritten",
+                    attempt,
+                    0,
+                    None,
+                )
             self._throttle(source_key, url)
             self.stats.requests += 1
+            self.stats.cost_eur += cost
             started = self._monotonic()
             try:
                 response, content = self._send(method, url, body, request_headers, max_bytes)
@@ -292,7 +325,7 @@ class FetchGateway:
                     self._elapsed(started),
                     None,
                 )
-                if attempt < MAX_ATTEMPTS:
+                if attempt < self._max_attempts:
                     self._sleep(2.0 ** (attempt - 1))
                     continue
                 return FetchResult(FetchStatus.NETWORK_ERROR, url, error=last_error)
@@ -349,7 +382,7 @@ class FetchGateway:
                     duration,
                     None,
                 )
-                if response.status_code in RETRY_STATUSES and attempt < MAX_ATTEMPTS:
+                if response.status_code in RETRY_STATUSES and attempt < self._max_attempts:
                     self._sleep(self._retry_delay(response, attempt))
                     continue
                 return FetchResult(
@@ -486,7 +519,10 @@ class FetchGateway:
     # ------------------------------------------------------------------ Hilfen
 
     def _throttle(self, source_key: str, url: str) -> None:
-        interval = SOURCE_BY_KEY[source_key].min_interval_seconds
+        interval = max(
+            SOURCE_BY_KEY[source_key].min_interval_seconds,
+            self._min_intervals.get(source_key, 0.0),
+        )
         host_key = f"{source_key}:{urlsplit(url).hostname}"
         last = self._last_request.get(host_key)
         now = self._monotonic()

@@ -168,3 +168,85 @@ def test_request_limit_per_run(engine, sleeps):
     )
     statuses = [gw.get("gleif", f"https://api.gleif.org/{i}", purpose="t").status for i in range(3)]
     assert statuses[-1] is FetchStatus.BLOCKED_POLICY
+
+
+def test_configurable_rate_limit_is_respected(engine, sleeps):
+    from market_intel.repo import sync_sources
+
+    sync_sources(engine, (), (), False)
+    clock = [0.0]
+    gw = FetchGateway(
+        engine,
+        user_agent="T",
+        enabled_sources=frozenset({"gleif"}),
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json={})),
+        resolver=public_resolver,
+        sleep=lambda s: sleeps.append(s),
+        monotonic=lambda: clock[0],
+        min_intervals={"gleif": 4.0},
+    )
+    gw.get("gleif", "https://api.gleif.org/a", purpose="t")
+    gw.get("gleif", "https://api.gleif.org/b", purpose="t")
+    assert sleeps and sleeps[-1] == 4.0
+
+
+def test_cost_budget_blocks_paid_source_before_request(engine, sleeps, monkeypatch):
+    import dataclasses
+
+    from market_intel.repo import sync_sources
+    from market_intel.sources import registry
+
+    paid = dataclasses.replace(registry.SOURCE_BY_KEY["gleif"], cost_per_call_eur=0.05)
+    monkeypatch.setitem(registry.SOURCE_BY_KEY, "gleif", paid)
+    sync_sources(engine, (), (), False)
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json={})
+
+    gw = FetchGateway(
+        engine,
+        user_agent="T",
+        enabled_sources=frozenset({"gleif"}),
+        transport=httpx.MockTransport(handler),
+        resolver=public_resolver,
+        sleep=sleeps.append,
+        cost_limit_eur=0.10,
+    )
+    statuses = [gw.get("gleif", f"https://api.gleif.org/{i}", purpose="t").status for i in range(3)]
+    assert statuses[:2] == [FetchStatus.OK, FetchStatus.OK]
+    assert statuses[2] is FetchStatus.BLOCKED_POLICY and len(calls) == 2
+    default = FetchGateway(
+        engine,
+        user_agent="T",
+        enabled_sources=frozenset({"gleif"}),
+        transport=httpx.MockTransport(handler),
+        resolver=public_resolver,
+        sleep=sleeps.append,
+    )
+    assert default.get("gleif", "https://api.gleif.org/x", purpose="t").status is (
+        FetchStatus.BLOCKED_POLICY
+    )  # Standardbudget 0 € → keine Bezahlabrufe
+
+
+def test_timeouts_count_as_network_errors_with_limited_retries(engine, sleeps):
+    def handler(request):
+        raise httpx.ReadTimeout("zu langsam", request=request)
+
+    from market_intel.repo import sync_sources
+
+    sync_sources(engine, (), (), False)
+    gw = FetchGateway(
+        engine,
+        user_agent="T",
+        enabled_sources=frozenset({"gleif"}),
+        transport=httpx.MockTransport(handler),
+        resolver=public_resolver,
+        sleep=sleeps.append,
+        max_attempts=2,
+    )
+    assert gw.get("gleif", "https://api.gleif.org/x", purpose="t").status is (
+        FetchStatus.NETWORK_ERROR
+    )
+    assert len(_log(engine)) == 2

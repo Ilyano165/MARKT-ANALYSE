@@ -17,6 +17,7 @@ from .. import repo
 from ..context import Ctx
 from ..domain import EvidenceDraft, ProvenanceClass
 from ..resolution import normalize_name
+from .common import json_object
 
 SOURCE = "ted"
 URL = "https://api.ted.europa.eu/v3/notices/search"
@@ -140,7 +141,9 @@ def search(
     if not result.ok:
         ctx.note(f"TED-Suche „{term}“ fehlgeschlagen: {result.status.value} {result.error}")
         return [], None, ""
-    notices = [n for n in (parse_notice(i) for i in result.json().get("notices", [])) if n]
+    items = json_object(ctx, result).get("notices")
+    items = [i for i in items if isinstance(i, dict)] if isinstance(items, list) else []
+    notices = [n for n in (parse_notice(i) for i in items) if n]
     return notices, result.document_id, result.text
 
 

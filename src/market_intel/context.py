@@ -7,8 +7,9 @@ from dataclasses import dataclass, field
 from sqlalchemy import Engine
 
 from .config import Settings
+from .engine.budget import Budget
 from .http.gateway import FetchGateway
-from .llm.local import LocalLLM, NullLLM
+from .llm.assistant import Assistant
 
 
 @dataclass(slots=True)
@@ -18,7 +19,8 @@ class Ctx:
     engine: Engine
     gateway: FetchGateway
     settings: Settings
-    llm: LocalLLM = field(default_factory=NullLLM)
+    ai: Assistant = field(default_factory=Assistant)
+    budget: Budget = field(default_factory=Budget)
     run_id: int | None = None
     notes: list[str] = field(default_factory=list)
 

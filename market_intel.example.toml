@@ -16,9 +16,21 @@ disabled_sources = []
 max_requests_per_run = 2000
 website_max_pages = 8
 
+# Netzverhalten: Zeitlimit je Abruf, Versuche bei 429/5xx/Netzfehlern (1–6),
+# und wie lange eine Quelle als „bereits untersucht“ gilt (Neuabruf mit --refresh).
+http_timeout_seconds = 30
+max_attempts = 3
+refresh_days = 30
+
+# Mindestabstand je Quelle in Sekunden (strenger als die eingebauten Werte möglich).
+[rate_limits]
+# gleif = 2.0
+# website = 5.0
+
 [llm]
 # Optionale lokale KI über Ollama (https://ollama.com). Ohne KI funktioniert alles regelbasiert.
 enabled = false
+provider = "ollama"            # oder "openai_compatible" (llama.cpp-Server, LM Studio, vLLM)
 base_url = "http://127.0.0.1:11434"
 model = "qwen3:8b"
 timeout_seconds = 120

@@ -27,6 +27,7 @@ from .domain import (
     Scope,
     VerificationStatus,
 )
+from .engine.validation import check_draft
 from .resolution import STRONG_SCHEMES, normalize_domain, normalize_name
 from .sources.registry import SOURCES, is_enabled
 
@@ -372,6 +373,8 @@ class IngestResult:
     observation_id: int
     created: bool
     conflict_with: tuple[int, ...]
+    rejected: bool = False
+    problems: tuple[tuple[str, str, str], ...] = ()
 
 
 def ingest_observation(
@@ -387,6 +390,22 @@ def ingest_observation(
         return IngestResult(int(existing), False, ())
     if not draft.evidence.quote_verified:
         raise ValueError("Beobachtung ohne verifizierten Beleg wird nicht gespeichert")
+    problems = tuple(check_draft(draft))
+    for severity, code, message in problems:
+        conn.execute(
+            insert(db.validation_issue).values(
+                research_run_id=run_id,
+                company_id=draft.company_id,
+                severity=severity,
+                code=code,
+                message=message,
+                source_document_id=draft.evidence.document_id,
+                quote=draft.evidence.quote[:500],
+                created_at=now,
+            )
+        )
+    if any(p[0] == "error" for p in problems):
+        return IngestResult(0, False, (), rejected=True, problems=problems)
     evidence_id = add_evidence(conn, draft.evidence)
     status = DEFAULT_STATUS[draft.provenance_class]
     observation_id = int(

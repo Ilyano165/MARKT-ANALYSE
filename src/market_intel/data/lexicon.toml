@@ -1,0 +1,44 @@
+# Fachlexikon für die regelbasierte Suchstrategie (Schritt 1).
+# Jeder Begriff ("concept") hat Auslöser (reguläre Ausdrücke, Kleinschreibung) und liefert
+# Suchbegriffe in Varianten (deutsch, englisch, alternative Schreibweisen).
+# name_terms: Suche in Firmennamen (GLEIF, Companies House)
+# industry_terms: Suche nach Branchen-Einträgen in Wikidata
+# web_terms: Begriffe, die auf Unternehmenswebseiten einen Bezug belegen
+# company_types: gesuchte Unternehmensart
+# nace: NACE-Rev.-2-Codes für amtliche Statistik (nur fachlich gesicherte Zuordnungen)
+
+[[concept]]
+key = "film_tools"
+triggers = ["beschriftungswerkzeug", "montagewerkzeug", "folienwerkzeug", "folienverarbeitungswerkzeug", "werkzeuge? f(ü|ue)r (die )?(folie|beschriftung|werbetechnik)", "rakel", "squeegee", "wrapping[- ]tools?", "signmaking tools?"]
+name_terms = ["Werkzeug", "Rakel", "Werbetechnik"]
+industry_terms = ["Werkzeughersteller", "tool manufacturer", "Werbetechnik"]
+web_terms = ["Rakel", "Folienrakel", "Cutter", "Folienmesser", "Applikationswerkzeug", "Werkzeuge für die Werbetechnik", "squeegee", "wrapping tools", "sign making tools", "vinyl tools"]
+company_types = ["manufacturer"]
+nace = ["25.73"]
+
+[[concept]]
+key = "film_processing"
+triggers = ["folienverarbeit", "(verarbeiten|verarbeitet|verarbeitung).{0,40}folie", "folien(?!werkzeug|verarbeitungswerkzeug)", "foliert", "folierung", "beschriftung(?!s-|swerkzeug)", "werbegrafik", "technische oberfl(ä|ae)che", "wrapping"]
+name_terms = ["Folierung", "Folientechnik", "Beschriftung", "Werbetechnik"]
+industry_terms = ["Werbetechnik", "signage"]
+web_terms = ["Folierung", "Beschriftung", "Werbegrafik", "Folientechnik", "Car Wrapping", "Digitaldruck"]
+company_types = ["processor", "service_provider"]
+nace = []
+
+[[concept]]
+key = "sign_industry"
+triggers = ["werbetechnik", "schilder", "sign industry", "signage", "leuchtreklame"]
+name_terms = ["Werbetechnik", "Schilder", "Beschriftung"]
+industry_terms = ["Werbetechnik", "signage"]
+web_terms = ["Werbetechnik", "Beschilderung", "Schilder", "Leuchtreklame"]
+company_types = ["service_provider"]
+nace = []
+
+[[concept]]
+key = "films_manufacturer"
+triggers = ["folienhersteller", "film manufacturer", "selbstklebende folie", "self-adhesive film"]
+name_terms = ["Folien", "Films", "Graphics"]
+industry_terms = ["Folienhersteller", "adhesive film"]
+web_terms = ["selbstklebende Folien", "self-adhesive films", "Folienhersteller"]
+company_types = ["manufacturer"]
+nace = []

@@ -23,6 +23,7 @@ from ..domain import (
     Scope,
 )
 from ..extraction.text import quote_in_text
+from .common import as_dict, dict_items, json_object
 
 API = "https://www.wikidata.org/w/api.php"
 ENTITY = "https://www.wikidata.org/wiki/Special:EntityData/{qid}.json"
@@ -63,8 +64,8 @@ def search_entities(ctx: Ctx, text: str, language: str = "de", limit: int = 7) -
         return []
     return [
         WikidataHit(h["id"], h.get("label", ""), h.get("description", ""))
-        for h in result.json().get("search", [])
-        if _QID.match(h.get("id", ""))
+        for h in dict_items(json_object(ctx, result).get("search"))
+        if isinstance(h.get("id"), str) and _QID.match(h["id"])
     ]
 
 
@@ -78,19 +79,19 @@ def load_entity(ctx: Ctx, qid: str) -> tuple[dict[str, Any] | None, int | None, 
     if not result.ok:
         ctx.note(f"Wikidata {qid} nicht abrufbar: {result.status.value} {result.error}")
         return None, None, ""
-    entities = result.json().get("entities", {})
+    entities = as_dict(json_object(ctx, result).get("entities"))
     entity = entities.get(qid) or next(iter(entities.values()), None)
     return entity, result.document_id, result.text
 
 
 def label(entity: dict[str, Any]) -> str:
     """Bevorzugt deutscher, sonst englischer Name."""
-    labels = entity.get("labels", {})
+    labels = as_dict(entity.get("labels"))
     for lang in ("de", "en"):
-        if lang in labels:
+        if lang in labels and as_dict(labels[lang]).get("value"):
             return str(labels[lang]["value"])
     for value in labels.values():
-        return str(value.get("value", ""))
+        return str(as_dict(value).get("value", ""))
     return str(entity.get("id", ""))
 
 
@@ -98,8 +99,9 @@ def claim_values(entity: dict[str, Any], prop: str) -> list[dict[str, Any]]:
     """Aussagen einer Eigenschaft ohne ``deprecated``-Rang."""
     return [
         c
-        for c in entity.get("claims", {}).get(prop, [])
-        if c.get("rank") != "deprecated" and c.get("mainsnak", {}).get("datavalue")
+        for c in dict_items(as_dict(entity.get("claims")).get(prop))
+        if c.get("rank") != "deprecated"
+        and isinstance(as_dict(c.get("mainsnak")).get("datavalue"), dict)
     ]
 
 
@@ -167,7 +169,7 @@ def quantity_observations(
     specs = (("P1128", "employee", "headcount_total"), ("P2139", "financial", "revenue"))
     for prop, kind, metric in specs:
         for index, claim in enumerate(claim_values(entity, prop)):
-            value = claim["mainsnak"]["datavalue"]["value"]
+            value = as_dict(claim["mainsnak"]["datavalue"].get("value"))
             amount = str(value.get("amount", ""))
             period_end = _point_in_time(claim)
             if not amount or period_end is None:
@@ -280,7 +282,8 @@ def _labels(ctx: Ctx, qids: list[str]) -> dict[str, str]:
     )
     if not result.ok:
         return {}
-    return {qid: label(e) for qid, e in result.json().get("entities", {}).items()}
+    entities = as_dict(json_object(ctx, result).get("entities"))
+    return {qid: label(as_dict(e)) for qid, e in entities.items()}
 
 
 def companies_by_industry(
@@ -310,7 +313,7 @@ def companies_by_industry(
         ctx.note(f"Wikidata-SPARQL fehlgeschlagen: {result.status.value} {result.error}")
         return [], None
     rows = []
-    for binding in result.json().get("results", {}).get("bindings", []):
+    for binding in dict_items(as_dict(json_object(ctx, result).get("results")).get("bindings")):
         qid = binding.get("item", {}).get("value", "").rsplit("/", 1)[-1]
         if _QID.match(qid):
             rows.append(

@@ -25,6 +25,7 @@ from ..domain import (
     Scope,
 )
 from ..resolution import name_similarity
+from .common import as_dict, dict_items, json_object
 
 SOURCE = "sec_edgar"
 TICKERS = "https://www.sec.gov/files/company_tickers.json"
@@ -56,7 +57,7 @@ def name_candidates(ctx: Ctx, name: str, threshold: float = 0.9) -> list[CikCand
         ctx.note(f"SEC-Tickerliste nicht abrufbar: {result.status.value} {result.error}")
         return []
     candidates = []
-    for entry in result.json().values():
+    for entry in (e for e in json_object(ctx, result).values() if isinstance(e, dict)):
         similarity = name_similarity(name, str(entry.get("title", "")))
         if similarity >= threshold:
             candidates.append(
@@ -70,16 +71,21 @@ def name_candidates(ctx: Ctx, name: str, threshold: float = 0.9) -> list[CikCand
     return sorted(candidates, key=lambda c: -c.similarity)[:5]
 
 
-def _annual_entries(units: dict[str, list[dict[str, Any]]]) -> list[tuple[str, dict[str, Any]]]:
+def _annual_entries(units: Any) -> list[tuple[str, dict[str, Any]]]:
     picked: dict[tuple[str, str, str], tuple[str, dict[str, Any]]] = {}
-    for unit, entries in units.items():
-        for entry in entries:
+    for unit, entries in as_dict(units).items():
+        for entry in dict_items(entries):
             if entry.get("form") not in ANNUAL_FORMS or entry.get("fp") != "FY":
                 continue
             start, end = entry.get("start"), entry.get("end")
-            if not start or not end:
+            if not isinstance(start, str) or not isinstance(end, str):
                 continue
-            days = (date.fromisoformat(end) - date.fromisoformat(start)).days
+            if isinstance(entry.get("val"), bool) or not isinstance(entry.get("val"), int | float):
+                continue
+            try:
+                days = (date.fromisoformat(end) - date.fromisoformat(start)).days
+            except ValueError:
+                continue
             if not 340 <= days <= 380:
                 continue
             key = (unit, start, end)
@@ -110,12 +116,12 @@ def ingest_facts(ctx: Ctx, company_id: int, cik: int) -> int:
         return 0
     assert result.document_id is not None
     raw = result.text
-    facts = result.json().get("facts", {})
-    gaap = facts.get("us-gaap", {})
+    facts = as_dict(json_object(ctx, result).get("facts"))
+    gaap = as_dict(facts.get("us-gaap"))
     drafts: list[ObservationDraft] = []
     used_periods: set[tuple[str, str]] = set()
     for concept in REVENUE_CONCEPTS:
-        for unit, entry in _annual_entries(gaap.get(concept, {}).get("units", {})):
+        for unit, entry in _annual_entries(as_dict(gaap.get(concept)).get("units")):
             if not re.fullmatch(r"[A-Z]{3}", unit) or (entry["end"], unit) in used_periods:
                 continue
             used_periods.add((entry["end"], unit))
@@ -132,7 +138,7 @@ def ingest_facts(ctx: Ctx, company_id: int, cik: int) -> int:
                 )
             )
     for unit, entry in _annual_entries(
-        facts.get("dei", {}).get("EntityNumberOfEmployees", {}).get("units", {})
+        as_dict(as_dict(facts.get("dei")).get("EntityNumberOfEmployees")).get("units")
     ):
         drafts.append(
             _draft(

@@ -1,153 +1,317 @@
-"""Gesamter Ablauf gegen das synthetische Test-Internet (KEIN echter Recherchenachweis).
+"""Gesamter Ablauf der Research Engine gegen das synthetische Test-Internet.
 
-Prüft, dass ein Lauf alle neun Nachweiskriterien technisch erfüllen kann und dass ein Lauf
-ohne erreichbare Quellen sauber mit dokumentierten Lücken endet – ohne erfundene Zahlen.
+KEIN Nachweis echter Recherche (dafür: manueller Integrationstest, tests/manual).
 """
 
 from __future__ import annotations
 
 import json
+import re
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from market_intel import db, repo
+from market_intel.engine.budget import Budget
+from market_intel.engine.strategy import ResearchRequest
 from market_intel.proof import evaluate
-from market_intel.research import create_run, execute, standard_tasks
-from market_intel.usecases import load_use_cases
+from market_intel.research import create_research, execute, named_companies, update_budget
 
 from .fakeweb import FakeWeb
 
 COMPARE = ["3M", "Avery Dennison", "ORAFOL"]
-USE_CASES = ["fahrzeugfolierung", "glasfolien"]
+PROOF_REQUEST = ResearchRequest(
+    task="Vergleiche die Entwicklung der Folienhersteller und finde Unternehmen, die Folien "
+    "verarbeiten.",
+    countries=["DE"],
+    companies=COMPARE,
+    use_cases=["fahrzeugfolierung", "glasfolien"],
+    max_candidates=10,
+    years=5,
+)
 
 
-def _run(make_ctx, engine, web, tmp_path):
-    ctx = make_ctx(web)
-    tasks = standard_tasks(COMPARE, USE_CASES, "DE", str(tmp_path / "export"), 5)
-    run_id = create_run(engine, "proof", {}, tasks)
-    status = execute(ctx, run_id, load_use_cases(), progress=lambda _m: None)
-    return ctx, run_id, status
+def _count(engine, table, *where):
+    with engine.connect() as conn:
+        return conn.execute(select(func.count()).select_from(table).where(*where)).scalar() or 0
 
 
-def test_full_run_meets_all_criteria_with_test_data(make_ctx, engine, tmp_path):
-    ctx, run_id, status = _run(make_ctx, engine, FakeWeb(), tmp_path)
+def test_full_pipeline_all_steps_and_criteria(run_research, engine, tmp_path):
+    ctx, run_id, status = run_research(PROOF_REQUEST)
     assert status in ("completed", "completed_with_gaps")
-    criteria = evaluate(engine, run_id, tmp_path, ctx.llm.name)
-    failed = [(c.number, c.details) for c in criteria if not c.passed]
+    with engine.connect() as conn:
+        steps = {
+            r.step
+            for r in conn.execute(
+                select(db.research_task.c.step).where(db.research_task.c.run_id == run_id)
+            )
+        }
+    assert steps == set(range(1, 9))
+    failed = [
+        (c.number, c.details)
+        for c in evaluate(engine, run_id, tmp_path, ctx.ai.name)
+        if not c.passed
+    ]
     assert failed == []
 
     with engine.connect() as conn:
+        orafol = repo.find_company_by_identifier(conn, "lei", "TESTLEIORAFOL0000001")
+        revenue = repo.observations(conn, orafol, "financial", "revenue")
+        assert [
+            (r["value"], r["currency"], r["period_end"].year, r["source_key"]) for r in revenue
+        ] == [(812500000, "EUR", 2023, "website")]
+        heads = {
+            (r["value"], r["period_end"].isoformat(), r["source_key"])
+            for r in repo.observations(conn, orafol, "employee", "headcount_total")
+        }
+        assert (2950, "2023-12-31", "website") in heads  # Stichtag aus dem PDF
+        ids = repo.identifiers_of(conn, orafol)
+        assert ids["de_register"] == "Neuruppin HRB 12345 NP" and ids["vat"] == "DE123456789"
+        hiring = (
+            conn.execute(
+                select(db.hiring_observation).where(db.hiring_observation.c.company_id == orafol)
+            )
+            .mappings()
+            .one()
+        )
+        assert hiring["open_positions_count"] == 2
+        assert "fahrzeugfolierung" in json.loads(hiring["relevant_use_cases"])
+        signals = repo.signals_for(conn, orafol)
+        assert any(
+            s["signal_type"] == "new_location" and str(s["event_date"]) == "2026-05-12"
+            for s in signals
+        )
+        # Prompt-Injection im PDF erzeugt keinen Wert, sondern einen Prüfhinweis
+        values = [r["value"] for r in revenue]
+        assert 9_000_000_000 not in values
+        assert (
+            conn.execute(
+                select(db.validation_issue).where(
+                    db.validation_issue.c.code == "revenue_without_period",
+                    db.validation_issue.c.quote.like("%Ignoriere%"),
+                )
+            ).first()
+            is not None
+        )
+        # robots.txt (/shop/) und fremde Domain (evil.test) wurden nicht abgerufen
+        urls = {
+            r.url: r.status for r in conn.execute(select(db.fetch_log.c.url, db.fetch_log.c.status))
+        }
+        assert not any("evil.test" in u for u in urls)
+        assert all(v == "blocked_robots" for u, v in urls.items() if "/shop/" in u)
+
+    report = (tmp_path / "out" / "bericht.md").read_text(encoding="utf-8")
+    assert "## 7. Quellenverzeichnis" in report and "[Berechnung" in report
+    # Jede Kennzahlzeile im Bericht hat einen Quellenverweis
+    fact_lines = [
+        line for line in report.splitlines() if re.match(r"\s+- \d{4}-\d{2}-\d{2}: ", line)
+    ]
+    assert fact_lines and all(re.search(r"\[Q\d+\]", line) for line in fact_lines)
+    # Veröffentlichungsdatum wird nie erfunden
+    assert "veröffentlicht unbekannt" in report
+
+
+def test_failing_adapter_does_not_break_the_run(run_research, engine):
+    web = FakeWeb(frozenset({"data.sec.gov", "www.orafol-test.test"}))
+    _ctx, run_id, status = run_research(PROOF_REQUEST, web=web)
+    assert status == "completed_with_gaps"
+    assert (
+        _count(
+            engine,
+            db.research_task,
+            db.research_task.c.run_id == run_id,
+            db.research_task.c.status == "failed",
+        )
+        >= 1
+    )
+    assert (
+        _count(
+            engine,
+            db.research_task,
+            db.research_task.c.task_type == "report",
+            db.research_task.c.status == "succeeded",
+        )
+        == 1
+    )
+    with engine.connect() as conn:
         three_m = repo.find_company_by_identifier(conn, "lei", "TESTLEI3M0000000001")
-        assert three_m is not None
-        revenue = repo.observations(conn, three_m, "financial", "revenue")
-        official = [r for r in revenue if r["provenance_class"] == "official"]
-        derived = [r for r in revenue if r["provenance_class"] == "derived"]
-        assert len(official) == 3 and all(r["source_key"] == "sec_edgar" for r in official)
-        assert derived and all("EZB" in r["methodology"] for r in derived)
-        # Wikidata-Umsatz 2023 (35 Mrd.) weicht von SEC (32,7 Mrd.) ab → Widerspruch sichtbar
+        assert repo.observations(conn, three_m, "employee", "headcount_total")  # Wikidata lief
+
+
+def test_run_without_internet_invents_nothing(run_research, engine, tmp_path):
+    ctx, run_id, status = run_research(PROOF_REQUEST, web=FakeWeb(frozenset({"*"})))
+    assert status == "completed_with_gaps"
+    assert sum(_count(engine, t) for t in db.OBSERVATION_TABLES.values()) == 0
+    # Aufgaben, deren Abrufe alle scheiterten, sind als fehlgeschlagen markiert – nicht als ok
+    with engine.connect() as conn:
+        statuses = {r.label: (r.status, r.error) for r in conn.execute(select(
+            db.research_task.c.label, db.research_task.c.status, db.research_task.c.error).where(
+            db.research_task.c.run_id == run_id, db.research_task.c.step == 2))}
+    assert all(st == "failed" and "gescheitert" in (err or "")
+               for label, (st, err) in statuses.items() if label.startswith("Genanntes"))
+    criteria = {c.number: c for c in evaluate(engine, run_id, tmp_path, ctx.ai.name)}
+    assert criteria[1].passed and criteria[9].passed and not criteria[2].passed
+
+
+def test_pause_and_resume_continue_where_stopped(make_ctx, engine, tmp_path, cases):
+    web = FakeWeb()
+    budget = Budget()
+    run_id = create_research(engine, PROOF_REQUEST, budget, tmp_path / "out")
+    seen = []
+
+    def interrupt_in_step_three(message):
+        seen.append(message)
+        if "[Schritt 3/8" in message and sum("[Schritt 3/8" in m for m in seen) == 2:
+            raise KeyboardInterrupt
+
+    assert (
+        execute(make_ctx(web, budget=budget), run_id, cases, progress=interrupt_in_step_three)
+        == "paused"
+    )
+    done_before = _count(
+        engine,
+        db.research_task,
+        db.research_task.c.run_id == run_id,
+        db.research_task.c.status.in_(["succeeded", "skipped", "failed"]),
+    )
+    calls_before = sum(web.calls.values())
+    status = execute(make_ctx(web, budget=budget), run_id, cases, progress=lambda _m: None)
+    assert status in ("completed", "completed_with_gaps")
+    assert (
+        _count(
+            engine,
+            db.research_task,
+            db.research_task.c.run_id == run_id,
+            db.research_task.c.status.in_(["pending", "running"]),
+        )
+        == 0
+    )
+    # erledigte Aufgaben liefen nicht erneut: Plan nur einmal ausgeführt
+    with engine.connect() as conn:
+        attempts = conn.execute(
+            select(db.research_task.c.attempts).where(
+                db.research_task.c.run_id == run_id, db.research_task.c.task_type == "plan"
+            )
+        ).scalar()
+    assert attempts == 1 and done_before > 3 and sum(web.calls.values()) > calls_before
+
+
+def test_budget_exhausted_and_resumed_with_higher_budget(make_ctx, engine, tmp_path, cases):
+    web = FakeWeb()
+    small = Budget(max_requests=6)
+    run_id = create_research(engine, PROOF_REQUEST, small, tmp_path / "out")
+    status = execute(make_ctx(web, budget=small), run_id, cases, progress=lambda _m: None)
+    assert status == "budget_exhausted"
+    blocked = _count(engine, db.fetch_log, db.fetch_log.c.status == "blocked_policy")
+    assert sum(web.calls.values()) <= 6 + 1 or blocked >= 1
+    bigger = update_budget(engine, run_id, max_requests=2000)
+    status = execute(make_ctx(web, budget=bigger), run_id, cases, progress=lambda _m: None)
+    assert status in ("completed", "completed_with_gaps")
+
+
+def test_task_limit_stops_run(run_research):
+    _, _, status = run_research(PROOF_REQUEST, budget=Budget(max_tasks=3))
+    assert status == "budget_exhausted"
+
+
+def test_second_run_skips_recently_investigated_sources(run_research, engine):
+    run_research(PROOF_REQUEST)
+    web = FakeWeb()
+    _, run_id, _ = run_research(PROOF_REQUEST, web=web)
+    skipped = _count(
+        engine,
+        db.research_task,
+        db.research_task.c.run_id == run_id,
+        db.research_task.c.task_type == "investigate",
+        db.research_task.c.status == "skipped",
+    )
+    assert skipped >= 3
+    assert web.calls["www.orafol-test.test"] == 0  # Website nicht erneut abgerufen
+    # Extraktion nutzt die gespeicherten Dokumente weiter
+    assert (
+        _count(
+            engine,
+            db.research_task,
+            db.research_task.c.run_id == run_id,
+            db.research_task.c.task_type == "extract",
+            db.research_task.c.status == "succeeded",
+        )
+        >= 1
+    )
+
+
+def test_unreachable_source_later_keeps_observations_unchanged(run_research, engine, tmp_path):
+    run_research(PROOF_REQUEST)
+    with engine.connect() as conn:
+        before = conn.execute(
+            select(db.financial_observation.c.id, db.financial_observation.c.verification_status)
+        ).all()
+    request = ResearchRequest(
+        task="Entwicklung", companies=["ORAFOL"], countries=["DE"], refresh=True
+    )
+    _, _run_id, _ = run_research(request, web=FakeWeb(frozenset({"www.orafol-test.test"})))
+    with engine.connect() as conn:
+        after = conn.execute(
+            select(db.financial_observation.c.id, db.financial_observation.c.verification_status)
+        ).all()
+    assert set(before) <= set(after)
+    report = (tmp_path / "out" / "bericht.md").read_text(encoding="utf-8")
+    assert "nicht erreichbar" in report and "Aktualität unbekannt" in report
+
+
+def test_conflicting_figures_are_flagged(run_research, engine):
+    _, run_id, _ = run_research(PROOF_REQUEST)
+    with engine.connect() as conn:
+        three_m = repo.find_company_by_identifier(conn, "lei", "TESTLEI3M0000000001")
         current = repo.current_values(conn, three_m, "financial", "revenue")
         usd_2023 = [r for r in current if r["currency"] == "USD" and r["period_end"].year == 2023]
         assert usd_2023[0]["provenance_class"] == "official" and usd_2023[0]["conflict"]
-
-        beta = repo.find_company_by_identifier(conn, "wikidata", "Q900010")
-        fits = conn.execute(
-            select(db.company_product_fit.c.use_case_key, db.company_product_fit.c.fit_level).where(
-                db.company_product_fit.c.company_id == beta
+        issue = conn.execute(
+            select(db.validation_issue).where(
+                db.validation_issue.c.research_run_id == run_id,
+                db.validation_issue.c.code == "conflicting_sources",
             )
-        ).all()
-        assert ("fahrzeugfolierung", "strong") in fits
-        assert ("glasfolien", "strong") in fits  # zweite Seite: zwei Begriffe
-        heads = repo.observations(conn, beta, "employee", "headcount_total")
-        assert [h["value"] for h in heads] == [45]
-        assert heads[0]["provenance_class"] == "company_reported"
-        # robots.txt: /intern wurde nie abgerufen
-        intern = conn.execute(
-            select(db.fetch_log.c.status).where(db.fetch_log.c.url.like("%/intern"))
-        ).all()
-        assert intern and {r.status for r in intern} == {"blocked_robots"}
-        # Ausschreibung → öffentlicher Auftraggeber mit Signal
-        signals = conn.execute(select(func.count()).select_from(db.business_signal)).scalar()
-        assert signals and signals >= 2
-
-    export_files = {p.name for p in (tmp_path / "export").iterdir()}
-    assert {
-        "vergleich.csv",
-        "chancen.csv",
-        "kennzahlen.csv",
-        "market_intel_export.xlsx",
-        "market_intel_export.json",
-        "bericht.html",
-    } <= export_files
-    comparison = json.loads(
-        (tmp_path / "export" / "market_intel_export.json").read_text(encoding="utf-8")
-    )["vergleich"]
-    assert {r["name"] for r in comparison} >= {"3M Company", "ORAFOL"}
+        ).first()
+    assert issue is not None
 
 
-def test_run_without_internet_documents_gaps_and_invents_nothing(make_ctx, engine, tmp_path):
-    ctx, run_id, status = _run(make_ctx, engine, FakeWeb(frozenset({"*"})), tmp_path)
-    assert status == "completed_with_gaps"
-    criteria = {c.number: c for c in evaluate(engine, run_id, tmp_path, ctx.llm.name)}
-    assert criteria[1].passed and criteria[9].passed
-    assert not criteria[2].passed and not criteria[4].passed and not criteria[7].passed
-    with engine.connect() as conn:
-        observations = sum(
-            conn.execute(select(func.count()).select_from(t)).scalar() or 0
-            for t in db.OBSERVATION_TABLES.values()
-        )
-        failures = conn.execute(
-            select(func.count())
-            .select_from(db.fetch_log)
-            .where(db.fetch_log.c.status == "network_error")
-        ).scalar()
-    assert observations == 0
-    assert failures and failures > 0
-    run = json.loads(_summary(engine, run_id))
-    assert any("fehlgeschlagen" in n for n in run["notes"])
-
-
-def test_pause_and_resume(make_ctx, engine, tmp_path):
-    web = FakeWeb()
-    ctx = make_ctx(web)
-    tasks = standard_tasks(COMPARE, USE_CASES, "DE", str(tmp_path / "export"), 5)
-    run_id = create_run(engine, "proof", {}, tasks)
-    seen = []
-
-    def interrupt_on_discover(message):
-        seen.append(message)
-        if "discover" in message and len([m for m in seen if "discover" in m]) == 1:
-            raise KeyboardInterrupt
-
-    assert execute(ctx, run_id, load_use_cases(), progress=interrupt_on_discover) == "paused"
-    with engine.connect() as conn:
-        statuses = [
-            r.status
-            for r in conn.execute(
-                select(db.research_task.c.status)
-                .where(db.research_task.c.run_id == run_id)
-                .order_by(db.research_task.c.seq)
-            )
-        ]
-    assert statuses[:3] == ["succeeded"] * 3 and set(statuses[3:]) == {"pending"}
-    gleif_calls = web.calls["api.gleif.org"]
-    ctx2 = make_ctx(web)
-    assert execute(ctx2, run_id, load_use_cases(), progress=lambda _m: None) in (
-        "completed",
-        "completed_with_gaps",
+def test_duplicates_become_match_candidates(run_research, engine):
+    request = ResearchRequest(
+        task="Finde Werbetechnik-Betriebe in Deutschland",
+        countries=["DE"],
+        use_cases=["werbetechnik_beschriftung"],
     )
+    run_research(request)
     with engine.connect() as conn:
-        statuses = {
-            r.status
-            for r in conn.execute(
-                select(db.research_task.c.status).where(db.research_task.c.run_id == run_id)
-            )
+        rows = conn.execute(select(db.match_candidate)).mappings().all()
+        names = {repo.company_row(conn, r["company_a_id"])["display_name"] for r in rows} | {
+            repo.company_row(conn, r["company_b_id"])["display_name"] for r in rows
         }
-    assert statuses == {"succeeded"}
-    assert web.calls["api.gleif.org"] > gleif_calls  # nur die offenen Aufgaben liefen weiter
+    assert any(r["kind"] == "possible_duplicate" for r in rows)
+    assert {"Beta Werbetechnik", "Beta Werbetechnik GmbH"} <= names
 
 
-def _summary(engine, run_id):
-    with engine.connect() as conn:
-        return conn.execute(
-            select(db.research_run.c.summary).where(db.research_run.c.id == run_id)
-        ).scalar()
+def test_named_companies_resolved_and_comparison_only(run_research, engine):
+    request = ResearchRequest(
+        task="Vergleiche die Unternehmensentwicklung von „3M“ und "
+        "„Avery Dennison“ über die letzten fünf Jahre"
+    )
+    _, run_id, _ = run_research(request)
+    assert len(named_companies(engine, run_id)) == 2
+    assert (
+        _count(
+            engine,
+            db.research_task,
+            db.research_task.c.run_id == run_id,
+            db.research_task.c.task_type == "find",
+        )
+        == 0
+    )
+
+
+def test_append_only_still_enforced_after_pipeline(run_research, engine):
+    run_research(PROOF_REQUEST)
+    import pytest
+    from sqlalchemy.exc import DBAPIError
+
+    with pytest.raises(DBAPIError), engine.begin() as conn:
+        conn.execute(text("UPDATE financial_observation SET value='1'"))

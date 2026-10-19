@@ -22,8 +22,12 @@ Stand: 2026-10-18 · Revision 2 (kostenloser, lokaler Betrieb)
 Nur die Anfragen an die freigegebenen Quellen: Suchbegriffe (z. B. Firmennamen,
 „Fahrzeugfolierung“), LEI/QID/CIK, Webseiten-URLs, der User-Agent mit Kontaktadresse. Keine
 Notizen, keine Bewertungen, keine Kundendaten, keine Dokumente. Die optionale KI läuft lokal;
-der Code verweigert entfernte KI-Hosts (`llm/local.py`, Test
-`test_null_llm_is_default_and_remote_hosts_are_rejected`).
+der Code verweigert entfernte KI-Hosts (`llm/providers.py`, Test
+`test_null_provider_and_remote_hosts`). Webseiten, PDFs und Dokumente sind nicht
+vertrauenswürdige Daten: Sie werden als `<daten>` markiert, Begrenzer im Text entschärft,
+KI-Ausgaben gegen ein Schema und wörtliche Zitate geprüft; Zahlen entstehen nie aus KI-Text
+(Tests `test_llm_quotes_must_exist_in_text`, `test_untrusted_text_cannot_close_data_block`,
+Prompt-Injection-PDF in `test_full_pipeline_all_steps_and_criteria`).
 
 Hinweis Vertraulichkeit: Suchbegriffe verraten Quellenbetreibern das Interesse an bestimmten
 Firmen/Themen. Das ist bei öffentlichen Registern üblich und vertretbar; sensible Analysen

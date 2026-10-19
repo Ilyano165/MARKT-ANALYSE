@@ -1,173 +1,135 @@
-"""Unternehmenswebseiten: Selbstangaben (Mitarbeiter) und Belege für Anwendungsfälle.
+"""Unternehmenswebseiten (Schritt 3: Abruf). Ausgewertet wird in ``engine/extract.py``.
 
-robots.txt und TDM-Vorbehalt prüft das Gateway. Weiterleitungen werden nur innerhalb
-derselben Domain verfolgt und jedes Ziel erneut geprüft. Keine Formulare, kein Login.
+Abgerufen werden Startseite und priorisierte Unterseiten derselben Website (Impressum,
+Unternehmen, Produkte, Karriere, Presse, Investor Relations) sowie verlinkte
+Geschäftsberichte (PDF) auf derselben Domain oder deren Subdomains. robots.txt und
+TDM-Vorbehalt prüft das Gateway; Weiterleitungen nur innerhalb der Domain.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import date
 from urllib.parse import urljoin, urlsplit
 
-from .. import repo
 from ..context import Ctx
-from ..domain import Confidence, EvidenceDraft, ObservationDraft, PeriodType, ProvenanceClass
-from ..extraction.text import (
-    EXTRACTOR_VERSION,
-    find_employee_mentions,
-    find_keyword_hits,
-    html_to_text,
-    quote_in_text,
-    same_site_links,
-)
-from ..usecases import UseCase
+from ..extraction.documents import report_links
+from ..extraction.text import html_to_text, same_site_links
 
 SOURCE = "website"
-_PRIORITY = re.compile(
-    r"(unternehmen|ueber-uns|über-uns|about|company|leistung|service|produkt|product|"
-    r"referenz|karriere|career|jobs|standort|location|kontakt|impressum|presse|news)",
-    re.IGNORECASE,
+MAX_PDF_BYTES = 20 * 1024 * 1024
+_PRIORITY = (
+    (0, r"impressum|imprint|legal[-_ ]notice|kontakt"),
+    (1, r"karriere|career|jobs|stellen"),
+    (1, r"investor|geschaeftsbericht|geschäftsbericht|annual[-_ ]report|finanz"),
+    (2, r"presse|press|news|aktuelles|neuigkeiten|blog"),
+    (2, r"unternehmen|ueber-uns|über-uns|about|company|wir"),
+    (3, r"produkt|product|leistung|service|loesung|lösung|branche|anwendung|referenz"),
 )
 
 
 @dataclass(slots=True)
-class Page:
-    """Gespeicherte Seite mit Text."""
+class FetchedDocument:
+    """Abgerufenes Dokument einer Firmenwebsite."""
 
-    url: str
     document_id: int
-    title: str
-    text: str
-    links: tuple[tuple[str, str], ...] = ()
+    url: str
+    kind: str  # html | pdf
 
 
 @dataclass(slots=True)
-class CrawlResult:
+class SiteFetch:
     """Ergebnis je Domain."""
 
-    pages: list[Page] = field(default_factory=list)
+    documents: list[FetchedDocument] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
 
-def _fetch_page(ctx: Ctx, url: str, allowed_host: str) -> tuple[Page | None, str]:
+def _host_allowed(host: str, base: str) -> bool:
+    host = host.removeprefix("www.")
+    return host == base or host.endswith("." + base)
+
+
+def _fetch(
+    ctx: Ctx, url: str, base: str, *, max_bytes: int = 5 * 1024 * 1024
+) -> tuple[FetchedDocument | None, tuple[tuple[str, str], ...], str]:
     for _ in range(4):
         result = ctx.gateway.get(
-            SOURCE, url, purpose="Unternehmenswebseite", respect_robots=True, title=url
+            SOURCE,
+            url,
+            purpose="Unternehmenswebseite",
+            respect_robots=True,
+            title=url,
+            max_bytes=max_bytes,
         )
         if result.location:
             target = urljoin(url, result.location)
-            host = (urlsplit(target).hostname or "").removeprefix("www.")
-            if host != allowed_host:
-                return None, f"Weiterleitung auf fremde Domain {host} nicht verfolgt"
+            host = urlsplit(target).hostname or ""
+            if not _host_allowed(host, base):
+                return None, (), f"Weiterleitung auf fremde Domain {host} nicht verfolgt"
             url = target
             continue
         if not result.ok or result.document_id is None:
-            return None, f"{url}: {result.status.value} {result.error}".strip()
-        if "html" not in result.content_type and "text/plain" not in result.content_type:
-            return None, f"{url}: Inhaltstyp {result.content_type} nicht ausgewertet"
-        parsed = html_to_text(result.text, url)
-        return Page(url, result.document_id, parsed.title, parsed.text, parsed.links), ""
-    return None, f"{url}: zu viele Weiterleitungen"
+            return None, (), f"{url}: {result.status.value} {result.error}".strip()
+        ctype = result.content_type.lower()
+        if "pdf" in ctype or result.content[:5] == b"%PDF-":
+            return FetchedDocument(result.document_id, url, "pdf"), (), ""
+        if "html" in ctype or "text/plain" in ctype:
+            links = html_to_text(result.text, url).links
+            return FetchedDocument(result.document_id, url, "html"), links, ""
+        return None, (), f"{url}: Inhaltstyp {result.content_type or 'unbekannt'} nicht ausgewertet"
+    return None, (), f"{url}: zu viele Weiterleitungen"
 
 
-def crawl(ctx: Ctx, domain: str, max_pages: int) -> CrawlResult:
-    """Startseite und priorisierte Unterseiten derselben Domain laden."""
-    outcome = CrawlResult()
-    host = domain.removeprefix("www.")
-    start, error = _fetch_page(ctx, f"https://{domain}/", host)
+def _rank(url: str, label: str) -> int:
+    text = f"{url} {label}"
+    for rank, pattern in _PRIORITY:
+        if re.search(pattern, text, re.IGNORECASE):
+            return rank
+    return 9
+
+
+def fetch_site(ctx: Ctx, domain: str) -> SiteFetch:
+    """Startseite, priorisierte Unterseiten und verlinkte Berichte abrufen."""
+    outcome = SiteFetch()
+    base = domain.removeprefix("www.")
+    max_pages = min(ctx.settings.website_max_pages, ctx.budget.max_pages_per_site)
+    start, links, error = _fetch(ctx, f"https://{domain}/", base)
     if start is None and not domain.startswith("www."):
-        start, error = _fetch_page(ctx, f"https://www.{domain}/", host)
+        start, links, error = _fetch(ctx, f"https://www.{domain}/", base)
     if start is None:
         outcome.errors.append(error)
         return outcome
-    outcome.pages.append(start)
-    links = same_site_links(start.links, start.url)
-    links.sort(key=lambda link: 0 if _PRIORITY.search(link[0] + " " + link[1]) else 1)
-    for url, _label in links:
-        if len(outcome.pages) >= max_pages:
+    outcome.documents.append(start)
+    all_links = list(links)
+    candidates = sorted(same_site_links(links, start.url), key=lambda link: _rank(*link))
+    seen = {start.url}
+    for url, label in candidates:
+        if sum(d.kind == "html" for d in outcome.documents) >= max_pages:
             break
-        if any(p.url == url for p in outcome.pages):
+        if url in seen or url.lower().endswith(".pdf") or _rank(url, label) == 9:
             continue
-        page, error = _fetch_page(ctx, url, host)
-        if page is None:
+        seen.add(url)
+        document, page_links, error = _fetch(ctx, url, base)
+        if document is None:
+            outcome.errors.append(error)
+            continue
+        outcome.documents.append(document)
+        all_links += list(page_links)
+    pdfs = 0
+    for url, _label in report_links(tuple(all_links)):
+        host = urlsplit(url).hostname or ""
+        if pdfs >= ctx.budget.max_documents_per_company or url in seen:
+            continue
+        if urlsplit(url).scheme != "https" or not _host_allowed(host, base):
+            continue
+        if not url.lower().endswith(".pdf"):
+            continue
+        seen.add(url)
+        document, _, error = _fetch(ctx, url, base, max_bytes=MAX_PDF_BYTES)
+        if document is None:
             outcome.errors.append(error)
         else:
-            outcome.pages.append(page)
+            outcome.documents.append(document)
+            pdfs += 1
     return outcome
-
-
-@dataclass(frozen=True, slots=True)
-class UseCaseEvidence:
-    """Beleg für einen Anwendungsfall auf der Webseite."""
-
-    use_case_key: str
-    term: str
-    quote: str
-    document_id: int
-    url: str
-    method: str
-
-
-def analyze_company_site(
-    ctx: Ctx, company_id: int, domain: str, cases: dict[str, UseCase]
-) -> tuple[list[UseCaseEvidence], CrawlResult]:
-    """Webseite auswerten: Mitarbeiter-Selbstangaben speichern, Anwendungsfall-Belege liefern."""
-    outcome = crawl(ctx, domain, ctx.settings.website_max_pages)
-    findings: list[UseCaseEvidence] = []
-    with ctx.engine.begin() as conn:
-        for page in outcome.pages:
-            for mention in find_employee_mentions(page.text)[:2]:
-                if not quote_in_text(mention.quote, page.text):
-                    continue
-                repo.ingest_observation(
-                    conn,
-                    ObservationDraft(
-                        company_id=company_id,
-                        kind="employee",
-                        metric="headcount_total",
-                        value=mention.value,
-                        unit="persons",
-                        period_type=PeriodType.POINT_IN_TIME,
-                        period_start=None,
-                        period_end=date.today(),
-                        provenance_class=ProvenanceClass.COMPANY_REPORTED,
-                        confidence=Confidence.LOW if mention.approximate else Confidence.MEDIUM,
-                        evidence=EvidenceDraft(
-                            page.document_id,
-                            page.url,
-                            mention.quote,
-                            "regex_rule",
-                            EXTRACTOR_VERSION,
-                            True,
-                        ),
-                        limitations="Selbstangabe auf Webseite; Stichtag unbekannt, "
-                        "angesetzt ist das Abrufdatum"
-                        + ("; Näherungsangabe" if mention.approximate else ""),
-                    ),
-                    ctx.run_id,
-                )
-    for page in outcome.pages:
-        for case in cases.values():
-            for hit in find_keyword_hits(page.text, case.website_terms, max_hits=2):
-                findings.append(
-                    UseCaseEvidence(
-                        case.key, hit.term, hit.quote, page.document_id, page.url, "keyword_rule"
-                    )
-                )
-        if ctx.llm.available():
-            for match in ctx.llm.classify_use_cases(
-                page.text, {k: c.name for k, c in cases.items()}
-            ):
-                findings.append(
-                    UseCaseEvidence(
-                        match.use_case_key,
-                        "lokale KI",
-                        match.quote,
-                        page.document_id,
-                        page.url,
-                        f"llm:{ctx.llm.name}",
-                    )
-                )
-    return findings, outcome

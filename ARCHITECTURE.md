@@ -1,6 +1,6 @@
 # Architektur – Yellotools Market Intelligence
 
-Stand: 2026-10-18 · Revision 2 (verbindlich: **100 % kostenloser Betrieb**) · Prototyp 0.1.0
+Stand: 2026-10-19 · Revision 3 (Research Engine, Phase 2; verbindlich: **100 % kostenloser Betrieb**) · Version 0.2.0
 
 Dieses Dokument enthält (1) die Bestandsaufnahme, (2) die Grundsatzentscheidungen inklusive
 Kostenfreiheit, (3) die Architekturentscheidungen (ADRs), (4) Komponenten und Schnittstellen,
@@ -42,7 +42,7 @@ Release-Risiko des Auftragsimports, keine fachliche Überschneidung außer dem A
 |---|---|
 | Keine kostenpflichtige Quelle, API, Datenbank, KI oder Cloud als Voraussetzung | Quellenregister `sources/registry.py`: kostenpflichtige Anbieter haben `legal_status = excluded_paid`, `implemented = False`; das Gateway verweigert jeden Abruf (Test `test_blocked_source_makes_no_network_call`) |
 | Nichts Kostenpflichtiges wird automatisch aktiviert | Es gibt keinen Codepfad, der einen Bezahl-Schlüssel liest. Einziger optionaler Schlüssel ist der **kostenlose** Companies-House-Schlüssel (Umgebungsvariable); ohne ihn ist die Quelle aus |
-| Keine Abhängigkeit von Claude oder anderen KI-Abos | Standard ist `NullLLM`; optionale lokale KI nur über Loopback (`llm/local.py` lehnt Cloud-Hosts ab) |
+| Keine Abhängigkeit von Claude oder anderen KI-Abos | Standard ist `NullProvider`; optionale lokale KI nur über Loopback (`llm/providers.py` lehnt Cloud-Hosts ab) |
 | Nur freie Open-Source-Software | Laufzeit: `httpx` (BSD-3), `SQLAlchemy` (MIT), `openpyxl` (MIT) + Python-Standardbibliothek; vollständige Liste mit geprüften Lizenzen: `docs/DEPENDENCIES_AND_COSTS.md` |
 | Betrieb auf eigenem Windows-PC oder eigenem Server | SQLite-Datei lokal; PostgreSQL optional selbst gehostet (`pip install .[postgres]`, psycopg LGPL-3.0) |
 
@@ -62,104 +62,86 @@ eigene Domain verursachen weiterhin Kosten außerhalb der Software.
 | ADR-05 | Runs aus persistenten Aufgaben, pausierbar (Strg+C) und fortsetzbar (`mi resume`), ohne Redis/Celery | umgesetzt (sequenziell, ein Prozess); Lease/Mehr-Worker ab M3b |
 | ADR-06 | Ein zentrales `FetchGateway` für jeden Internetzugriff | umgesetzt, siehe §4.2 |
 | ADR-07 | Beobachtungen append-only; Korrekturen als neue Zeilen; gültiger Wert ist abgeleitet | umgesetzt inkl. SQLite-Triggern (Test `test_observations_are_append_only`) |
-| ADR-08 | Extraktion regelbasiert; **optionale lokale KI** (Ollama) nur mit geprüftem wörtlichem Zitat; ohne KI voll funktionsfähig | umgesetzt (`extraction/text.py`, `llm/local.py`) |
-| ADR-09 | Entity Resolution: automatische Zuordnung nur über starke Identifikatoren (LEI, Wikidata-QID, SEC-CIK …); Namensähnlichkeit → Kandidat zur Prüfung | umgesetzt (`resolution.py`, `repo.resolve_or_create`, `profile.py`) |
+| ADR-08 | Extraktion regelbasiert; **optionale lokale KI** (Ollama) nur mit geprüftem wörtlichem Zitat; ohne KI voll funktionsfähig | umgesetzt (`extraction/*`, `llm/providers.py`, `llm/assistant.py`) |
+| ADR-09 | Entity Resolution: automatische Zuordnung nur über starke Identifikatoren (LEI, Wikidata-QID, SEC-CIK …); Namensähnlichkeit → Kandidat zur Prüfung | umgesetzt (`resolution.py`, `repo.resolve_or_create`, `engine/adapters.resolve_named`, `engine/matching.py`) |
 | ADR-10 | Scoring transparent, versioniert, renormiert bei fehlenden Indikatoren | umgesetzt (`scoring.py`, Modell `v1-entwurf`) |
 | ADR-11 | Benutzer/Rollen erst mit Teambetrieb (OIDC über eigenen/freien Identity-Provider, z. B. vorhandenes Entra ID oder selbst gehostetes Keycloak – Apache-2.0) | geplant (M15) |
 | ADR-12 | Keine Geheimnisse in Dateien; nur Umgebungsvariablen bzw. Windows-Anmeldespeicher | umgesetzt für Konfiguration |
 | ADR-13 *(neu)* | **Keine kostenpflichtige Such-API.** Internetrecherche = Kombination freier, rechtlich nutzbarer Quellen (Register, Wikidata, Ausschreibungen, Nachrichtenindex, Unternehmenswebseiten). Allgemeine Websuche à la Google ist bewusst **nicht** Teil des Kerns | umgesetzt, siehe §5 und `RESEARCH_SOURCES.md` §3 |
 
-## 4. Komponenten (implementiert)
+## 4. Komponenten (implementiert, Version 0.2.0)
 
 ```
 src/market_intel/
-  domain.py          Herkunftsklassen, Prüfstatus, Zeiträume, Entwürfe (ObservationDraft, EvidenceDraft)
-  config.py          TOML-Einstellungen ohne Geheimnisse; LLM standardmäßig aus
-  db.py              Schema (SQLAlchemy Core), append-only-Trigger (SQLite + PostgreSQL)
-  repo.py            einziger Schreibweg: Firmen, IDs, Aliase, Belege, Beobachtungen, Konflikte, Lücken
-  resolution.py      Namensnormalisierung, Rechtsformen, Ähnlichkeit, Domains
-  http/gateway.py    FetchGateway (siehe 4.2)
-  sources/
-    registry.py      Quellenregister mit Lizenz, kostenlosem Umfang, Grenzen, Rechtsstatus
-    gleif.py         LEI-Suche, Datensatz, Mutterbeziehungen
-    wikidata.py      Suche, EntityData, Kennzahlenreihen (P1128, P2139), SPARQL nach Branche
-    sec_edgar.py     XBRL companyfacts (Umsatzreihen), CIK-Kandidaten
-    ecb.py           EZB-Jahreskurse für abgeleitete EUR-Werte
-    ted.py           EU-Ausschreibungen → öffentliche Auftraggeber + Signale
-    gdelt.py         Nachrichtenindex → Marktsignale
-    website.py       Unternehmenswebseiten (robots/TDM), Mitarbeiter-Selbstangaben, Anwendungsfall-Belege
-  extraction/text.py HTML→Text, Zitatprüfung, Zahlenformate, Regeln (Mitarbeiter, Suchbegriffe)
-  llm/local.py       LocalLLM-Schnittstelle, NullLLM (Standard), OllamaLLM (optional, nur lokal)
-  usecases.py + data/use_cases.toml   Anwendungsfälle (Hypothesen) mit Suchbegriffen je Quelle
-  profile.py         Firmenprofil: GLEIF → Wikidata → GLEIF per LEI → SEC → Webseite → EUR → Lücken
-  discovery.py       Customer Discovery mit Fit-Regeln strong/plausible/weak
-  analytics.py       Zeitreihen, YoY, CAGR nur zwischen vergleichbaren Werten, Vergleich, Datenqualität
-  scoring.py         Chancenbewertung mit Zerlegung
-  export.py          CSV, XLSX, JSON, HTML-Bericht (Formel-Injektion entschärft)
-  research.py        Runs/Aufgaben, Pause/Fortsetzen
-  proof.py           Funktionsnachweis: Kriterien 1–9 aus Datenbank und Dateien
-  cli.py             mi sources | run | prove | resume | llm-status
+  domain.py, config.py, db.py, repo.py, resolution.py   Kern (Revision 2), erweitert um Phase-2-Tabellen
+  http/gateway.py        einziger Netzzugang: Freigabe, SSRF, robots, TDM, Cache, Rate Limit
+                         (konfigurierbar je Quelle), Wiederholungen (konfigurierbar), Timeouts,
+                         Abruf- und Kostenbudget, Protokoll jedes Abrufs
+  sources/               Abruf + Parser je Anbieter: gleif, wikidata, sec_edgar, companies_house,
+                         ecb, ted, gdelt, website, eurostat, user_data; registry (Rechtsstatus,
+                         Kosten); common (robuste JSON-Auswertung)
+  extraction/            text (HTML, Zitatprüfung), numbers (Geld, Skala, Währung, Zeitraum,
+                         Mitarbeiter), documents (PDF, Impressum-IDs, JSON-LD-Stellen,
+                         Pressemeldungen, Berichtslinks)
+  llm/                   providers (Null, Ollama, OpenAI-kompatibel lokal), assistant (KI-Aufgaben
+                         mit deterministischer Prüfung)
+  engine/                strategy (Schritt 1), adapters (einheitliche Adapter-Schnittstelle),
+                         extract (Schritt 4), matching (5), validation (6), changes (7),
+                         derive (EUR, Lücken, Fit), report (8), budget
+  research.py            Auftragsausführung: 8 Schritte, dynamische Aufgaben, Budget,
+                         Pause/Fortsetzen, Fortschritt, Fehlerkennzeichnung
+  analytics.py, scoring.py, export.py, proof.py, cli.py
 ```
+
+Der frühere feste Ablauf (`profile.py`, `discovery.py`) ist vollständig in die Adapter und
+die Pipeline überführt worden; es gibt kein paralleles System.
 
 ### 4.1 Kommandos
 
 | Befehl | Wirkung |
 |---|---|
-| `mi sources` | zeigt jede Quelle mit Status, kostenlosem Umfang, Registrierung, optionalen Kosten |
-| `mi run --compare … --use-case … --country DE` | Recherchelauf (Profil + Discovery + Scoring + Export) |
-| `mi prove` | wie `run`, ohne KI, prüft die neun Nachweiskriterien und schreibt `proof/PROOF_REPORT.md` |
-| `mi resume <run>` | setzt einen pausierten Lauf fort |
-| `mi llm-status` | prüft die optionale lokale KI |
+| `mi research "Freitext" [--country … --industry … --company … --use-case … --metric … --years N --list … --refresh] [--max-requests … --max-candidates … --max-seconds … --max-llm-calls … --max-hits …]` | Rechercheauftrag in 8 Schritten |
+| `mi status <id>` | Fortschritt je Schritt (ok / Fehler / übersprungen / offen) und Fehlerliste |
+| `mi resume <id> [--max-requests …]` | pausierten oder budgetbegrenzten Auftrag fortsetzen |
+| `mi report <id>` | Bericht neu erzeugen |
+| `mi import-companies datei.csv --list-name …` | Messe-/Verbands-/CRM-Liste importieren |
+| `mi import-document datei.pdf --company …` | bereitgestelltes Dokument (z. B. Jahresabschluss) auswerten |
+| `mi prove` | Funktionsnachweis (Kriterien 1–9, ohne KI) |
+| `mi sources`, `mi adapters`, `mi llm-status` | Quellen, Adapter, lokale KI |
 
-### 4.2 FetchGateway (implementiert, getestet)
+### 4.2 Adapter-Schnittstelle
 
-Reihenfolge je Abruf: Quellenfreigabe (Register + aktiviert) → SSRF-Schutz (nur `https`, Port
-443, keine privaten/Loopback/Link-Local-Adressen nach DNS-Auflösung, keine internen Namen,
-keine Zugangsdaten in URLs) → robots.txt (bei Webseiten) → Cache (frisch: kein Netz; sonst
-`If-None-Match`/`If-Modified-Since`) → Anfragelimit je Run → Drosselung je Quelle/Host →
-Abruf mit Größenlimit → Wiederholung bei 408/425/429/5xx und Netzwerkfehlern (max. 3 Versuche,
-`Retry-After` max. 60 s) → TDM-Vorbehalt (`tdm-reservation` Header/Meta) → Speicherung als
-`source_document` (SHA-256) → Protokoll in `fetch_log`. **Jeder** Aufruf, auch ein gesperrter
-oder gescheiterter, wird protokolliert. Weiterleitungen werden nicht blind verfolgt; der
-Webseiten-Adapter folgt nur innerhalb derselben Domain und lässt jedes Ziel neu prüfen.
+```python
+class BaseAdapter:
+    key: str; source_keys: tuple[str, ...]; kinds: frozenset[Kind]   # 10 Quellentypen
+    finds: bool; investigates: bool
+    def enabled(self, ctx) -> bool
+    def find_candidates(self, ctx, strategy, cases) -> list[Candidate]     # Schritt 2
+    def investigate(self, ctx, company_id, strategy, cases) -> Outcome    # Schritt 3
+```
 
-### 4.3 Optionale lokale KI
+Registriert: GLEIF, Wikidata, Companies House, Firmenlisten, TED, GDELT, Eurostat, SEC EDGAR,
+Unternehmenswebseiten. Welche Daten jeder Anbieter tatsächlich liefert und wie er getestet
+ist: `docs/PROVIDERS.md`.
 
-`LocalLLM`-Protokoll mit `available()` und `classify_use_cases()`. Implementierungen:
-`NullLLM` (Standard) und `OllamaLLM` (`/api/tags`, `/api/chat` mit JSON-Schema im Feld
-`format`, Temperatur 0). Ergebnisse ohne wörtliches, im Seitentext gefundenes Zitat werden
-verworfen (Test `test_ollama_results_need_verified_quotes`). Ist Ollama nicht erreichbar,
-läuft alles regelbasiert weiter. Modell- und Hardwarehinweise: `docs/DEPENDENCIES_AND_COSTS.md` §3.
+## 5. Ablauf eines Rechercheauftrags
 
-## 5. Datenflüsse
+| Schritt | Aufgaben | Inhalt |
+|---|---|---|
+| 1 Suchstrategie | `plan` | Freitext + Filter → Absichten, Länder, genannte Firmen, Namens-/Branchen-/Webbegriffe (Fachlexikon `data/lexicon.toml`), Anwendungsfälle, Unternehmensarten, Kennzahlen, Zeitraum, NACE-Codes; Herkunft jedes Begriffs (`filter`/`rule`/`use_case`/`llm`) |
+| 2 Kandidaten finden | `resolve_named`, `find` je Adapter, `select` | genannte Firmen auflösen; Kandidaten je Adapter mit Begründung/Beleg (`run_candidate`); Auswahl: genannte zuerst, dann Anzahl unabhängiger Quellen, Fit, Website; Obergrenze `max_candidates` |
+| 3 Quellen untersuchen | `investigate` je Firma × Adapter | Register, SEC, Website (inkl. IR-PDFs, Karriere, Presse), Nachrichten; kürzlich untersuchte Quellen werden übersprungen (`refresh_days`, `--refresh`) |
+| 4 Extrahieren | `extract` je Firma | Umsatz, Mitarbeiter, Kennungen, Stellen, Signale, Fit-Belege; optional KI-Klassifikation mit Zitatprüfung |
+| 5 Abgleichen | `match` | Prüfkandidaten für Dubletten/Tochtergesellschaften (`match_candidate`); Zusammenführung nie automatisch ohne starke Kennung |
+| 6 Validieren | `validate` | Plausibilität beim Speichern (Währung, Spannen, Zeitraum, ganze Mitarbeiterzahl), Widersprüche, Umsatz je Mitarbeiter, Datenlücken; optional KI-Widerspruchshinweise (ungeprüft gekennzeichnet) |
+| 7 Speichern | `store` | EUR-Ableitung, Bewertung, Änderungsereignisse (`change_event`), Export |
+| 8 Bericht | `report` | `bericht.md/.html/.json`: Strategie, Ablauf, Ergebnis/Rangfolge, Firmen mit [Qn]-Belegen und [Berechnung]-Kennzeichnung, Unsicherheiten, offene Fragen, Quellenverzeichnis mit Abrufzeit, Veröffentlichungsdatum nur falls bekannt, Hinweis bei später unerreichbaren Quellen |
 
-### 5.1 Firmenprofil (`profile.py`)
-
-1. GLEIF-Volltextsuche; Übernahme nur bei Namensähnlichkeit ≥ 0,85, sonst Kandidat.
-2. Wikidata-Suche; Zusammenführung nur bei gleichem LEI; neue Firma nur, wenn noch keine
-   existiert und Label-Ähnlichkeit ≥ 0,95 und der Eintrag Firmenmerkmale hat.
-3. Liefert Wikidata einen LEI, wird der GLEIF-Datensatz direkt per LEI geladen.
-4. SEC-Umsatzreihe nur bei CIK aus starkem Identifikator (Wikidata P5531); Namenstreffer → Kandidat.
-5. Webseite (aus Wikidata P856) → Mitarbeiter-Selbstangaben, Anwendungsfall-Belege.
-6. Nicht-EUR-Umsätze → abgeleitete EUR-Werte mit EZB-Jahresdurchschnitt (Methodik gespeichert).
-7. Fehlende Kernkennzahlen → `data_gap` mit geprüften Quellen.
-
-### 5.2 Customer Discovery (`discovery.py`)
-
-Anwendungsfall × Land → (a) GLEIF-Namenssuche mit `name_terms` → Fit `plausible`;
-(b) Wikidata-Branchen aus `industry_terms` → SPARQL Firmen des Landes → Fit `weak`;
-(c) Webseiten dieser Firmen → Fit `strong` (≥ 2 Begriffe) bzw. `plausible` (1 Begriff);
-(d) TED-Ausschreibungen → öffentliche Auftraggeber + Signal, Fit `weak` (der Auftraggeber zeigt
-Bedarf; Kunde von Yellotools ist eher der ausführende Betrieb); (e) GDELT → Marktsignale.
-Danach Scoring je Anwendungsfall.
-
-### 5.3 Aufnahme einer Beobachtung (`repo.ingest_observation`)
-
-Validierung im `ObservationDraft` (Methodik bei abgeleiteten Werten, Währung bei Beträgen,
-Zeitraumlogik) → Duplikat (gleicher Inhalts-Hash) nur `last_seen_at` → Ablehnung ohne
-verifiziertes Zitat → Speichern mit Startstatus nach Herkunftsklasse → Konfliktprüfung mit
-Toleranz; unbekannter Konsolidierungskreis gilt als vergleichbar mit jedem (sonst blieben
-Widersprüche unsichtbar – im Test gefunden und behoben).
+Eine Aufgabe gilt als **fehlgeschlagen**, wenn sie eine Ausnahme wirft oder alle ihre
+Quellenabrufe scheitern; als **übersprungen**, wenn sie nicht anwendbar ist oder die Quelle
+kürzlich untersucht wurde. Fehler beenden nie den Auftrag. Budgetgrenzen (Abrufe, Aufgaben,
+Zeit, KI-Aufrufe, Kosten 0 €) beenden ihn mit `budget_exhausted`; `mi resume` setzt mit
+höherem Budget fort.
 
 ## 6. Fehlerbehandlung und Nachvollziehbarkeit
 
@@ -173,7 +155,7 @@ Widersprüche unsichtbar – im Test gefunden und behoben).
 
 | Modus | Datenbank | Ablauf | Kosten der Software |
 |---|---|---|---|
-| Einzelplatz Windows/Linux | SQLite-Datei | `mi run` / `mi prove`, Aufgabenplanung über Windows-Aufgabenplanung oder cron | 0 € |
+| Einzelplatz Windows/Linux | SQLite-Datei | `mi research` / `mi prove`, Aufgabenplanung über Windows-Aufgabenplanung oder cron | 0 € |
 | Teamserver (eigene Hardware/VM) | PostgreSQL selbst gehostet | Web-UI + Worker (ab M6/M15) im LAN, Zugriff per VPN statt öffentlicher Erreichbarkeit | 0 € |
 | Öffentliche Erreichbarkeit | – | nicht erforderlich; falls gewünscht über vorhandene Infrastruktur, nie Voraussetzung | – |
 

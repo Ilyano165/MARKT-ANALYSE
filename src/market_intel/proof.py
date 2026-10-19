@@ -17,7 +17,7 @@ from sqlalchemy import Engine, func, select
 
 from . import db
 from .analytics import compare, growth, series_for
-from .research import task_results
+from .research import named_companies, task_results
 from .sources.registry import SOURCE_BY_KEY
 
 PAID_ENV_HINTS = ("OPENAI", "ANTHROPIC", "BRAVE", "SERPAPI", "NORTHDATA", "BING", "GOOGLE_API")
@@ -114,9 +114,7 @@ def evaluate(engine: Engine, run_id: int, out_dir: Path, llm_name: str) -> list[
         )
 
         results_by_task = task_results(engine, run_id)
-        compared = [
-            r["company_id"] for t, r in results_by_task if t == "profile" and r.get("company_id")
-        ]
+        compared = named_companies(engine, run_id)
         series_found = []
         for company_id in compared:
             for kind, metric in (("financial", "revenue"), ("employee", "headcount_total")):
@@ -164,7 +162,7 @@ def evaluate(engine: Engine, run_id: int, out_dir: Path, llm_name: str) -> list[
             )
         )
 
-    export = next((r for t, r in results_by_task if t == "export"), {})
+    export = next((r for t, r in results_by_task if t == "store"), {})
     files = [Path(f) for f in export.get("files", [])]
     existing = [f.name for f in files if f.exists() and f.stat().st_size > 0]
     data_rows = {

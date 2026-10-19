@@ -27,11 +27,12 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
     event,
+    inspect,
     text,
 )
 from sqlalchemy.types import TypeDecorator
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class DecimalText(TypeDecorator[Decimal]):
@@ -324,6 +325,8 @@ research_task = Table(
     Column("run_id", Integer, ForeignKey("research_run.id"), nullable=False),
     Column("seq", Integer, nullable=False),
     Column("task_type", String(40), nullable=False),
+    Column("step", Integer, nullable=False, default=0),
+    Column("label", Text, nullable=False, default=""),
     Column("params", Text, nullable=False),
     Column("idempotency_key", String(64), nullable=False),
     Column("status", String(20), nullable=False),
@@ -372,6 +375,128 @@ opportunity_assessment = Table(
     Column("priority", String(20), nullable=False),
     Column("assessed_at", DateTime(timezone=True), nullable=False),
     Column("research_run_id", Integer),
+)
+
+
+# ---------------------------------------------------------------------- Phase 2: Research Engine
+
+run_candidate = Table(
+    "run_candidate",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("run_id", Integer, ForeignKey("research_run.id"), nullable=False),
+    Column("company_id", Integer, ForeignKey("company.id"), nullable=False),
+    Column("adapter_key", String(40), nullable=False),
+    Column("role", String(20), nullable=False),  # named | candidate
+    Column("reason", Text, nullable=False),
+    Column("evidence_id", Integer, ForeignKey("evidence.id")),
+    Column("selected", Boolean, nullable=False, default=False),
+    Column("found_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("run_id", "company_id", "adapter_key", "reason"),
+)
+
+investigation_log = Table(
+    "investigation_log",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("company_id", Integer, ForeignKey("company.id"), nullable=False),
+    Column("adapter_key", String(40), nullable=False),
+    Column("run_id", Integer),
+    Column("status", String(20), nullable=False),  # ok | failed | skipped | not_applicable
+    Column("detail", Text, nullable=False, default=""),
+    Column("finished_at", DateTime(timezone=True), nullable=False),
+)
+
+hiring_observation = Table(
+    "hiring_observation",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("company_id", Integer, ForeignKey("company.id"), nullable=False),
+    Column("observation_date", Date, nullable=False),
+    Column("open_positions_count", Integer, nullable=False),
+    Column("job_titles", Text, nullable=False),
+    Column("locations", Text, nullable=False),
+    Column("relevant_use_cases", Text, nullable=False, default="[]"),
+    Column("source_document_id", Integer, ForeignKey("source_document.id"), nullable=False),
+    Column("evidence_id", Integer, ForeignKey("evidence.id"), nullable=False),
+    Column("method", String(40), nullable=False),
+    Column("research_run_id", Integer),
+    Column("captured_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("company_id", "source_document_id"),
+)
+
+market_statistic = Table(
+    "market_statistic",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("source_key", String(40), nullable=False),
+    Column("dataset", String(80), nullable=False),
+    Column("indicator", Text, nullable=False),
+    Column("dimensions", Text, nullable=False),
+    Column("period", String(20), nullable=False),
+    Column("value", _decimal(), nullable=False),
+    Column("unit", Text, nullable=False, default=""),
+    Column("status_flag", String(10)),
+    Column("source_document_id", Integer, ForeignKey("source_document.id"), nullable=False),
+    Column("captured_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("source_document_id", "dimensions", "period"),
+)
+
+match_candidate = Table(
+    "match_candidate",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("company_a_id", Integer, ForeignKey("company.id"), nullable=False),
+    Column("company_b_id", Integer, ForeignKey("company.id"), nullable=False),
+    Column("score", Numeric(6, 4), nullable=False),
+    Column("kind", String(30), nullable=False),  # possible_duplicate | possible_subsidiary
+    Column("reasons", Text, nullable=False),
+    Column("status", String(20), nullable=False, default="open"),
+    Column("research_run_id", Integer),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("company_a_id", "company_b_id", "kind"),
+)
+
+validation_issue = Table(
+    "validation_issue",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("research_run_id", Integer),
+    Column("company_id", Integer),
+    Column("severity", String(10), nullable=False),  # error | warning | hint
+    Column("code", String(60), nullable=False),
+    Column("message", Text, nullable=False),
+    Column("source_document_id", Integer),
+    Column("quote", Text, nullable=False, default=""),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+change_event = Table(
+    "change_event",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("company_id", Integer, ForeignKey("company.id"), nullable=False),
+    Column("metric", String(40), nullable=False),
+    Column("period_end", Date),
+    Column("old_value", _decimal()),
+    Column("new_value", _decimal()),
+    Column("unit", String(20)),
+    Column("change_kind", String(30), nullable=False),  # new_period | changed_value | first_value
+    Column("observation_id", Integer, nullable=False),
+    Column("research_run_id", Integer),
+    Column("detected_at", DateTime(timezone=True), nullable=False),
+)
+
+list_membership = Table(
+    "list_membership",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("list_name", String(120), nullable=False),
+    Column("company_id", Integer, ForeignKey("company.id"), nullable=False),
+    Column("source_document_id", Integer, ForeignKey("source_document.id"), nullable=False),
+    Column("row_text", Text, nullable=False),
+    Column("imported_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("list_name", "company_id"),
 )
 
 schema_info = Table(
@@ -437,12 +562,30 @@ def make_engine(url: str) -> Engine:
     return engine
 
 
+_ADDED_COLUMNS = {  # Spalten, die nach Version 1 hinzukamen (für bestehende Datenbanken)
+    "research_task": {"step": "INTEGER NOT NULL DEFAULT 0", "label": "TEXT NOT NULL DEFAULT ''"},
+}
+
+
+def _add_missing_columns(engine: Engine) -> None:
+    inspector = inspect(engine)
+    with engine.begin() as conn:
+        for table_name, columns in _ADDED_COLUMNS.items():
+            existing = {c["name"] for c in inspector.get_columns(table_name)}
+            for name, ddl in columns.items():
+                if name not in existing:
+                    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {name} {ddl}"))
+
+
 def init_db(engine: Engine) -> None:
-    """Legt fehlende Tabellen und Trigger an (idempotent)."""
+    """Legt fehlende Tabellen, Spalten und Trigger an (idempotent)."""
     metadata.create_all(engine)
+    _add_missing_columns(engine)
     triggers = _sqlite_triggers() if engine.dialect.name == "sqlite" else _postgres_triggers()
     with engine.begin() as conn:
         for statement in triggers:
             conn.execute(text(statement))
         if conn.execute(schema_info.select()).first() is None:
             conn.execute(schema_info.insert().values(version=SCHEMA_VERSION))
+        else:
+            conn.execute(schema_info.update().values(version=SCHEMA_VERSION))

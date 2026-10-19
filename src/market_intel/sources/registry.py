@@ -38,6 +38,7 @@ class SourceDefinition:
     enabled_by_default: bool
     min_interval_seconds: float
     implemented: bool
+    cost_per_call_eur: float = 0.0  # alle aktiven Quellen: 0; Budgetprüfung im Gateway
 
     @property
     def fetchable(self) -> bool:
@@ -209,14 +210,15 @@ SOURCES: tuple[SourceDefinition, ...] = (
         license="Eurostat-Wiederverwendung mit Quellenangabe",
         terms_url="https://ec.europa.eu/eurostat/about-us/policies/copyright",
         free_scope="kostenlos, ohne Schlüssel",
-        restrictions="aggregierte Statistik, keine Einzelfirmen; NACE-Bruch ab 2025",
+        restrictions="aggregierte Statistik, keine Einzelfirmen; NACE-Bruch ab 2025; "
+        "Datensatzcode konfigurierbar (Standard ungeprüft, siehe docs/PROVIDERS.md)",
         registration="keine",
         credentials="keine",
         optional_costs="keine",
         legal_status="approved",
-        enabled_by_default=False,
+        enabled_by_default=True,
         min_interval_seconds=1.0,
-        implemented=False,
+        implemented=True,
     ),
     SourceDefinition(
         key="destatis",
@@ -313,6 +315,44 @@ SOURCES: tuple[SourceDefinition, ...] = (
         min_interval_seconds=1.0,
         implemented=False,
     ),
+    SourceDefinition(
+        key="user_upload",
+        name="Vom Nutzer bereitgestellte Dokumente (z. B. Jahresabschluss-PDF)",
+        publisher="laut Angabe beim Import",
+        base_url="file://",
+        source_type="user_provided",
+        default_provenance=ProvenanceClass.COMPANY_REPORTED,
+        license="Verantwortung des Nutzers (nur rechtmäßig erlangte, öffentliche Dokumente)",
+        terms_url="",
+        free_scope="unbegrenzt (lokal)",
+        restrictions="Original-URL und Veröffentlichungsdatum nur, wenn der Nutzer sie angibt",
+        registration="keine",
+        credentials="keine",
+        optional_costs="keine",
+        legal_status="approved_with_conditions",
+        enabled_by_default=True,
+        min_interval_seconds=0.0,
+        implemented=True,
+    ),
+    SourceDefinition(
+        key="user_list",
+        name="Vom Nutzer importierte Firmenlisten (Messen, Verbände, CRM)",
+        publisher="laut Angabe beim Import",
+        base_url="file://",
+        source_type="association",
+        default_provenance=ProvenanceClass.THIRD_PARTY,
+        license="Verantwortung des Nutzers (Nutzungsrechte der Liste prüfen)",
+        terms_url="",
+        free_scope="unbegrenzt (lokal)",
+        restrictions="nur Listen, deren Nutzung erlaubt ist; kein Scraping von Verzeichnissen",
+        registration="keine",
+        credentials="keine",
+        optional_costs="keine",
+        legal_status="approved_with_conditions",
+        enabled_by_default=True,
+        min_interval_seconds=0.0,
+        implemented=True,
+    ),
 )
 
 SOURCE_BY_KEY = {s.key: s for s in SOURCES}
@@ -327,6 +367,6 @@ def is_enabled(
     """Aktiviert = abrufbar + (Standard oder ausdrücklich eingeschaltet) − ausgeschaltet."""
     if not definition.fetchable or definition.key in disabled:
         return False
-    if definition.key == "companies_house" and not has_companies_house_key:
-        return False
+    if definition.key == "companies_house":
+        return has_companies_house_key  # kostenloser Schlüssel vorhanden → aktiv
     return definition.enabled_by_default or definition.key in enabled
