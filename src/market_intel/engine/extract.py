@@ -19,6 +19,7 @@ from sqlalchemy import insert, select, update
 from .. import db, repo
 from ..context import Ctx
 from ..domain import (
+    METRIC_LABELS,
     Confidence,
     EvidenceDraft,
     ObservationDraft,
@@ -231,7 +232,7 @@ def _figures(
                 period_type=PeriodType.FISCAL_YEAR,
                 period_start=None,
                 period_end=money.period.period_end,
-                scope=Scope.UNKNOWN,
+                scope=scope_in(money.quote),
                 provenance_class=provenance,
                 confidence=Confidence.LOW
                 if money.approximate or not money.period.exact
@@ -244,6 +245,18 @@ def _figures(
         )
     for head in find_headcounts(text, today)[:5]:
         if not quote_in_text(head.quote, text):
+            continue
+        metric = headcount_metric(head.quote)
+        if metric != "headcount_total" and head.period is None:
+            issue(
+                ctx,
+                company_id,
+                "warning",
+                "headcount_without_year",
+                f"{METRIC_LABELS[metric]} ohne erkennbares Geschäftsjahr nicht gespeichert",
+                document_id,
+                head.quote,
+            )
             continue
         period_end = head.period.period_end if head.period else today
         note = (
@@ -259,12 +272,15 @@ def _figures(
             ObservationDraft(
                 company_id=company_id,
                 kind="employee",
-                metric="headcount_total",
+                metric=metric,
                 value=head.value,
                 unit="persons",
-                period_type=PeriodType.POINT_IN_TIME,
+                period_type=PeriodType.FISCAL_YEAR
+                if metric == "headcount_avg"
+                else PeriodType.POINT_IN_TIME,
                 period_start=None,
                 period_end=period_end,
+                scope=scope_in(head.quote),
                 provenance_class=provenance,
                 confidence=Confidence.LOW
                 if head.approximate or head.period is None
@@ -276,6 +292,32 @@ def _figures(
                 + ("; Näherungsangabe" if head.approximate else ""),
             ),
         )
+
+
+_AVERAGE = re.compile(
+    r"durchschnittlich|jahresdurchschnitt|im durchschnitt|im mittel|on average|average",
+    re.IGNORECASE,
+)
+_FTE = re.compile(
+    r"vollzeit(?:äquivalent|stellen|kräfte)|vollzeitkräfte|\bvzä\b|\bfte\b|"
+    r"full[- ]time equivalents?",
+    re.IGNORECASE,
+)
+_GROUP = re.compile(r"konzern|\bgroup\b|consolidated|gruppenweit", re.IGNORECASE)
+
+
+def headcount_metric(sentence: str) -> str:
+    """Stichtag, Jahresdurchschnitt (§ 267 Abs. 5 HGB) oder Vollzeitäquivalente."""
+    if _FTE.search(sentence):
+        return "headcount_fte"
+    if _AVERAGE.search(sentence):
+        return "headcount_avg"
+    return "headcount_total"
+
+
+def scope_in(sentence: str) -> Scope:
+    """„Konzern“/„group“ im Satz → Konzernwert, sonst unbekannt (nie geraten)."""
+    return Scope.GROUP if _GROUP.search(sentence) else Scope.UNKNOWN
 
 
 def _ingest(ctx: Ctx, report: ExtractionReport, draft: ObservationDraft) -> None:

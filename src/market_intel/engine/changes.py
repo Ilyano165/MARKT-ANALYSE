@@ -13,8 +13,8 @@ from typing import Any
 
 from sqlalchemy import Connection, insert, select
 
-from .. import db
-from ..domain import PROVENANCE_RANK, ProvenanceClass
+from .. import db, repo
+from ..domain import METRIC_LABELS, PROVENANCE_RANK, ProvenanceClass
 
 
 def record_changes(conn: Connection, run_id: int) -> int:
@@ -322,12 +322,15 @@ def history(conn: Connection, company_id: int) -> list[dict[str, Any]]:
         diff = None
         if row["old_value"] is not None and row["new_value"] is not None:
             diff = format(Decimal(row["new_value"]) - Decimal(row["old_value"]), "f")
+        summary = _metric_summary(row)
+        if row["change_kind"] == "new_period":
+            summary += _versus_previous(conn, company_id, row)
         items.append(
             {
                 "subject": "metric",
                 "kind": row["change_kind"],
                 "metric": row["metric"],
-                "summary": _metric_summary(row),
+                "summary": summary,
                 "event_date": row["period_end"].isoformat() if row["period_end"] else None,
                 "detected_at": row["detected_at"].isoformat(),
                 "observation_id": row["observation_id"],
@@ -354,14 +357,44 @@ def history(conn: Connection, company_id: int) -> list[dict[str, Any]]:
     return items
 
 
+def _num(value: Any) -> str:
+    return f"{Decimal(value):,.0f}".replace(",", ".")
+
+
 def _metric_summary(row: Any) -> str:
-    unit = row["unit"] or ""
+    unit = "Personen" if row["unit"] == "persons" else (row["unit"] or "")
+    label = METRIC_LABELS.get(row["metric"], row["metric"])
     period = f"{row['period_end']:%d.%m.%Y}" if row["period_end"] else "?"
     if row["change_kind"] == "first_value":
-        return f"{row['metric']}: erster Wert {row['new_value']} {unit} (Stand {period})"
+        return f"{label}: erster Wert {_num(row['new_value'])} {unit} (Stand {period})"
     if row["change_kind"] == "new_period":
-        return f"{row['metric']}: neuer Zeitraum {period}: {row['new_value']} {unit}"
+        return f"{label}: neuer Zeitraum {period}: {_num(row['new_value'])} {unit}"
     return (
-        f"{row['metric']} {period}: Wert geändert {row['old_value']} → {row['new_value']} {unit} "
-        "(ältere Angabe bleibt erhalten)"
+        f"{label} {period}: Wert geändert {_num(row['old_value'])} → {_num(row['new_value'])} "
+        f"{unit} (ältere Angabe bleibt erhalten)"
     )
+
+
+def _versus_previous(conn: Connection, company_id: int, row: Any) -> str:
+    """Abstand zum zuletzt bekannten früheren Wert gleicher Einheit (nur Nettoveränderung)."""
+    kind = "financial" if row["metric"] == "revenue" else "employee"
+    earlier = [
+        r
+        for r in repo.current_values(conn, company_id, kind, row["metric"])
+        if r["period_end"] < row["period_end"]
+        and r["unit"] == row["unit"]
+        and r["provenance_class"] != "derived"
+    ]
+    if not earlier or row["new_value"] is None:
+        return ""
+    prev = earlier[-1]
+    old, new = Decimal(prev["value"]), Decimal(row["new_value"])
+    pct = f", {((new / old - 1) * 100):+.1f} %".replace(".", ",") if old > 0 else ""
+    gap = row["period_end"].year - prev["period_end"].year
+    text = f" – gegenüber {prev['period_end']:%d.%m.%Y}: {'+' if new >= old else '−'}"
+    text += f"{_num(abs(new - old))}{pct}"
+    if gap > 1:
+        text += f" (über {gap} Jahre, Zwischenwerte unbekannt)"
+    if kind == "employee":
+        text += "; Nettoveränderung, keine Zahl von Einstellungen/Abgängen"
+    return text

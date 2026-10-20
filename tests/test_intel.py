@@ -23,7 +23,7 @@ from market_intel.intel.competitors import analyze_competitors
 from market_intel.intel.profile import build_profile, observation_detail
 from market_intel.ui.server import export_profile_html, make_server
 
-from .fakeweb import PAGES
+from .fakeweb import PAGES, FakeWeb
 from .intel_seed import seed
 from .test_end_to_end import PROOF_REQUEST
 
@@ -327,6 +327,11 @@ def test_history_preserved_and_changes_detected_on_rerun(
     assert any(
         t["kind"] == "event:acquisition" and t["event_date"] == "2026-09-01" for t in timeline
     )
+    heads = [
+        t for t in timeline if t.get("metric") == "headcount_total" and t["kind"] == "new_period"
+    ]
+    assert heads and "Nettoveränderung, keine Zahl von Einstellungen" in heads[0]["summary"]
+    assert heads[0]["summary"].startswith("Mitarbeiter (Stichtag)")
     # unbestätigte Pressemeldung bricht die Reihe nicht
     for item in profile["finance"]["revenue"]:
         assert all("inorganic" not in r["flags"] for r in item["rows"])
@@ -460,3 +465,67 @@ def test_static_export_is_self_contained(engine: Engine) -> None:
     assert "<style>" in html and 'id="world-map"' in html
     assert not re.search(r'(src|href)="https?://', html)  # keine externen Ressourcen
     assert "Notiz speichern" not in html  # Export ist nur lesend
+
+
+# ---------------------------------------------------------------------- Nachbesserungen
+
+
+def test_headcount_kind_and_group_scope_from_text(make_ctx: Any, engine: Engine) -> None:
+    from market_intel.engine.extract import extract_company_documents, headcount_metric, scope_in
+    from market_intel.sources.user_data import store_document
+
+    assert headcount_metric("Im Jahresdurchschnitt 2023 waren 2.950 Mitarbeiter tätig.") == (
+        "headcount_avg"
+    )
+    assert headcount_metric("2023 entsprach dies 2.400 Vollzeitäquivalenten (FTE).") == (
+        "headcount_fte"
+    )
+    assert headcount_metric("Zum 31.12.2023 beschäftigten wir 3.010 Mitarbeiter.") == (
+        "headcount_total"
+    )
+    assert scope_in("Der Konzernumsatz 2023 betrug 812,5 Mio. EUR.").value == "group"
+    assert scope_in("Der Umsatz 2023 betrug 812,5 Mio. EUR.").value == "unknown"
+
+    ctx = make_ctx(FakeWeb())
+    with engine.begin() as conn:
+        company_id = repo.create_company(conn, "Text GmbH")
+    text = (
+        "Lagebericht 2023. Im Geschäftsjahr 2023 lag der Konzernumsatz bei 120,0 Mio. EUR. "
+        "Im Jahresdurchschnitt 2023 waren 950 Mitarbeiter beschäftigt. "
+        "Zum 31.12.2023 beschäftigte der Konzern 1.010 Mitarbeiter."
+    )
+    document_id = store_document(
+        engine,
+        "user_upload",
+        text.encode(),
+        url="upload:lb.txt",
+        title="lb",
+        publisher=None,
+        published=None,
+        content_type="text/plain",
+    )
+    extract_company_documents(ctx, company_id, [document_id], {}, [])
+    with engine.connect() as conn:
+        heads = {
+            (r["metric"], r["value"], r["consolidation_scope"], r["period_type"])
+            for r in repo.observations(conn, company_id, "employee")
+        }
+        revenue = repo.observations(conn, company_id, "financial", "revenue")
+    assert ("headcount_avg", 950, "unknown", "fiscal_year") in heads
+    assert ("headcount_total", 1010, "group", "point_in_time") in heads
+    assert not any(m == "headcount_total" and v == 950 for m, v, _, _ in heads)  # nicht vermischt
+    assert [(r["value"], r["consolidation_scope"]) for r in revenue] == [(120_000_000, "group")]
+
+
+def test_report_and_profile_use_same_growth_rules(engine: Engine) -> None:
+    from market_intel.analytics import compare
+
+    ids = seed(engine)
+    with engine.connect() as conn:
+        row = compare(conn, [ids["muster"]])[0]
+    profile = _profile(engine, ids["muster"])
+    total = _series(profile, "finance", "revenue")
+    span = total["spans"][total["total_index"]]
+    assert str(row["revenue_cagr_pct"]) == span["cagr_pct"] == "9.4"
+    assert "kein organisches Wachstum" in row["revenue_note"]
+    assert "Zwischenjahre unbekannt" in row["revenue_note"]

@@ -71,7 +71,7 @@ Welche Anbieter mit welchen Funktionen angebunden sind: [docs/PROVIDERS.md](docs
 
 ```bash
 pip install -e ".[dev]"
-pytest            # 154 Tests mit Mock-Daten (keine echten Abrufe)
+pytest            # 156 Tests mit Mock-Daten (keine echten Abrufe)
 pytest tests/manual -m live -s   # manueller Live-Test, siehe docs/MANUAL_INTEGRATION_TEST.md
 ruff check src tests && mypy
 ```

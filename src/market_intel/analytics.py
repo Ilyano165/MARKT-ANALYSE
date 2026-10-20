@@ -8,12 +8,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from itertools import pairwise
 from typing import Any
 
 from sqlalchemy import Connection, func, select
 
 from . import db, repo
+from .intel.series import structural_events
+from .intel.timeseries import FLOW, STOCK, Event, Point, analyze, split_series
 
 METRICS = (("financial", "revenue"), ("employee", "headcount_total"))
 
@@ -31,23 +32,35 @@ class Growth:
     note: str
 
 
-def _comparable(a: dict[str, Any], b: dict[str, Any]) -> bool:
-    if (a["unit"], a["currency"], a["consolidation_scope"], a["period_type"]) != (
-        b["unit"],
-        b["currency"],
-        b["consolidation_scope"],
-        b["period_type"],
-    ):
-        return False
-    if a["period_type"] == "fiscal_year" and a["period_start"] and b["period_start"]:
-        len_a = (a["period_end"] - a["period_start"]).days
-        len_b = (b["period_end"] - b["period_start"]).days
-        return bool(abs(len_a - len_b) <= 20)
-    return True
+def _point(row: dict[str, Any]) -> Point:
+    unit = row["unit"]
+    return Point(
+        period_end=row["period_end"],
+        period_start=row.get("period_start"),
+        value=Decimal(row["value"]),
+        unit=unit,
+        currency=row.get("currency"),
+        scope=row.get("consolidation_scope", "unknown"),
+        period_type=row.get("period_type", "fiscal_year"),
+        provenance=row.get("provenance_class", "company_reported"),
+        verification=row.get("verification_status", "reported"),
+        confidence=row.get("confidence", "medium"),
+        conflict=bool(row.get("conflict")),
+        observation_id=int(row.get("id") or 0),
+        kind="employee" if unit == "persons" else "financial",
+        source_key=row.get("source_key", "") or "",
+        limitations=row.get("limitations", "") or "",
+        methodology=row.get("methodology", "") or "",
+    )
 
 
-def growth(series: list[dict[str, Any]]) -> Growth:
-    """CAGR zwischen erstem und letztem vergleichbaren Wert, dazu Vorjahresänderungen."""
+def growth(series: list[dict[str, Any]], events: list[Event] | None = None) -> Growth:
+    """CAGR und Vorjahresveränderungen nach den Regeln von ``intel.timeseries`` (§7a).
+
+    Gleiches Regelwerk wie Profil und Oberfläche: Brüche (Währung, Scope, Geschäftsjahr,
+    Rumpfjahr) beenden einen Abschnitt; maßgeblich ist der Abschnitt mit dem jüngsten Wert.
+    Schätzungen werden nicht einbezogen.
+    """
     if len(series) < 2:
         return Growth(
             len(series),
@@ -58,44 +71,40 @@ def growth(series: list[dict[str, Any]]) -> Growth:
             False,
             "weniger als zwei Zeitpunkte – keine Entwicklung berechenbar",
         )
-    last = series[-1]
-    comparable = [r for r in series if _comparable(r, last)]
-    if len(comparable) < 2:
-        return Growth(
-            len(series),
-            None,
-            None,
-            None,
-            (),
-            False,
-            "Werte nicht vergleichbar (Einheit, Scope oder Zeitraum verschieden)",
+    points = [_point(r) for r in series]
+    groups = split_series(points)
+    group = max(groups, key=lambda g: max(p.period_end for p in g))
+    mode = STOCK if group[-1].period_type == "point_in_time" else FLOW
+    analysis = analyze(group, metric="", mode=mode, events=events or [], years=100)
+    yoy = tuple(
+        (r.point.period_end.isoformat(), r.change_pct)
+        for r in analysis.rows
+        if r.point is not None and r.change_pct is not None
+    )
+    total = analysis.total
+    if total is None or total.cagr_pct is None:
+        reason = (
+            "; ".join(analysis.notes + (total.notes if total else []))
+            or "Werte nicht vergleichbar (Einheit, Scope oder Zeitraum verschieden)"
         )
-    yoy = []
-    for prev, cur in pairwise(comparable):
-        years = (cur["period_end"] - prev["period_end"]).days / 365.25
-        if 0.8 <= years <= 1.2 and Decimal(prev["value"]) > 0:
-            change = (Decimal(cur["value"]) / Decimal(prev["value"]) - 1) * 100
-            yoy.append((cur["period_end"].isoformat(), change.quantize(Decimal("0.1"))))
-    first = comparable[0]
-    years = Decimal((last["period_end"] - first["period_end"]).days) / Decimal("365.25")
-    cagr = None
-    note = ""
-    if years >= Decimal("0.9") and Decimal(first["value"]) > 0:
-        ratio = float(Decimal(last["value"]) / Decimal(first["value"]))
-        cagr = Decimal(str((ratio ** (1 / float(years)) - 1) * 100)).quantize(Decimal("0.1"))
-    else:
-        note = "Zeitspanne unter einem Jahr"
-    mixed = len({r["provenance_class"] for r in comparable}) > 1
-    if mixed:
-        note = (note + "; " if note else "") + "gemischte Herkunftsklassen"
+        return Growth(len(analysis.known_points), None, None, None, yoy, False, reason)
+    by_label = {r.label: r.point for r in analysis.rows if r.point is not None}
+    first, last = by_label[total.start_label], by_label[total.end_label]
+    assert first is not None and last is not None
+    span_points = [
+        r.point
+        for r in analysis.rows
+        if r.point is not None and first.period_end <= r.point.period_end <= last.period_end
+    ]
+    mixed = len({p.provenance for p in span_points}) > 1
     return Growth(
-        len(comparable),
-        first["period_end"].isoformat(),
-        last["period_end"].isoformat(),
-        cagr,
-        tuple(yoy),
+        len(span_points),
+        first.period_end.isoformat(),
+        last.period_end.isoformat(),
+        total.cagr_pct,
+        yoy,
         mixed,
-        note,
+        "; ".join(total.notes),
     )
 
 
@@ -129,7 +138,8 @@ def compare(conn: Connection, company_ids: list[int]) -> list[dict[str, Any]]:
         ids = repo.identifiers_of(conn, company_id)
         revenue = _primary_revenue_series(conn, company_id)
         heads = repo.current_values(conn, company_id, "employee", "headcount_total")
-        rev_growth, head_growth = growth(revenue), growth(heads)
+        events = structural_events(conn, company_id)
+        rev_growth, head_growth = growth(revenue, events), growth(heads, events)
         gaps = repo.gaps_of(conn, company_id)
         n_obs = sum(
             conn.execute(

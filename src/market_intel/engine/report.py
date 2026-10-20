@@ -22,6 +22,7 @@ from sqlalchemy import Engine, func, select
 
 from .. import db, repo
 from ..analytics import growth
+from ..intel.series import structural_events
 from ..llm.assistant import Assistant, Fact
 from ..usecases import UseCase
 from .strategy import SearchStrategy
@@ -246,7 +247,7 @@ def _company_section(
             for row in series:
                 by_currency[row["currency"]].append(row)
             for currency, rows in by_currency.items():
-                g = growth(rows)
+                g = growth(rows, structural_events(conn, company_id))
                 if g.cagr_pct is not None:
                     lines.append(
                         f"  - [Berechnung] CAGR {g.cagr_pct} % p. a. "

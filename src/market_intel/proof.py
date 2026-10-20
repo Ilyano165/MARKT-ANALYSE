@@ -17,6 +17,7 @@ from sqlalchemy import Engine, func, select
 
 from . import db
 from .analytics import compare, growth, series_for
+from .intel.series import structural_events
 from .research import named_companies, task_results
 from .sources.registry import SOURCE_BY_KEY
 
@@ -118,7 +119,10 @@ def evaluate(engine: Engine, run_id: int, out_dir: Path, llm_name: str) -> list[
         series_found = []
         for company_id in compared:
             for kind, metric in (("financial", "revenue"), ("employee", "headcount_total")):
-                g = growth(series_for(conn, company_id, kind, metric))
+                g = growth(
+                    series_for(conn, company_id, kind, metric),
+                    structural_events(conn, company_id),
+                )
                 if g.cagr_pct is not None:
                     series_found.append(
                         f"Firma {company_id} {metric}: CAGR {g.cagr_pct} % "

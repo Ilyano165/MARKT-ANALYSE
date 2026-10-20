@@ -8,7 +8,7 @@ verpflichtenden Kosten** – Prüfung über `docs/DEPENDENCIES_AND_COSTS.md`.
 
 ## 0b. Stand nach Phase 3 – Company Intelligence (2026-10-20, Version 0.3.0)
 
-Umgesetzt und getestet (**154 automatische Tests grün, 1 übersprungen (Live-Test)**, `ruff` und
+Umgesetzt und getestet (**156 automatische Tests grün, 1 übersprungen (Live-Test)**, `ruff` und
 `mypy --strict` ohne Befund; Oberfläche zusätzlich im Headless-Browser geprüft: keine
 Skriptfehler, kein horizontales Überlaufen bei 390 px):
 
@@ -31,7 +31,17 @@ Skriptfehler, kein horizontales Überlaufen bei 390 px):
   Wikidata: Hauptsitz (P159, Koordinaten P625), Produkte (P1056), Marken (P1716),
   Töchter/Mutter (P355/P749), Tätigkeitsgebiet (P2541)
 
+Nachbesserung nach Abgleich mit dem Auftrag (2026-10-20):
+- Bericht, Export, Scoring und Funktionsnachweis rechnen Wachstum jetzt mit derselben Logik wie
+  Profil und Oberfläche (`analytics.growth` nutzt `intel.timeseries`); vorher konnten sie bei
+  Übernahmen, Rumpfjahren oder Lücken abweichende CAGR zeigen
+- Mitarbeiterangaben aus Text werden nach Stichtag, Jahresdurchschnitt und Vollzeitäquivalenten
+  getrennt; „Konzern“/„group“ im Satz setzt den Konsolidierungskreis
+- Historie nennt Kennzahlen deutsch und zeigt bei neuen Zeiträumen die Nettoveränderung zum
+  zuletzt bekannten Wert (mit Hinweis auf unbekannte Zwischenjahre)
+
 **Nicht erledigt / ehrlich offen:**
+- Teilbranchen werden nur manuell erfasst (`mi add-fact --type sub_industry`), nicht automatisch
 - **Weiterhin kein Live-Test** gegen echte Quellen (Netzwerkrichtlinie der Entwicklungsumgebung);
   die Wikidata-Eigenschafts-IDs der Phase 3 sind nach Dokumentationsstand verwendet, nicht live
   geprüft. Abnahme A0 bleibt der nächste Schritt.

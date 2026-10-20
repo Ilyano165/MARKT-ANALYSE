@@ -16,6 +16,7 @@ from sqlalchemy import Connection, Engine, insert, select
 
 from . import db
 from .analytics import growth, series_for
+from .intel.series import structural_events
 
 MODEL_VERSION = "v1-entwurf"
 WEIGHTS = {"fit": 0.35, "size": 0.20, "growth": 0.20, "signals": 0.25}
@@ -53,7 +54,9 @@ def assess(conn: Connection, company_id: int, use_case_key: str) -> dict[str, An
         }
 
     for kind, metric in (("employee", "headcount_total"), ("financial", "revenue")):
-        result = growth(series_for(conn, company_id, kind, metric))
+        result = growth(
+            series_for(conn, company_id, kind, metric), structural_events(conn, company_id)
+        )
         if result.cagr_pct is not None:
             cagr = float(result.cagr_pct)
             components["growth"] = {

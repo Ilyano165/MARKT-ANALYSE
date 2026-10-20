@@ -84,8 +84,13 @@ STRUCTURAL_EVENTS = (
 )
 
 # Toleranzen für Konflikte (DATA_MODEL.md §5)
-REL_TOLERANCE = {"revenue": Decimal("0.02"), "headcount_total": Decimal("0.05")}
-ABS_TOLERANCE = {"headcount_total": Decimal(10)}
+REL_TOLERANCE = {
+    "revenue": Decimal("0.02"),
+    "headcount_total": Decimal("0.05"),
+    "headcount_avg": Decimal("0.05"),
+    "headcount_fte": Decimal("0.05"),
+}
+ABS_TOLERANCE = {m: Decimal(10) for m in ("headcount_total", "headcount_avg", "headcount_fte")}
 
 
 def sync_sources(
