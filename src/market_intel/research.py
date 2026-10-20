@@ -26,7 +26,7 @@ from . import db, repo
 from .context import Ctx
 from .engine import adapters as adapter_registry
 from .engine.budget import Budget
-from .engine.changes import record_changes
+from .engine.changes import record_changes, record_profile_changes
 from .engine.derive import SEARCH_PROFILE_KEY, convert_revenue_to_eur, record_gaps
 from .engine.extract import extract_company_documents, issue, summarize_report
 from .engine.matching import find_match_candidates
@@ -506,6 +506,7 @@ def _store(ctx: Ctx, params: dict[str, Any], cases: dict[str, UseCase]) -> TaskR
     scored = {u: score_use_case(ctx.engine, u, ctx.run_id) for u in strategy.use_cases}
     with ctx.engine.begin() as conn:
         changes = record_changes(conn, ctx.run_id or 0)
+        profile_changes = record_profile_changes(conn, ctx.run_id or 0)
     out_dir = Path(run_parameters(ctx.engine, ctx.run_id or 0)["out_dir"])
     files = export_all(
         ctx.engine, out_dir / "export", selected, selected, strategy.use_cases, ctx.run_id
@@ -514,6 +515,7 @@ def _store(ctx: Ctx, params: dict[str, Any], cases: dict[str, UseCase]) -> TaskR
         "fx_conversions": converted,
         "scored": scored,
         "changes": changes,
+        "profile_changes": profile_changes,
         "files": [str(f) for f in files],
     }
 

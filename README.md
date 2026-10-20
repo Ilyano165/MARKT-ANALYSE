@@ -5,7 +5,7 @@ mehrjährige Beobachtung von Unternehmen. **100 % kostenloser Betrieb:** keine B
 keine Abos, keine Cloud, keine KI-Dienste. Jede Zahl ist auf eine Quelle zurückführbar;
 fehlende Daten bleiben sichtbar unbekannt.
 
-Stand: Version 0.2.0 – Research Engine (Kommandozeile, Berichte, Exporte). Web-Oberfläche folgt (siehe Roadmap).
+Stand: Version 0.3.0 – Research Engine und Unternehmensanalyse (Profile, Entwicklung über 5–10 Jahre, Standorte, Wettbewerb, Änderungen) mit lokaler Oberfläche.
 
 ## Schnellstart (Windows)
 
@@ -37,6 +37,12 @@ Linux/macOS: `python3 -m venv .venv && . .venv/bin/activate && pip install -e .`
 | `mi import-document gb2023.pdf --company "ORAFOL"` | Jahresabschluss/Geschäftsbericht aus dem Unternehmensregister auswerten |
 | `mi prove` | Funktionsnachweis (Kriterien 1–9) |
 | `mi sources` / `mi adapters` / `mi llm-status` | Quellen, Adapter, lokale KI |
+| `mi ui` → http://127.0.0.1:8765/ | Oberfläche: Überblick, Finanzen, Mitarbeiter, Standorte, Produkte, Märkte, Historie, Quellen, Notizen |
+| `mi profile --company "ORAFOL" --years 10 --html orafol.html` | Unternehmensprofil als Datei (ohne Server) oder Text |
+| `mi competitors --company "ORAFOL" --store` | Wettbewerbsanalyse (direkt/indirekt/verwandt, keine Marktanteile) |
+| `mi history --company "ORAFOL"` | Veränderungen zwischen Recherchen (Ereignis- und Erfassungsdatum) |
+| `mi add-event --company "ORAFOL" --type acquisition --date 2022-07 --file gb2022.pdf --quote "…"` | belegte Übernahme erfassen (macht Wachstum „nicht organisch“) |
+| `mi add-figure --company … --metric headcount_total --value 350 --period-end 2023-12-31 --segment country:DE --file … --quote "…"` | Kennzahl mit Beleg (auch je Land/Standort, Schätzung nur mit `--methodology`) |
 
 Ergebnisse: `bericht.md` und `bericht_auftrag.html` (Fakten mit Quellenverweis [Qn],
 Berechnungen gekennzeichnet, Unsicherheiten, offene Fragen, Quellenverzeichnis) und im Ordner
@@ -52,6 +58,9 @@ Welche Anbieter mit welchen Funktionen angebunden sind: [docs/PROVIDERS.md](docs
   Webseiten (robots.txt und TDM-Vorbehalt werden beachtet). Details: `RESEARCH_SOURCES.md`.
 - **Anwendungsfälle sind Hypothesen** (`src/market_intel/data/use_cases.toml`) und müssen vom
   Vertrieb bestätigt werden.
+- **Unbekannt ist nicht null.** Fehlende Jahre erscheinen als Lücke, nie als 0 oder Stillstand;
+  Wachstum wird nur zwischen vergleichbaren Werten berechnet (Regeln:
+  `PRODUCT_SPECIFICATION.md` §7a).
 - **Lokale KI ist optional** (Ollama). Hardwarehinweise: `docs/DEPENDENCIES_AND_COSTS.md`.
 - **Firmennetz:** Wenn ein Proxy oder eine Firewall die Quellen sperrt, zeigt `mi prove` je
   Quelle den Fehler. Benötigte Hosts: api.gleif.org, www.wikidata.org, query.wikidata.org,
@@ -62,7 +71,7 @@ Welche Anbieter mit welchen Funktionen angebunden sind: [docs/PROVIDERS.md](docs
 
 ```bash
 pip install -e ".[dev]"
-pytest            # 130 Tests mit Mock-Daten (keine echten Abrufe)
+pytest            # 154 Tests mit Mock-Daten (keine echten Abrufe)
 pytest tests/manual -m live -s   # manueller Live-Test, siehe docs/MANUAL_INTEGRATION_TEST.md
 ruff check src tests && mypy
 ```

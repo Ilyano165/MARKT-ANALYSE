@@ -1,6 +1,6 @@
 # Datenmodell – Yellotools Market Intelligence
 
-Stand: 2026-10-18 · Revision 2 · relational, Zielsystem PostgreSQL ≥ 16 (SQLite für Einzelplatz,
+Stand: 2026-10-20 · Revision 3 (Schema-Version 3, Phase 3 implementiert: §3.26) · relational, Zielsystem PostgreSQL ≥ 16 (SQLite für Einzelplatz,
 siehe `ARCHITECTURE.md` ADR-04)
 
 ## 1. Grundregeln
@@ -401,6 +401,25 @@ created_at, archived_at.
 | `app_user`, `role_assignment` | Benutzer und Rollen (Teambetrieb) |
 | `audit_log` | jede schreibende Benutzeraktion, Merge, Freigabe, Export |
 | `export_job` | Exportaufträge mit Parametern, Datei-Hash, Ersteller |
+
+### 3.26 Phase 3 – implementierte Tabellen und Spalten (Schema-Version 3)
+
+Diese Tabellen sind **implementiert** (`src/market_intel/db.py`); bestehende Datenbanken werden
+beim Start ergänzt (`_ADDED_COLUMNS`). Sie ersetzen für den Prototyp die geplanten §3.8
+(Erweiterung), §3.9 (`company_market` statt `country_market`) und §3.23 (`company_note` statt
+`user_note`, ohne Benutzerkonten).
+
+| Tabelle/Spalte | Inhalt | Regeln |
+|---|---|---|
+| Beobachtungen: `segment` | Teilmenge, z. B. `country:DE`, `site:Leipzig`; leer = Gesamtwert | Gesamt- und Segmentwerte werden nie vermischt; Segment ist Teil des Inhalts-Hashes (nur wenn gesetzt) und append-only geschützt |
+| Kennzahlen | `revenue`, `headcount_total` (Stichtag), `headcount_avg` (Jahresdurchschnitt § 267 Abs. 5 HGB), `headcount_fte` | getrennte Reihen |
+| `company_location` + `latitude`, `longitude`, `geo_precision` (`none`/`site`/`city`/`region`/`country`), `geo_note`, `site_status` (`active`/`announced`/`closed`), `evidence_id`, `research_run_id` | physische Standorte; Arten: Satzungssitz, Hauptsitz, Produktion, Niederlassung, Vertriebsbüro, Lager, Logistik, F&E, Service, sonstige | Koordinaten nur aus Quelle mit Genauigkeit und Herkunftsnotiz; vorhandene Koordinaten werden nie überschrieben |
+| `company_market` | Land/Region mit `presence_type` `supplied` / `export` / `mentioned`, Grundlage, Beleg | physische Präsenz steht in `company_location`; Erwähnung ≠ Geschäft |
+| `company_profile_fact` | `brand`, `product_group`, `service`, `sales_channel`, `target_group`, `sub_industry`, `market_reach_claim` mit Beleg, Methode, Vertrauen, erfasst/zuletzt bestätigt | gleiche Angabe aus gleichem Dokument nur einmal |
+| `corporate_event` | Übernahme, Verkauf, Fusion, Konsolidierungs-/Geschäftsjahresänderung, Investition, neuer/geschlossener Standort, Erweiterung, Umstrukturierung, Abbau, Einstellungen, Produktlinie, neuer Markt, Partnerschaft, Bericht, Insolvenz; `event_date` + `date_precision` (laut Quelle), `captured_at` (Systemkenntnis), Gegenpartei, betroffene Stellen, Betrag+Währung, Prüfstatus, Vertrauen, Methode | Regel-Treffer aus Presse: `unverified/low`; manuell erfasst: `reported`/`confirmed`, `high` |
+| `profile_change` | Änderung außerhalb von Kennzahlen (neuer Standort, neue Produktgruppe/Marke/Vertriebsweg/Zielgruppe, neues Absatzland, Ereignis, Mutter/Tochter, neuer Bericht) mit Beleg, Ereignisdatum, `detected_at` | nur für Firmen, die vor dem Auftrag bekannt waren; aus Abwesenheit wird nichts abgeleitet |
+| `company_note` | interne Notiz je Abschnitt, Autor, Zeitpunkt; `supersedes_id`, `deleted` | Bearbeiten/Entfernen erzeugt neue Zeile – Historie bleibt |
+| `competitor_assessment` | Einordnung (`direct`, `indirect`, `related_market`, `no_relation`, `insufficient_data`), Dimensionen (JSON), Begründung, Regelwerk-Version | jede Speicherung ist neue Zeile (Historie) |
 
 ## 4. Beziehungen (Übersicht)
 

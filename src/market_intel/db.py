@@ -32,7 +32,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.types import TypeDecorator
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class DecimalText(TypeDecorator[Decimal]):
@@ -220,6 +220,14 @@ company_location = Table(
     Column("source_document_id", Integer, ForeignKey("source_document.id"), nullable=False),
     Column("provenance_class", String(30), nullable=False),
     Column("captured_at", DateTime(timezone=True), nullable=False),
+    # Phase 3: Koordinaten nur aus Quellen, mit Genauigkeit (site | city | region | country)
+    Column("latitude", _decimal()),
+    Column("longitude", _decimal()),
+    Column("geo_precision", String(20), nullable=False, default="none"),
+    Column("geo_note", Text, nullable=False, default=""),
+    Column("site_status", String(20), nullable=False, default="active"),
+    Column("evidence_id", Integer, ForeignKey("evidence.id")),
+    Column("research_run_id", Integer),
     UniqueConstraint("company_id", "location_type", "country_code", "city", "street"),
 )
 
@@ -264,6 +272,8 @@ def _observation_table(name: str) -> Table:
         Column("research_run_id", Integer),
         Column("supersedes_id", Integer),
         Column("content_hash", String(64), nullable=False, unique=True),
+        # Teilmenge, z. B. "country:DE" oder "site:12"; leer = Gesamtwert der Einheit.
+        Column("segment", String(80), nullable=False, default=""),
     )
 
 
@@ -499,6 +509,118 @@ list_membership = Table(
     UniqueConstraint("list_name", "company_id"),
 )
 
+# ---------------------------------------------------------------- Phase 3: Company Intelligence
+
+company_profile_fact = Table(  # Marken, Produktgruppen, Leistungen, Vertriebswege, Zielgruppen …
+    "company_profile_fact",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("company_id", Integer, ForeignKey("company.id"), nullable=False),
+    Column("fact_type", String(30), nullable=False),
+    Column("value", Text, nullable=False),
+    Column("normalized", Text, nullable=False),
+    Column("source_document_id", Integer, ForeignKey("source_document.id"), nullable=False),
+    Column("evidence_id", Integer, ForeignKey("evidence.id"), nullable=False),
+    Column("provenance_class", String(30), nullable=False),
+    Column("confidence", String(10), nullable=False),
+    Column("method", String(40), nullable=False),
+    Column("research_run_id", Integer),
+    Column("captured_at", DateTime(timezone=True), nullable=False),
+    Column("last_seen_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("company_id", "fact_type", "normalized", "source_document_id"),
+)
+
+company_market = Table(  # Länder/Regionen: belieferte Märkte und bloße Erwähnungen
+    "company_market",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("company_id", Integer, ForeignKey("company.id"), nullable=False),
+    Column("country_code", String(2)),
+    Column("region_label", Text, nullable=False, default=""),
+    Column("presence_type", String(20), nullable=False),  # supplied | export | mentioned
+    Column("basis", Text, nullable=False),
+    Column("source_document_id", Integer, ForeignKey("source_document.id"), nullable=False),
+    Column("evidence_id", Integer, ForeignKey("evidence.id"), nullable=False),
+    Column("provenance_class", String(30), nullable=False),
+    Column("confidence", String(10), nullable=False),
+    Column("research_run_id", Integer),
+    Column("captured_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint(
+        "company_id", "country_code", "region_label", "presence_type", "source_document_id"
+    ),
+)
+
+corporate_event = Table(  # Übernahmen, Verkäufe, Investitionen, Umstrukturierungen …
+    "corporate_event",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("company_id", Integer, ForeignKey("company.id"), nullable=False),
+    Column("event_type", String(40), nullable=False),
+    Column("event_date", Date),  # wann es geschah/angekündigt wurde (laut Quelle)
+    Column("date_precision", String(10), nullable=False, default="unknown"),
+    Column("summary", Text, nullable=False),
+    Column("counterparty_name", Text),
+    Column("counterparty_company_id", Integer, ForeignKey("company.id")),
+    Column("affected_headcount", Integer),
+    Column("amount", _decimal()),
+    Column("currency", String(3)),
+    Column("country_code", String(2)),
+    Column("source_document_id", Integer, ForeignKey("source_document.id"), nullable=False),
+    Column("evidence_id", Integer, ForeignKey("evidence.id"), nullable=False),
+    Column("provenance_class", String(30), nullable=False),
+    Column("verification_status", String(20), nullable=False),
+    Column("confidence", String(10), nullable=False),
+    Column("method", String(40), nullable=False),
+    Column("research_run_id", Integer),
+    Column("captured_at", DateTime(timezone=True), nullable=False),  # wann das System es erfuhr
+    Column("dedup_key", String(64), nullable=False, unique=True),
+)
+
+profile_change = Table(  # Änderungen außerhalb von Kennzahlen (Standorte, Märkte, Ereignisse …)
+    "profile_change",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("company_id", Integer, ForeignKey("company.id"), nullable=False),
+    Column("subject", String(30), nullable=False),
+    Column("change_kind", String(40), nullable=False),
+    Column("ref_table", String(40), nullable=False),
+    Column("ref_id", Integer, nullable=False),
+    Column("summary", Text, nullable=False),
+    Column("event_date", Date),
+    Column("source_document_id", Integer, ForeignKey("source_document.id")),
+    Column("evidence_id", Integer, ForeignKey("evidence.id")),
+    Column("research_run_id", Integer),
+    Column("detected_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("ref_table", "ref_id", "change_kind"),
+)
+
+company_note = Table(  # interne Notizen; Änderungen erzeugen neue Zeilen
+    "company_note",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("company_id", Integer, ForeignKey("company.id"), nullable=False),
+    Column("section", String(30), nullable=False),
+    Column("body", Text, nullable=False),
+    Column("author", Text, nullable=False),
+    Column("supersedes_id", Integer),
+    Column("deleted", Boolean, nullable=False, default=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+competitor_assessment = Table(
+    "competitor_assessment",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("company_id", Integer, ForeignKey("company.id"), nullable=False),
+    Column("competitor_id", Integer, ForeignKey("company.id"), nullable=False),
+    Column("classification", String(30), nullable=False),
+    Column("dimensions", Text, nullable=False),
+    Column("rationale", Text, nullable=False),
+    Column("method_version", String(30), nullable=False),
+    Column("research_run_id", Integer),
+    Column("assessed_at", DateTime(timezone=True), nullable=False),
+)
+
 schema_info = Table(
     "schema_info",
     metadata,
@@ -508,13 +630,14 @@ schema_info = Table(
 _IMMUTABLE_OBS_COLUMNS = (
     "company_id, metric, value, unit, currency, period_type, period_start, period_end, "
     "consolidation_scope, provenance_class, source_document_id, evidence_id, methodology, "
-    "derived_from, captured_at, content_hash"
+    "derived_from, captured_at, content_hash, segment"
 )
 
 
 def _sqlite_triggers() -> list[str]:
     statements = []
     for name in ("financial_observation", "employee_observation"):
+        statements.append(f"DROP TRIGGER IF EXISTS {name}_immutable")  # Spaltenliste aktualisieren
         statements.append(
             f"CREATE TRIGGER IF NOT EXISTS {name}_immutable BEFORE UPDATE OF "
             f"{_IMMUTABLE_OBS_COLUMNS} ON {name} BEGIN "
@@ -564,6 +687,18 @@ def make_engine(url: str) -> Engine:
 
 _ADDED_COLUMNS = {  # Spalten, die nach Version 1 hinzukamen (für bestehende Datenbanken)
     "research_task": {"step": "INTEGER NOT NULL DEFAULT 0", "label": "TEXT NOT NULL DEFAULT ''"},
+    # Version 3
+    "financial_observation": {"segment": "VARCHAR(80) NOT NULL DEFAULT ''"},
+    "employee_observation": {"segment": "VARCHAR(80) NOT NULL DEFAULT ''"},
+    "company_location": {
+        "latitude": "VARCHAR(48)",
+        "longitude": "VARCHAR(48)",
+        "geo_precision": "VARCHAR(20) NOT NULL DEFAULT 'none'",
+        "geo_note": "TEXT NOT NULL DEFAULT ''",
+        "site_status": "VARCHAR(20) NOT NULL DEFAULT 'active'",
+        "evidence_id": "INTEGER",
+        "research_run_id": "INTEGER",
+    },
 }
 
 

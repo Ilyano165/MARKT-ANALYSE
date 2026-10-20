@@ -52,12 +52,16 @@ class _TextParser(HTMLParser):
         self._in_title = False
         self._href: str | None = None
         self._link_text: list[str] = []
+        self.headings: list[str] = []
+        self._heading: list[str] | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in _SKIP_TAGS:
             self._skip += 1
         if tag == "title":
             self._in_title = True
+        if tag in ("h1", "h2", "h3") and not self._skip:
+            self._heading = []
         if tag in _BLOCK_TAGS:
             self.parts.append("\n")
         if tag == "a":
@@ -71,6 +75,11 @@ class _TextParser(HTMLParser):
             self._skip -= 1
         if tag == "title":
             self._in_title = False
+        if tag in ("h1", "h2", "h3") and self._heading is not None:
+            heading = " ".join(" ".join(self._heading).split())
+            if heading:
+                self.headings.append(heading)
+            self._heading = None
         if tag == "a" and self._href:
             self.links.append((self._href, " ".join(self._link_text).strip()))
             self._href = None
@@ -84,6 +93,8 @@ class _TextParser(HTMLParser):
             self.title += data
             return
         self.parts.append(data)
+        if self._heading is not None:
+            self._heading.append(data)
         if self._href is not None:
             self._link_text.append(data.strip())
 
@@ -95,6 +106,7 @@ class HtmlText:
     title: str
     text: str
     links: tuple[tuple[str, str], ...]
+    headings: tuple[str, ...] = ()
 
 
 def html_to_text(html: str, base_url: str) -> HtmlText:
@@ -105,7 +117,7 @@ def html_to_text(html: str, base_url: str) -> HtmlText:
     raw = "".join(parser.parts)
     lines = [re.sub(r"[ \t ]+", " ", line).strip() for line in raw.splitlines()]
     text = "\n".join(line for line in lines if line)
-    return HtmlText(parser.title.strip(), text, tuple(parser.links))
+    return HtmlText(parser.title.strip(), text, tuple(parser.links), tuple(parser.headings))
 
 
 def same_site_links(links: tuple[tuple[str, str], ...], base_url: str) -> list[tuple[str, str]]:

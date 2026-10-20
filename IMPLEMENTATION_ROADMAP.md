@@ -1,10 +1,51 @@
 # Umsetzungsplan – Yellotools Market Intelligence
 
-Stand: 2026-10-19 · Revision 3 (Phase 2 Research Engine; verbindlich: **100 % kostenloser Betrieb**)
+Stand: 2026-10-20 · Revision 4 (Phase 3 Company Intelligence; verbindlich: **100 % kostenloser Betrieb**)
 
 Grundsätze: kleine, abnehmbare Meilensteine; jeder endet mit grünen Tests. **Gate „Kosten“
 gilt für jeden Meilenstein: keine neue Abhängigkeit, Quelle oder Infrastruktur mit
 verpflichtenden Kosten** – Prüfung über `docs/DEPENDENCIES_AND_COSTS.md`.
+
+## 0b. Stand nach Phase 3 – Company Intelligence (2026-10-20, Version 0.3.0)
+
+Umgesetzt und getestet (**154 automatische Tests grün, 1 übersprungen (Live-Test)**, `ruff` und
+`mypy --strict` ohne Befund; Oberfläche zusätzlich im Headless-Browser geprüft: keine
+Skriptfehler, kein horizontales Überlaufen bei 390 px):
+
+- Persistente Profile: offizieller Name, Namen/Marken, Website, Hauptsitz und weitere
+  Standorte, Mutter/Töchter, Branche/Teilbranchen, Produktgruppen/Leistungen, Absatzländer,
+  Vertriebswege, Zielgruppen, Mitarbeiter, Umsatz, Wachstumshinweise, Quellen mit Abrufzeit
+- Umsatzentwicklung 5–10 Geschäftsjahre (Δ absolut/%, Gesamtveränderung, CAGR mit Formel),
+  Brüche bei Währung, Geschäftsjahr (Rumpfjahr), Konsolidierungskreis; Übernahmen „nicht
+  organisch“; Schätzungen nur auf Wunsch (Regeln: `PRODUCT_SPECIFICATION.md` §7a)
+- Mitarbeiterentwicklung mit Personal-Dynamik (Netto ≠ Einstellungen; Abbau-/Einstellungs-
+  meldungen und Stellenanzeigen getrennt), Segmente nach Land/Standort
+- Standorte/Märkte in drei Stufen, Karte nur mit ausreichend genauen Koordinaten
+- Wettbewerbsanalyse direkt/indirekt/verwandt, ohne Marktanteile, mit Historie
+- Änderungserkennung bei erneuter Recherche (Ereignisdatum ≠ Erfassungsdatum), Historie bleibt
+- Oberfläche `mi ui` mit neun Abschnitten, interaktiven Diagrammen, Herkunftsseite je Zahl,
+  Notizen; HTML-Export; Erfassung mit Beleg (`mi add-*`)
+- Neue Extraktoren: schema.org-Organisation (Adressen mit Koordinaten, Marken, Angebote,
+  Tätigkeitsgebiet), Länder in Standort-/Vertriebssätzen, Reichweite, Vertriebswege,
+  Zielgruppen, Produktüberschriften, Abbau/Einstellungen/Umstrukturierung in Pressetexten;
+  Wikidata: Hauptsitz (P159, Koordinaten P625), Produkte (P1056), Marken (P1716),
+  Töchter/Mutter (P355/P749), Tätigkeitsgebiet (P2541)
+
+**Nicht erledigt / ehrlich offen:**
+- **Weiterhin kein Live-Test** gegen echte Quellen (Netzwerkrichtlinie der Entwicklungsumgebung);
+  die Wikidata-Eigenschafts-IDs der Phase 3 sind nach Dokumentationsstand verwendet, nicht live
+  geprüft. Abnahme A0 bleibt der nächste Schritt.
+- Regelbasierte Profilextraktion ist bewusst vorsichtig und unvollständig: Städte werden nur aus
+  strukturierten Daten (schema.org, Wikidata) übernommen, aus Fließtext nur Länder.
+  Produktgruppen aus Überschriften haben geringe Sicherheit und brauchen Sichtprüfung.
+- Übernahmen/Konsolidierungsänderungen werden aus Pressetexten nur als unbestätigte Hinweise
+  erkannt; als Strukturbruch zählen nur erfasste/belegte Ereignisse (`mi add-event`).
+- Mitarbeiter nach Land/Standort nur bei manueller Erfassung (`--segment`); keine automatische
+  Extraktion von Segmenttabellen aus Geschäftsberichten.
+- Keine organische/währungsbereinigte Wachstumsrate (bräuchte Umsätze der Zukäufe und
+  Vorjahreskurse je Währungsanteil).
+- Oberfläche ohne Anmeldung (nur lokal); Filterlisten, Run-Steuerung und Vergleichsansicht
+  der Spezifikation (Bildschirme 1–3, 7–11) fehlen noch.
 
 ## 0a. Stand nach Phase 2 – Research Engine (2026-10-19, Version 0.2.0)
 

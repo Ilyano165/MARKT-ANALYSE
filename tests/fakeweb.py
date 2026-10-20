@@ -101,8 +101,36 @@ ENTITIES: dict[str, dict[str, Any]] = {
             "P17": [_claim_item("Q900902")],
             "P856": [_claim_string("https://www.orafol-test.test/")],
             "P1128": [_claim_quantity("+2400", 2020), _claim_quantity("+2900", 2023)],
+            "P159": [_claim_item("Q900903")],
+            "P1056": [_claim_item("Q900960")],
+            "P1716": [_claim_item("Q900961")],
+            "P355": [_claim_item("Q900970")],
+            "P2541": [_claim_item("Q900902"), _claim_item("Q900904")],
         },
     },
+    "Q900903": {
+        "id": "Q900903",
+        "labels": {"de": {"value": "Oranienburg"}},
+        "claims": {
+            "P17": [_claim_item("Q900902")],
+            "P625": [
+                {
+                    "rank": "normal",
+                    "mainsnak": {
+                        "datavalue": {"value": {"latitude": 52.7547, "longitude": 13.2369}}
+                    },
+                }
+            ],
+        },
+    },
+    "Q900904": {
+        "id": "Q900904",
+        "labels": {"de": {"value": "Testland FR"}},
+        "claims": {"P297": [_claim_string("FR")]},
+    },
+    "Q900960": {"id": "Q900960", "labels": {"de": {"value": "Selbstklebefolie"}}, "claims": {}},
+    "Q900961": {"id": "Q900961", "labels": {"de": {"value": "ORACAL"}}, "claims": {}},
+    "Q900970": {"id": "Q900970", "labels": {"de": {"value": "ORAFOL Polska"}}, "claims": {}},
     "Q900900": {
         "id": "Q900900",
         "labels": {"de": {"value": "Testland US"}},
@@ -269,7 +297,26 @@ PAGES.update(
         "<p>Hersteller selbstklebender Folien für Car Wrapping, Werbetechnik und "
         "Sonnenschutzfolie.</p><a href='/impressum'>Impressum</a><a href='/karriere'>Karriere</a>"
         "<a href='/presse'>Presse</a><a href='/investor-relations'>Investor Relations</a>"
-        "<a href='/shop/cart?add=1'>Warenkorb</a></body></html>",
+        "<a href='/shop/cart?add=1'>Warenkorb</a><a href='/produkte'>Produkte</a>"
+        "<a href='/international'>International</a></body></html>",
+        "https://www.orafol-test.test/produkte": "<html><head><title>Produkte</title>"
+        '<script type="application/ld+json">{"@context":"https://schema.org",'
+        '"@type":"Organization","name":"ORAFOL Europe GmbH","alternateName":"ORAFOL",'
+        '"brand":[{"@type":"Brand","name":"ORAJET"}],'
+        '"address":{"@type":"PostalAddress","streetAddress":"Orafolstraße 2",'
+        '"addressLocality":"Oranienburg","postalCode":"16515","addressCountry":"DE"},'
+        '"geo":{"@type":"GeoCoordinates","latitude":52.7612,"longitude":13.2181},'
+        '"department":[{"@type":"Organization","name":"Zentrallager Leipzig",'
+        '"address":{"addressLocality":"Leipzig","addressCountry":"DE"}}],'
+        '"areaServed":["Österreich","Schweiz"],'
+        '"hasOfferCatalog":{"@type":"OfferCatalog","name":"Sortiment","itemListElement":['
+        '{"@type":"OfferCatalog","name":"Car-Wrapping-Folien"}]}}</script></head><body>'
+        "<h1>Produkte</h1><h2>Car-Wrapping-Folien</h2><h2>Reflexfolien</h2>"
+        "<h2>Mehr erfahren</h2><p>Für Werbetechnik und Fahrzeugfolierer.</p></body></html>",
+        "https://www.orafol-test.test/international": "<html><head><title>International"
+        "</title></head><body><p>Unser Werk in Polen fertigt Reflexfolien.</p>"
+        "<p>Wir exportieren nach Frankreich und Italien und liefern über den Fachhandel "
+        "in über 40 Ländern.</p></body></html>",
         "https://www.orafol-test.test/impressum": "<html><head><title>Impressum</title></head>"
         "<body>"
         "<p>ORAFOL Europe GmbH</p><p>Registergericht: Amtsgericht Neuruppin, HRB 12345 NP</p>"
@@ -284,6 +331,7 @@ PAGES.update(
         "<p>Offene Stellen</p></body></html>",
         "https://www.orafol-test.test/presse": "<html><head><title>Presse</title></head><body>"
         "<p>12.05.2026: ORAFOL eröffnet ein neues Werk in Polen und erweitert die Produktion.</p>"
+        "<p>03.02.2026: Im Zuge der Neuausrichtung baut das Werk Oranienburg 50 Stellen ab.</p>"
         "</body></html>",
         "https://www.orafol-test.test/investor-relations": "<html><head><title>Investor Relations"
         "</title></head><body><a href='/dl/geschaeftsbericht-2023.pdf'>Geschäftsbericht 2023</a>"

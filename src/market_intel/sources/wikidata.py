@@ -260,6 +260,7 @@ def ingest_entity(ctx: Ctx, qid: str, *, company_id: int | None = None) -> int |
                     document_id,
                     ProvenanceClass.THIRD_PARTY,
                 )
+    ingest_profile(ctx, company_id, entity, document_id, raw)
     drafts = quantity_observations(ctx, company_id, entity, document_id, raw)
     with ctx.engine.begin() as conn:
         for draft in drafts:
@@ -325,3 +326,147 @@ def companies_by_industry(
                 }
             )
     return rows, result.document_id
+
+
+# ---------------------------------------------------------------------- Phase 3: Profil
+
+# Eigenschaften (IDs nach Wikidata-Dokumentation; live in dieser Umgebung ungeprüft):
+# P159 Hauptsitz, P625 Koordinaten, P17 Staat, P1056 Produkt, P1716 Marke,
+# P355 Tochtergesellschaft, P749 Mutterorganisation, P2541 Tätigkeitsgebiet.
+LIMITS = {"P1056": 20, "P1716": 20, "P355": 25, "P749": 3, "P2541": 15, "P159": 2}
+_place_cache: dict[str, tuple[str, str | None, Decimal | None, Decimal | None]] = {}
+
+
+def _coordinates(claims: list[dict[str, Any]]) -> tuple[Decimal | None, Decimal | None]:
+    for claim in claims:
+        value = as_dict(as_dict(claim.get("datavalue")).get("value"))
+        if not value:
+            value = as_dict(as_dict(as_dict(claim.get("mainsnak")).get("datavalue")).get("value"))
+        lat, lon = value.get("latitude"), value.get("longitude")
+        if isinstance(lat, int | float) and isinstance(lon, int | float):
+            return Decimal(str(lat)), Decimal(str(lon))
+    return None, None
+
+
+def place_of(ctx: Ctx, qid: str) -> tuple[str, str | None, Decimal | None, Decimal | None]:
+    """(Name, Land, Breite, Länge) eines Ortes; Koordinaten nur, wenn Wikidata sie hat."""
+    if qid not in _place_cache:
+        entity, _, _ = load_entity(ctx, qid)
+        if entity is None:
+            _place_cache[qid] = (qid, None, None, None)
+        else:
+            countries = item_values(entity, "P17")
+            country = code_of(ctx, countries[0], "P297") if countries else None
+            lat, lon = _coordinates(claim_values(entity, "P625"))
+            _place_cache[qid] = (label(entity), country, lat, lon)
+    return _place_cache[qid]
+
+
+def ingest_profile(
+    ctx: Ctx, company_id: int, entity: dict[str, Any], document_id: int, raw: str
+) -> None:
+    """Hauptsitz, Produkte, Marken, Konzernbeziehungen und Tätigkeitsgebiet (third_party)."""
+    provenance = ProvenanceClass.THIRD_PARTY
+
+    def ev(prop: str, index: int, qid: str) -> EvidenceDraft:
+        found = re.search(r'"id"\s*:\s*"' + re.escape(qid) + '"', raw)
+        quote = found.group(0) if found else qid
+        return EvidenceDraft(
+            document_id, f"claims.{prop}[{index}]", quote, "api_field", VERSION, found is not None
+        )
+
+    hq_claims = claim_values(entity, "P159")[: LIMITS["P159"]]
+    for index, claim in enumerate(hq_claims):
+        value = as_dict(claim["mainsnak"]["datavalue"].get("value"))
+        qid = str(value.get("id", ""))
+        evidence = ev("P159", index, qid)
+        if not _QID.match(qid) or not evidence.quote_verified:
+            continue
+        name, country, lat, lon = place_of(ctx, qid)
+        site_lat, site_lon = _coordinates(claim.get("qualifiers", {}).get("P625", []))
+        precision, note = "none", ""
+        if site_lat is not None:
+            lat, lon, precision = site_lat, site_lon, "site"
+            note = "Koordinaten des Hauptsitzes laut Wikidata (Qualifikator P625)"
+        elif lat is not None:
+            precision = "city"
+            note = f"Koordinaten des Ortes {name} (Wikidata), nicht der Adresse"
+        with ctx.engine.begin() as conn:
+            evidence_id = repo.add_evidence(conn, evidence)
+            repo.add_location(
+                conn,
+                company_id,
+                "headquarters",
+                country_code=country,
+                city=name,
+                postal_code=None,
+                street=None,
+                document_id=document_id,
+                provenance=provenance,
+                latitude=lat,
+                longitude=lon,
+                geo_precision=precision,
+                geo_note=note,
+                evidence_id=evidence_id,
+                run_id=ctx.run_id,
+            )
+    for prop, fact_type in (("P1056", "product_group"), ("P1716", "brand")):
+        qids = item_values(entity, prop)[: LIMITS[prop]]
+        if not qids:
+            continue
+        names = _labels(ctx, qids)
+        with ctx.engine.begin() as conn:
+            for index, qid in enumerate(qids):
+                repo.add_profile_fact(
+                    conn,
+                    company_id,
+                    fact_type,
+                    names.get(qid, qid),
+                    ev(prop, index, qid),
+                    provenance=provenance,
+                    confidence="medium",
+                    method="api_field",
+                    run_id=ctx.run_id,
+                )
+    for prop, direction in (("P355", "child"), ("P749", "parent")):
+        qids = item_values(entity, prop)[: LIMITS[prop]]
+        if not qids:
+            continue
+        names = _labels(ctx, qids)
+        with ctx.engine.begin() as conn:
+            for index, qid in enumerate(qids):
+                if not ev(prop, index, qid).quote_verified:
+                    continue
+                other_id, _ = repo.resolve_or_create(
+                    conn, names.get(qid, qid), [("wikidata", qid)], document_id=document_id
+                )
+                parent, child = (
+                    (company_id, other_id) if direction == "child" else (other_id, company_id)
+                )
+                repo.add_parent(
+                    conn,
+                    parent,
+                    child,
+                    "wikidata_parent",
+                    f"wikidata_{prop}",
+                    document_id,
+                    provenance,
+                )
+    areas = item_values(entity, "P2541")[: LIMITS["P2541"]]
+    if areas:
+        names = _labels(ctx, areas)
+        for index, qid in enumerate(areas):
+            code = code_of(ctx, qid, "P297")
+            with ctx.engine.begin() as conn:
+                repo.add_market(
+                    conn,
+                    company_id,
+                    country_code=code,
+                    region_label="" if code else names.get(qid, qid),
+                    presence_type="supplied",
+                    basis=f"Wikidata Tätigkeitsgebiet (P2541): {names.get(qid, qid)}",
+                    evidence=ev("P2541", index, qid),
+                    provenance=provenance,
+                    confidence="medium",
+                    run_id=ctx.run_id,
+                )

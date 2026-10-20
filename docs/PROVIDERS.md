@@ -1,6 +1,6 @@
 # Anbieter und Adapter – was tatsächlich angebunden ist
 
-Stand: 2026-10-19 · market-intel 0.2.0 · Adapterliste im Programm: `mi adapters`, Quellenregister:
+Stand: 2026-10-20 · market-intel 0.3.0 · Adapterliste im Programm: `mi adapters`, Quellenregister:
 `mi sources`.
 
 **Teststatus-Legende**
@@ -46,6 +46,13 @@ Dokumentation der Anbieter bzw. aus dokumentierten Wiederverwender-Beispielen (P
 - Daten: QID, Website (P856), Land (P17 → P297), Branche (P452), LEI (P1278), SEC-CIK (P5531),
   Mitarbeiter (P1128) und Umsatz (P2139) **nur mit Stichtag (P585)**, Währung über P498
 - Funktionen: Kandidaten über Branchen-SPARQL je Land, Zuordnung nur über gleichen LEI
+- Phase 3: Hauptsitz (P159) mit Ortskoordinaten (P625 des Ortes → Genauigkeit „city“, Qualifikator
+  P625 am Hauptsitz → „site“), Produkte (P1056) und Marken (P1716) als Profilangaben,
+  Tochter-/Muttergesellschaften (P355/P749, Beziehung `wikidata_parent`), Tätigkeitsgebiet (P2541)
+  als „beliefert“; Beleg ist das JSON-Fragment `"id":"Q…"` im gespeicherten EntityData-Dokument.
+  **Eigenschafts-IDs nach Wikidata-Dokumentationsstand, live nicht geprüft** (Wikidata ist aus
+  der Entwicklungsumgebung gesperrt). Grenzen: höchstens 20 Produkte/Marken, 25 Töchter,
+  15 Gebiete je Firma (Abruflast)
 - Bedingungen: CC0; User-Agent mit Kontakt; SPARQL-Rechenzeitlimit
 - Herkunftsklasse: `third_party`
 - Test: Mock
@@ -93,6 +100,12 @@ Dokumentation der Anbieter bzw. aus dokumentierten Wiederverwender-Beispielen (P
   Mitarbeiter, Handelsregisternummer und USt-IdNr. (nur Impressum), Stellenanzeigen (JSON-LD),
   Pressemeldungen (neuer Standort, Erweiterung, Investition, Übernahme, Partnerschaft),
   Anwendungsfall- und Suchprofil-Belege; optional KI-Klassifikation mit Zitatprüfung
+- Phase 3 (`extraction/profile.py`): schema.org-`Organization` (Namen, Marken, Adresse und
+  Abteilungen/Standorte mit `GeoCoordinates` → Genauigkeit „site“, `areaServed`, Angebotskatalog),
+  Länder in Sätzen über Werke/Niederlassungen (physisch, nur Land), Export/Vertrieb (beliefert)
+  oder Präsenz (erwähnt), „in über 40 Ländern“, Vertriebswege und Zielgruppen
+  (`data/profile_lexicon.toml`), Überschriften auf Produkt-/Leistungsseiten (Vertrauen „low“);
+  Pressetexte zusätzlich als Unternehmensereignis (`unverified`)
 - Website-Adresse kommt aus Wikidata, Firmenlisten oder (künftig) dem Impressum – **ohne
   Websuche findet das Programm keine Website, die in keiner Quelle steht**
 - Test: Mock (inkl. kaputtem HTML, kaputtem JSON-LD, Prompt-Injection-PDF, robots-Sperre)

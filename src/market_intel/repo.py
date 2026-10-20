@@ -31,6 +31,58 @@ from .engine.validation import check_draft
 from .resolution import STRONG_SCHEMES, normalize_domain, normalize_name
 from .sources.registry import SOURCES, is_enabled
 
+# Standortarten: physische Standorte. Belieferte/erwähnte Länder stehen in company_market.
+LOCATION_TYPES = (
+    "registered_office",
+    "headquarters",
+    "production",
+    "branch",
+    "sales_office",
+    "warehouse",
+    "logistics",
+    "r_and_d",
+    "service",
+    "other_site",
+)
+GEO_PRECISIONS = ("none", "site", "city", "region", "country")
+FACT_TYPES = (
+    "brand",
+    "product_group",
+    "service",
+    "sales_channel",
+    "target_group",
+    "sub_industry",
+    "market_reach_claim",
+)
+MARKET_PRESENCE = ("supplied", "export", "mentioned")
+EVENT_TYPES = (
+    "acquisition",
+    "divestment",
+    "merger",
+    "consolidation_change",
+    "fiscal_year_change",
+    "investment",
+    "new_site",
+    "site_closure",
+    "expansion",
+    "restructuring",
+    "layoff",
+    "hiring",
+    "new_product_line",
+    "new_market",
+    "partnership",
+    "annual_report",
+    "insolvency",
+)
+# Ereignisse, die Vergleiche über die Zeit verzerren (Konsolidierungskreis, Berichtszeitraum)
+STRUCTURAL_EVENTS = (
+    "acquisition",
+    "divestment",
+    "merger",
+    "consolidation_change",
+    "fiscal_year_change",
+)
+
 # Toleranzen für Konflikte (DATA_MODEL.md §5)
 REL_TOLERANCE = {"revenue": Decimal("0.02"), "headcount_total": Decimal("0.05")}
 ABS_TOLERANCE = {"headcount_total": Decimal(10)}
@@ -230,10 +282,33 @@ def add_location(
     street: str | None,
     document_id: int,
     provenance: ProvenanceClass,
-) -> None:
-    """Standort speichern (gleicher Standort nur einmal)."""
+    latitude: Decimal | None = None,
+    longitude: Decimal | None = None,
+    geo_precision: str = "none",
+    geo_note: str = "",
+    site_status: str = "active",
+    evidence_id: int | None = None,
+    run_id: int | None = None,
+) -> int:
+    """Standort speichern (gleicher Standort nur einmal); gibt die Standort-ID zurück.
+
+    Koordinaten nur aus einer Quelle (nie geraten); fehlende Koordinaten eines bekannten
+    Standorts werden ergänzt, vorhandene nie überschrieben.
+    """
+    if location_type not in LOCATION_TYPES:
+        raise ValueError(f"Unbekannte Standortart {location_type!r}")
+    if geo_precision not in GEO_PRECISIONS:
+        raise ValueError(f"Unbekannte Koordinatengenauigkeit {geo_precision!r}")
+    if (latitude is None) != (longitude is None) or (
+        latitude is not None
+        and longitude is not None
+        and not (-90 <= latitude <= 90 and -180 <= longitude <= 180)
+    ):
+        raise ValueError("Ungültige Koordinaten")
+    if latitude is not None and geo_precision == "none":
+        raise ValueError("Koordinaten brauchen eine Genauigkeitsangabe")
     exists = conn.execute(
-        select(db.company_location.c.id).where(
+        select(db.company_location.c.id, db.company_location.c.latitude).where(
             db.company_location.c.company_id == company_id,
             db.company_location.c.location_type == location_type,
             db.company_location.c.country_code == country_code,
@@ -241,7 +316,20 @@ def add_location(
             db.company_location.c.street == street,
         )
     ).first()
-    if exists is None:
+    if exists is not None:
+        if exists.latitude is None and latitude is not None:
+            conn.execute(
+                update(db.company_location)
+                .where(db.company_location.c.id == exists.id)
+                .values(
+                    latitude=latitude,
+                    longitude=longitude,
+                    geo_precision=geo_precision,
+                    geo_note=geo_note,
+                )
+            )
+        return int(exists.id)
+    return int(
         conn.execute(
             insert(db.company_location).values(
                 company_id=company_id,
@@ -253,8 +341,16 @@ def add_location(
                 source_document_id=document_id,
                 provenance_class=provenance.value,
                 captured_at=db.utcnow(),
+                latitude=latitude,
+                longitude=longitude,
+                geo_precision=geo_precision,
+                geo_note=geo_note,
+                site_status=site_status,
+                evidence_id=evidence_id,
+                research_run_id=run_id,
             )
-        )
+        ).inserted_primary_key[0]
+    )
 
 
 def add_parent(
@@ -363,6 +459,8 @@ def _content_hash(draft: ObservationDraft) -> str:
             draft.provenance_class.value,
         )
     )
+    if draft.segment:
+        key += "|segment=" + draft.segment
     return hashlib.sha256(key.encode()).hexdigest()
 
 
@@ -432,6 +530,7 @@ def ingest_observation(
                 last_seen_at=now,
                 research_run_id=run_id,
                 content_hash=content_hash,
+                segment=draft.segment,
             )
         ).inserted_primary_key[0]
     )
@@ -454,6 +553,7 @@ def _detect_conflicts(
         ).where(
             table.c.company_id == draft.company_id,
             table.c.metric == draft.metric,
+            table.c.segment == draft.segment,
             table.c.period_end == draft.period_end,
             table.c.id != new_id,
             table.c.provenance_class.notin_(
@@ -597,11 +697,16 @@ def observations(
 
 
 def current_values(
-    conn: Connection, company_id: int, kind: str, metric: str
+    conn: Connection, company_id: int, kind: str, metric: str, segment: str = ""
 ) -> list[dict[str, Any]]:
-    """Gültiger Wert je Zeitraum nach DATA_MODEL.md §6 (mit Konfliktkennzeichen)."""
+    """Gültiger Wert je Zeitraum nach DATA_MODEL.md §6 (mit Konfliktkennzeichen).
+
+    ``segment`` leer = Gesamtwerte; sonst nur die Werte dieses Segments (z. B. "country:DE").
+    """
     by_period: dict[tuple[date, str, str | None], list[dict[str, Any]]] = {}
     for row in observations(conn, company_id, kind, metric):
+        if (row.get("segment") or "") != segment:
+            continue
         if row["verification_status"] in (
             VerificationStatus.REJECTED.value,
             VerificationStatus.SUPERSEDED.value,
@@ -678,5 +783,360 @@ def signals_for(conn: Connection, company_id: int) -> list[dict[str, Any]]:
             .join(db.evidence, db.evidence.c.id == db.business_signal.c.evidence_id)
             .where(and_(db.business_signal.c.company_id == company_id))
             .order_by(db.business_signal.c.event_date.desc())
+        ).mappings()
+    ]
+
+
+# ---------------------------------------------------------------------- Phase 3: Profil
+
+
+def add_profile_fact(
+    conn: Connection,
+    company_id: int,
+    fact_type: str,
+    value: str,
+    evidence: EvidenceDraft,
+    *,
+    provenance: ProvenanceClass,
+    confidence: str,
+    method: str,
+    run_id: int | None,
+) -> int | None:
+    """Profilangabe (Marke, Produktgruppe …) mit Beleg; gibt die ID neuer Angaben zurück.
+
+    Dieselbe Angabe aus demselben Dokument wird nur einmal gespeichert (``last_seen_at``).
+    """
+    if fact_type not in FACT_TYPES:
+        raise ValueError(f"Unbekannte Profilangabe {fact_type!r}")
+    value = " ".join(value.split())[:300]
+    normalized = normalize_name(value) or value.lower()
+    if not value or not evidence.quote_verified:
+        return None
+    now = db.utcnow()
+    table = db.company_profile_fact
+    existing = conn.execute(
+        select(table.c.id).where(
+            table.c.company_id == company_id,
+            table.c.fact_type == fact_type,
+            table.c.normalized == normalized,
+            table.c.source_document_id == evidence.document_id,
+        )
+    ).scalar()
+    if existing is not None:
+        conn.execute(update(table).where(table.c.id == existing).values(last_seen_at=now))
+        return None
+    evidence_id = add_evidence(conn, evidence)
+    return int(
+        conn.execute(
+            insert(table).values(
+                company_id=company_id,
+                fact_type=fact_type,
+                value=value,
+                normalized=normalized,
+                source_document_id=evidence.document_id,
+                evidence_id=evidence_id,
+                provenance_class=provenance.value,
+                confidence=confidence,
+                method=method,
+                research_run_id=run_id,
+                captured_at=now,
+                last_seen_at=now,
+            )
+        ).inserted_primary_key[0]
+    )
+
+
+def add_market(
+    conn: Connection,
+    company_id: int,
+    *,
+    country_code: str | None,
+    region_label: str,
+    presence_type: str,
+    basis: str,
+    evidence: EvidenceDraft,
+    provenance: ProvenanceClass,
+    confidence: str,
+    run_id: int | None,
+) -> int | None:
+    """Belieferter/erwähnter Markt. Physische Standorte gehören in ``add_location``."""
+    if presence_type not in MARKET_PRESENCE:
+        raise ValueError(f"Unbekannte Marktpräsenz {presence_type!r}")
+    if not evidence.quote_verified or not (country_code or region_label):
+        return None
+    table = db.company_market
+    exists = conn.execute(
+        select(table.c.id).where(
+            table.c.company_id == company_id,
+            table.c.country_code == country_code,
+            table.c.region_label == region_label,
+            table.c.presence_type == presence_type,
+            table.c.source_document_id == evidence.document_id,
+        )
+    ).first()
+    if exists is not None:
+        return None
+    evidence_id = add_evidence(conn, evidence)
+    return int(
+        conn.execute(
+            insert(table).values(
+                company_id=company_id,
+                country_code=country_code,
+                region_label=region_label,
+                presence_type=presence_type,
+                basis=basis[:300],
+                source_document_id=evidence.document_id,
+                evidence_id=evidence_id,
+                provenance_class=provenance.value,
+                confidence=confidence,
+                research_run_id=run_id,
+                captured_at=db.utcnow(),
+            )
+        ).inserted_primary_key[0]
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class EventDraft:
+    """Unternehmensereignis mit Beleg. ``event_date`` ist das Datum laut Quelle."""
+
+    company_id: int
+    event_type: str
+    summary: str
+    evidence: EvidenceDraft
+    provenance: ProvenanceClass
+    confidence: str
+    method: str
+    event_date: date | None = None
+    date_precision: str = "unknown"  # day | month | year | unknown
+    counterparty_name: str | None = None
+    counterparty_company_id: int | None = None
+    affected_headcount: int | None = None
+    amount: Decimal | None = None
+    currency: str | None = None
+    country_code: str | None = None
+    verification_status: str | None = None
+
+
+def add_event(conn: Connection, draft: EventDraft, run_id: int | None) -> int | None:
+    """Ereignis speichern; dieselbe Meldung nur einmal. Gibt die ID neuer Ereignisse zurück."""
+    if draft.event_type not in EVENT_TYPES:
+        raise ValueError(f"Unbekannte Ereignisart {draft.event_type!r}")
+    if draft.date_precision not in ("day", "month", "year", "unknown"):
+        raise ValueError("Ungültige Datumsgenauigkeit")
+    if (draft.event_date is None) != (draft.date_precision == "unknown"):
+        raise ValueError("Datum und Datumsgenauigkeit passen nicht zusammen")
+    if draft.amount is not None and not draft.currency:
+        raise ValueError("Beträge brauchen eine Währung")
+    if not draft.evidence.quote_verified:
+        return None
+    dedup = hashlib.sha256(
+        f"{draft.company_id}|{draft.event_type}|{draft.evidence.document_id}|"
+        f"{draft.evidence.quote[:300]}".encode()
+    ).hexdigest()
+    table = db.corporate_event
+    if conn.execute(select(table.c.id).where(table.c.dedup_key == dedup)).first():
+        return None
+    evidence_id = add_evidence(conn, draft.evidence)
+    status = draft.verification_status or DEFAULT_STATUS[draft.provenance].value
+    return int(
+        conn.execute(
+            insert(table).values(
+                company_id=draft.company_id,
+                event_type=draft.event_type,
+                event_date=draft.event_date,
+                date_precision=draft.date_precision,
+                summary=draft.summary[:500],
+                counterparty_name=draft.counterparty_name,
+                counterparty_company_id=draft.counterparty_company_id,
+                affected_headcount=draft.affected_headcount,
+                amount=draft.amount,
+                currency=draft.currency,
+                country_code=draft.country_code,
+                source_document_id=draft.evidence.document_id,
+                evidence_id=evidence_id,
+                provenance_class=draft.provenance.value,
+                verification_status=status,
+                confidence=draft.confidence,
+                method=draft.method,
+                research_run_id=run_id,
+                captured_at=db.utcnow(),
+                dedup_key=dedup,
+            )
+        ).inserted_primary_key[0]
+    )
+
+
+NOTE_SECTIONS = (
+    "overview",
+    "finance",
+    "employees",
+    "locations",
+    "products",
+    "markets",
+    "history",
+    "sources",
+    "notes",
+)
+
+
+def add_note(
+    conn: Connection,
+    company_id: int,
+    section: str,
+    body: str,
+    author: str,
+    supersedes_id: int | None = None,
+    deleted: bool = False,
+) -> int:
+    """Interne Notiz. Bearbeiten/Löschen legt eine neue Version an (alte bleibt erhalten)."""
+    if section not in NOTE_SECTIONS:
+        raise ValueError(f"Unbekannter Abschnitt {section!r}")
+    body = body.strip()[:10_000]
+    if not body and not deleted:
+        raise ValueError("Leere Notiz")
+    return int(
+        conn.execute(
+            insert(db.company_note).values(
+                company_id=company_id,
+                section=section,
+                body=body,
+                author=(author.strip() or "unbekannt")[:120],
+                supersedes_id=supersedes_id,
+                deleted=deleted,
+                created_at=db.utcnow(),
+            )
+        ).inserted_primary_key[0]
+    )
+
+
+def notes_of(conn: Connection, company_id: int, history: bool = False) -> list[dict[str, Any]]:
+    """Aktuelle Notizen (oder mit ``history`` alle Versionen), neueste zuerst."""
+    rows = [
+        dict(r)
+        for r in conn.execute(
+            select(db.company_note)
+            .where(db.company_note.c.company_id == company_id)
+            .order_by(db.company_note.c.id.desc())
+        ).mappings()
+    ]
+    if history:
+        return rows
+    replaced = {r["supersedes_id"] for r in rows if r["supersedes_id"]}
+    return [r for r in rows if r["id"] not in replaced and not r["deleted"]]
+
+
+def _with_source(table: Any, company_id: int, *extra: Any) -> Any:
+    return (
+        select(
+            table,
+            db.evidence.c.quote,
+            db.evidence.c.locator,
+            db.source_document.c.url.label("source_url"),
+            db.source_document.c.source_key,
+            db.source_document.c.retrieved_at,
+        )
+        .outerjoin(db.evidence, db.evidence.c.id == table.c.evidence_id)
+        .join(db.source_document, db.source_document.c.id == table.c.source_document_id)
+        .where(table.c.company_id == company_id, *extra)
+    )
+
+
+def locations_of(conn: Connection, company_id: int) -> list[dict[str, Any]]:
+    """Physische Standorte mit Quelle."""
+    table = db.company_location
+    return [
+        dict(r)
+        for r in conn.execute(
+            _with_source(table, company_id).order_by(table.c.location_type, table.c.city)
+        ).mappings()
+    ]
+
+
+def markets_of(conn: Connection, company_id: int) -> list[dict[str, Any]]:
+    """Belieferte, Export- und erwähnte Märkte mit Quelle."""
+    table = db.company_market
+    return [
+        dict(r)
+        for r in conn.execute(
+            _with_source(table, company_id).order_by(table.c.presence_type, table.c.country_code)
+        ).mappings()
+    ]
+
+
+def facts_of(
+    conn: Connection, company_id: int, fact_type: str | None = None
+) -> list[dict[str, Any]]:
+    """Profilangaben mit Quelle."""
+    table = db.company_profile_fact
+    extra = [table.c.fact_type == fact_type] if fact_type else []
+    return [
+        dict(r)
+        for r in conn.execute(
+            _with_source(table, company_id, *extra).order_by(table.c.fact_type, table.c.value)
+        ).mappings()
+    ]
+
+
+def events_of(conn: Connection, company_id: int) -> list[dict[str, Any]]:
+    """Unternehmensereignisse mit Quelle, chronologisch (ohne Datum zuletzt)."""
+    table = db.corporate_event
+    rows = [dict(r) for r in conn.execute(_with_source(table, company_id)).mappings()]
+    rows.sort(key=lambda r: (r["event_date"] is None, r["event_date"] or date.min, r["id"]))
+    return rows
+
+
+def relations_of(conn: Connection, company_id: int) -> dict[str, list[dict[str, Any]]]:
+    """Mutter- und Tochtergesellschaften mit Grundlage und Quelle."""
+    rel = db.parent_company_relationship
+    out: dict[str, list[dict[str, Any]]] = {"parents": [], "children": []}
+    for direction, mine, other in (
+        ("parents", rel.c.child_company_id, rel.c.parent_company_id),
+        ("children", rel.c.parent_company_id, rel.c.child_company_id),
+    ):
+        rows = conn.execute(
+            select(
+                rel,
+                db.company.c.display_name.label("other_name"),
+                other.label("other_id"),
+                db.source_document.c.url.label("source_url"),
+                db.source_document.c.source_key,
+            )
+            .join(db.company, db.company.c.id == other)
+            .join(db.source_document, db.source_document.c.id == rel.c.source_document_id)
+            .where(mine == company_id)
+        ).mappings()
+        out[direction] = [dict(r) for r in rows]
+    return out
+
+
+def industries_of(conn: Connection, company_id: int) -> list[dict[str, Any]]:
+    """Branchenzuordnungen mit Schema und Quelle."""
+    ci = db.company_industry
+    return [
+        dict(r)
+        for r in conn.execute(
+            select(
+                db.industry.c.scheme,
+                db.industry.c.code,
+                db.industry.c.label,
+                ci.c.provenance_class,
+                ci.c.captured_at,
+                db.source_document.c.url.label("source_url"),
+                db.source_document.c.source_key,
+            )
+            .join(db.industry, db.industry.c.id == ci.c.industry_id)
+            .join(db.source_document, db.source_document.c.id == ci.c.source_document_id)
+            .where(ci.c.company_id == company_id)
+        ).mappings()
+    ]
+
+
+def aliases_of(conn: Connection, company_id: int) -> list[dict[str, Any]]:
+    """Alle Namen (rechtlicher Name, frühere Namen, Bezeichnungen)."""
+    return [
+        dict(r)
+        for r in conn.execute(
+            select(db.company_alias).where(db.company_alias.c.company_id == company_id)
         ).mappings()
     ]

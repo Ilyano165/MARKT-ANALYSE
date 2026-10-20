@@ -440,6 +440,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub.add_parser("adapters", help="Adapter und ihre Funktionen").set_defaults(func=cmd_adapters)
     sub.add_parser("llm-status", help="lokale KI prüfen").set_defaults(func=cmd_llm)
+    from .cli_intel import add_commands
+
+    add_commands(sub)
     return parser
 
 

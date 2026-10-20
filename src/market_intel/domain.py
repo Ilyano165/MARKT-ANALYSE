@@ -6,6 +6,7 @@ Die Domäne kennt weder Datenbank noch HTTP. Adapter liefern ausschließlich Ent
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -90,6 +91,18 @@ class GapReason(StrEnum):
     NOT_APPLICABLE = "not_applicable"
 
 
+# Kennzahlen (Phase 3). Mitarbeiter: Stichtag, Jahresdurchschnitt (§ 267 Abs. 5 HGB:
+# Mittel der vier Quartalsstichtage, ohne Auszubildende) und Vollzeitäquivalente sind
+# verschiedene Größen und werden nie miteinander verrechnet.
+METRIC_LABELS = {
+    "revenue": "Umsatz",
+    "headcount_total": "Mitarbeiter (Stichtag)",
+    "headcount_avg": "Mitarbeiter (Jahresdurchschnitt)",
+    "headcount_fte": "Mitarbeiter (Vollzeitäquivalente)",
+}
+HEADCOUNT_METRICS = ("headcount_total", "headcount_avg", "headcount_fte")
+SEGMENT_PATTERN = re.compile(r"(country|site|region|segment):[A-Za-z0-9_.\- ]{1,60}")
+
 # Statusregel aus DATA_MODEL.md §5: Herkunftsklasse → Startstatus.
 DEFAULT_STATUS = {
     ProvenanceClass.OFFICIAL: VerificationStatus.CONFIRMED,
@@ -142,6 +155,7 @@ class ObservationDraft:
     methodology: str = ""
     limitations: str = ""
     derived_from: tuple[int, ...] = field(default_factory=tuple)
+    segment: str = ""  # z. B. "country:DE"; leer = Gesamtwert
 
     def __post_init__(self) -> None:
         if self.kind not in ("financial", "employee"):
@@ -153,3 +167,5 @@ class ObservationDraft:
             raise ValueError("Geldbeträge brauchen eine Währung")
         if self.period_start and self.period_start > self.period_end:
             raise ValueError("Zeitraumbeginn liegt nach dem Ende")
+        if self.segment and not SEGMENT_PATTERN.fullmatch(self.segment):
+            raise ValueError(f"Segment {self.segment!r} hat nicht die Form art:wert")

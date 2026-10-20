@@ -1,6 +1,6 @@
 # Sicherheit, Datenschutz und Rechtskonformität – Yellotools Market Intelligence
 
-Stand: 2026-10-18 · Revision 2 (kostenloser, lokaler Betrieb)
+Stand: 2026-10-20 · Revision 3 (lokale Oberfläche, Phase 3)
 
 > Technische Planung, **keine Rechtsberatung**. Punkte mit „Rechtsklärung“ müssen vor der
 > jeweiligen Aktivierung durch Datenschutzbeauftragte bzw. Rechtsberatung bestätigt werden.
@@ -41,13 +41,13 @@ sollten keine internen Projektnamen als Suchbegriffe enthalten.
 | T1a | Hinter Firmen-Proxy keine lokale DNS-Auflösung | dann wird der Host nicht lokal geprüft; der Proxy muss interne Netze sperren (übliche `no_proxy`-Konfiguration) | dokumentiert |
 | T2 | Bösartige/übergroße Antworten | Größenlimit (5 MB Standard), Zeitlimit 30 s, HTML-Parser der Standardbibliothek ohne Skriptausführung; keine PDF-Verarbeitung im Prototyp | umgesetzt (`test_response_size_limit`) |
 | T3 | Prompt-Injection (nur bei aktivierter lokaler KI) | Modell ohne Werkzeuge/Netz; JSON-Schema-Ausgabe; Text als Daten markiert; jedes Ergebnis braucht wörtliches, geprüftes Zitat; Ergebnis kann höchstens einen Fit-Beleg erzeugen, nie eine Zahl | umgesetzt |
-| T4 | XSS im HTML-Bericht | alle Werte `html.escape`; keine Skripte, keine externen Ressourcen im Bericht | umgesetzt |
+| T4 | XSS im HTML-Bericht und in der Oberfläche | alle Werte `html.escape`; Daten für Diagramme als `application/json`-Block (wird nicht ausgeführt, `</` maskiert); JavaScript setzt Texte nur über `textContent`; CSP `script-src 'self'` ohne Inline-Skripte, keine externen Ressourcen | umgesetzt (`test_ui_notes_require_csrf_and_keep_versions` prüft escapte Notiz, `test_static_export_is_self_contained`) |
 | T5 | Formel-Injektion in CSV/XLSX | Zellen mit `= + - @ \t \r` werden mit `'` entschärft | umgesetzt (`test_formula_injection_is_neutralised`) |
 | T6 | Geheimnisse in Dateien/Logs | Konfiguration lehnt Schlüssel wie `password`, `secret`, `token`, `api_key` ab; optionaler kostenloser Companies-House-Schlüssel nur per Umgebungsvariable | umgesetzt (`test_config_rejects_secrets`) |
 | T7 | Lieferkette | exakt gepinnte Versionen, wenige Abhängigkeiten, Lizenzprüfung; Hash-Sperrdatei und `pip-audit` im CI | Hash-Sperrdatei und CI folgen in M0b |
 | T8 | Datenmanipulation | append-only-Trigger für Beobachtungen und Belege, SHA-256 je Dokument | umgesetzt (SQLite); PostgreSQL-Trigger vorhanden, ungetestet |
 | T9 | Überlast fremder Server | Drosselung je Quelle/Host, Anfragelimit je Run (Standard 2 000), Cache mit Revalidierung, eindeutiger User-Agent mit Kontakt | umgesetzt |
-| T10 | Unbefugter Zugriff im Teambetrieb | Web-UI nur LAN/VPN, TLS, OIDC, Rollen, CSRF-Schutz, Sicherheits-Header | geplant (M6/M15) |
+| T10 | Unbefugter Zugriff | Einzelplatz (`mi ui`): bindet nur an 127.0.0.1, andere Adressen nur mit `--allow-lan` und Warnung (keine Anmeldung!); Host-Header-Prüfung gegen DNS-Rebinding; CSRF-Token und Origin-Prüfung für jede Änderung; CSP, `X-Frame-Options: DENY`, `nosniff`, `no-referrer`, `no-store`; Anfragegröße ≤ 64 KB; keine Zugriffsprotokolle mit Suchbegriffen. Teambetrieb: TLS, OIDC, Rollen | Einzelplatz umgesetzt (`test_ui_profile_page_sections_security_and_gaps`); Teambetrieb geplant (M15) |
 
 ## 4. Datenschutz (DSGVO)
 
@@ -56,7 +56,7 @@ sollten keine internen Projektnamen als Suchbegriffe enthalten.
 | Namen von Geschäftsführern/Ansprechpartnern | werden **nicht** extrahiert; das Datenmodell hat keine Personenfelder |
 | Personenbezug in gespeicherten Rohseiten/Zitaten | Rohdokumente werden derzeit vollständig gespeichert (Nachvollziehbarkeit). **Offen (M13):** Aufbewahrungsfrist (Vorschlag 90 Tage Rohkopie, danach nur Belegzitate) und Bereinigung von E-Mail/Telefon in Zitaten |
 | Einzelunternehmer (Firma = Name einer natürlichen Person) | geschäftliche Angaben, berechtigtes Interesse (Art. 6 Abs. 1 lit. f) – **Rechtsklärung** inkl. Art. 14 |
-| Nutzerdaten | im Prototyp keine Benutzerkonten |
+| Nutzerdaten | im Prototyp keine Benutzerkonten; interne Notizen speichern einen frei eingegebenen Autorennamen (lokal, nie an Quellen gesendet), Versionen bleiben erhalten – Löschung auf Anfrage über das Administrationswerkzeug (M15) |
 
 Da keine Cloud- oder KI-Dienste Dritter eingesetzt werden, entfällt für den Kern eine
 Auftragsverarbeitung nach Art. 28. Löschung: Firmen können auf Anfrage gelöscht werden

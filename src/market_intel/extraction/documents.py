@@ -182,8 +182,42 @@ _SIGNAL_PATTERNS: tuple[tuple[str, str], ...] = (
     ("expansion", r"erweiter(?:t|ung)|ausbau|expan(?:sion|ds?)|vergrößer"),
     ("investment", r"investier(?:t|en)|investition|invest(?:s|ment)\b"),
     ("acquisition", r"übernimmt|übernahme|akquisition|acquir(?:es|ed|ition)|kauft"),
+    ("divestment", r"veräußer|verkauft (?:den|die|das) (?:geschäftsbereich|sparte|tochter)|divest"),
+    (
+        "layoff",
+        r"stellenabbau|arbeitsplätze ab|stellen ab(?:bauen|gebaut)|personalabbau|"
+        r"\d+ (?:stellen|arbeitsplätze) ab\b|"
+        r"kündigungen|layoffs?|job cuts|cuts? \d+ jobs",
+    ),
+    (
+        "hiring",
+        r"neue arbeitsplätze|schafft \d+ (?:neue )?(?:stellen|arbeitsplätze)|stellt \d+|"
+        r"neue mitarbeiter(?:innen)? (?:ein|eingestellt)|creat(?:es|ing) \d+ (?:new )?jobs|hiring",
+    ),
+    ("restructuring", r"restrukturierung|umstrukturierung|neuausrichtung|restructuring"),
+    (
+        "new_product_line",
+        r"neue produktlinie|neue[ns]? (?:sortiment|produktserie)|"
+        r"launch(?:es|ed)? (?:a )?new product",
+    ),
     ("partnership", r"partnerschaft|kooperation|partnership|joins forces"),
 )
+_AFFECTED = re.compile(
+    r"(\d{1,3}(?:[.,]\d{3})*|\d+)\s+(?:neue\s+)?(?:stellen|arbeitsplätze|mitarbeiter(?:innen)?|jobs)",
+    re.IGNORECASE,
+)
+
+
+def affected_headcount(sentence: str) -> int | None:
+    """Zahl betroffener Stellen, wenn sie im Satz steht (sonst None)."""
+    match = _AFFECTED.search(sentence)
+    if not match:
+        return None
+    digits = re.sub(r"[.,]", "", match.group(1))
+    value = int(digits)
+    return value if 1 <= value <= 500_000 else None
+
+
 _DATE_DE = re.compile(r"(\d{1,2})\.\s?(\d{1,2})\.\s?(\d{4})")
 _DATE_ISO = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
 

@@ -1,0 +1,36 @@
+# Regeln für Profilangaben aus Webseiten (Phase 3). Muster: reguläre Ausdrücke,
+# Groß-/Kleinschreibung egal. Treffer werden nur mit wörtlichem Zitat gespeichert
+# (Vertrauen „low“) und sind als Regel-Ergebnis gekennzeichnet. Ergänzungen bitte fachlich prüfen.
+
+[sales_channel]
+"Onlineshop" = ['online-?shop', 'webshop', 'e-?commerce']
+"Fachhandel" = ['fachhandel', 'fachhändler', 'specialist (?:dealers|retailers)']
+"Großhandel" = ['großhandel', 'grosshandel', 'wholesale']
+"Händler-/Vertriebspartnernetz" = ['händlernetz', 'vertriebspartner', 'distributoren', 'distributors', 'reseller']
+"Direktvertrieb" = ['direktvertrieb', 'direct sales', 'außendienst']
+"Marktplätze (z. B. Amazon)" = ['amazon', 'ebay', 'marktplätze']
+
+[target_group]
+"Fahrzeugfolierer" = ['fahrzeugfolier', 'car ?wrapp', 'vehicle wrap']
+"Werbetechnik/Schilderhersteller" = ['werbetechnik', 'schilderhersteller', 'sign ?makers?', 'signmaking', 'sign industry']
+"Druckereien" = ['druckereien', 'print service providers?', 'digitaldruckereien']
+"Messe- und Ladenbau" = ['messebau', 'ladenbau', 'exhibition stand']
+"Handwerk" = ['handwerk(?:er|sbetriebe)', 'craftsmen', 'tradespeople']
+"Fahrzeugaufbereitung/Lackschutz" = ['fahrzeugaufbereit', 'lackschutz', 'paint protection', 'detailing']
+"Glas-/Fensterfolierung" = ['fensterfolier', 'glasfolier', 'window film']
+"Automobilindustrie" = ['automobilindustrie', 'automotive industry', 'autohäuser', 'car dealers']
+"Industrie" = ['industriekunden', 'industrial customers']
+"Privatkunden" = ['privatkunden', 'endverbraucher', 'consumers']
+
+[location_type]
+# Wörter, die einen physischen Standort einer Art zuordnen
+production = ['werk', 'werke', 'produktionsstandort', 'produktionsstätte', 'fertigung', 'produktion', 'plant', 'factory', 'manufacturing site']
+branch = ['niederlassung', 'tochtergesellschaft', 'tochterfirma', 'filiale', 'subsidiary', 'subsidiaries', 'branch office']
+sales_office = ['vertriebsbüro', 'verkaufsbüro', 'sales office', 'vertriebsniederlassung']
+warehouse = ['lager', 'zentrallager', 'warehouse', 'distribution center', 'distributionszentrum']
+logistics = ['logistikzentrum', 'logistikstandort', 'logistics center', 'logistics hub']
+r_and_d = ['entwicklungszentrum', 'forschungszentrum', 'r&d center', 'technikum']
+
+[market_verbs]
+supplied = ['export', 'liefer', 'vertrieb', 'vertreib', 'verkauf', 'kunden in', 'händler in', 'distribut', 'customers in', 'sold in', 'ships? to', 'supplies']
+mentioned = ['präsent', 'vertreten', 'aktiv in', 'tätig in', 'present in', 'active in']

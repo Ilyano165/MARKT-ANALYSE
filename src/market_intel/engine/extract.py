@@ -28,17 +28,25 @@ from ..domain import (
 )
 from ..extraction.documents import (
     PdfError,
+    affected_headcount,
     job_postings,
     pdf_text,
     press_signals,
     register_ids,
 )
 from ..extraction.numbers import find_headcounts, find_money
+from ..extraction.profile import (
+    lexicon_hits,
+    market_hints,
+    organization_data,
+    product_headings,
+    reach_claims,
+)
 from ..extraction.text import find_keyword_hits, html_to_text, quote_in_text
 from ..usecases import UseCase
 from .derive import SEARCH_PROFILE_KEY, UseCaseEvidence, record_website_fits
 
-VERSION = "extract-0.2.0"
+VERSION = "extract-0.3.0"
 _IMPRINT = re.compile(r"impressum|imprint|legal[-_ ]notice|kontakt|contact", re.IGNORECASE)
 _CAREER = re.compile(r"karriere|career|jobs?|stellen", re.IGNORECASE)
 _PRESS = re.compile(r"presse|press|news|aktuelles|neuigkeiten|blog", re.IGNORECASE)
@@ -54,6 +62,10 @@ class ExtractionReport:
     hiring: int = 0
     signals: int = 0
     fits: dict[str, str] = field(default_factory=dict)
+    profile_facts: int = 0
+    locations: int = 0
+    markets: int = 0
+    events: int = 0
     rejected: int = 0
     issues: list[str] = field(default_factory=list)
 
@@ -145,6 +157,7 @@ def extract_company_documents(
             _jobs(ctx, company_id, document_id, url, cases, report)
         if kind == "html" and _PRESS.search(url + " " + title):
             _press(ctx, company_id, document_id, url, text, report)
+        _profile(ctx, company_id, document_id, url, kind, title, text, report)
         for case in cases.values():
             for hit in find_keyword_hits(text, case.website_terms, max_hits=2):
                 findings.append(
@@ -410,11 +423,41 @@ def _press(
             )
             if stored is not None:
                 report.signals += 1
+            event_type = _SIGNAL_EVENTS.get(signal.signal_type)
+            if event_type is None:
+                continue
+            event_id = repo.add_event(
+                conn,
+                repo.EventDraft(
+                    company_id=company_id,
+                    event_type=event_type,
+                    summary=signal.quote[:300],
+                    evidence=EvidenceDraft(
+                        document_id, url, signal.quote, "regex_rule", VERSION, True
+                    ),
+                    provenance=ProvenanceClass.COMPANY_REPORTED,
+                    confidence="low",
+                    method="regex_rule",
+                    event_date=signal.event_date,
+                    date_precision="day" if signal.event_date else "unknown",
+                    affected_headcount=affected_headcount(signal.quote)
+                    if event_type in ("layoff", "hiring")
+                    else None,
+                    verification_status="unverified",
+                ),
+                ctx.run_id,
+            )
+            if event_id is not None:
+                report.events += 1
 
 
 def summarize_report(report: ExtractionReport) -> dict[str, Any]:
     """Ergebnis für das Aufgabenprotokoll."""
     return {
+        "profile_facts": report.profile_facts,
+        "locations": report.locations,
+        "markets": report.markets,
+        "events": report.events,
         "documents": report.documents,
         "observations": report.observations,
         "identifiers": report.identifiers,
@@ -424,3 +467,159 @@ def summarize_report(report: ExtractionReport) -> dict[str, Any]:
         "rejected": report.rejected,
         "issues": report.issues[:5],
     }
+
+
+# Pressehinweis → Ereignisart. Regel-Treffer bleiben „unverified/low“: Sie erscheinen in der
+# Historie und als möglicher Einfluss, brechen aber keine Zeitreihe und machen kein Wachstum
+# „anorganisch“ (dafür braucht es eine bestätigte Angabe, z. B. ``mi add-event``).
+_SIGNAL_EVENTS = {
+    "new_location": "new_site",
+    "expansion": "expansion",
+    "investment": "investment",
+    "acquisition": "acquisition",
+    "divestment": "divestment",
+    "layoff": "layoff",
+    "hiring": "hiring",
+    "restructuring": "restructuring",
+    "new_product_line": "new_product_line",
+}
+
+
+def _profile(
+    ctx: Ctx,
+    company_id: int,
+    document_id: int,
+    url: str,
+    kind: str,
+    title: str,
+    text: str,
+    report: ExtractionReport,
+) -> None:
+    """Profilangaben: strukturierte Daten, Länder, Reichweite, Vertriebswege, Zielgruppen."""
+    provenance = ProvenanceClass.COMPANY_REPORTED
+    raw = ""
+    headings: tuple[str, ...] = ()
+    if kind == "html":
+        with ctx.engine.connect() as conn:
+            body = (
+                conn.execute(
+                    select(db.source_document.c.body).where(db.source_document.c.id == document_id)
+                ).scalar()
+                or b""
+            )
+        raw = body.decode("utf-8", errors="replace")
+        headings = html_to_text(raw, url).headings
+
+    def ev(quote: str, method: str = "regex_rule") -> EvidenceDraft:
+        return EvidenceDraft(document_id, url, quote, method, VERSION, True)
+
+    def fact(fact_type: str, value: str, quote: str, confidence: str, method: str) -> None:
+        source_text = raw if method == "jsonld" else text
+        if not quote_in_text(quote, source_text):
+            return
+        with ctx.engine.begin() as conn:
+            if repo.add_profile_fact(
+                conn,
+                company_id,
+                fact_type,
+                value,
+                ev(quote, method),
+                provenance=provenance,
+                confidence=confidence,
+                method=method,
+                run_id=ctx.run_id,
+            ):
+                report.profile_facts += 1
+
+    org = organization_data(raw) if raw else None
+    if org is not None:
+        with ctx.engine.begin() as conn:
+            for name in org.names:
+                repo.add_alias(conn, company_id, name, "website_name", document_id)
+            for place in org.places:
+                if not quote_in_text(place.quote, raw):
+                    continue
+                exact = place.latitude is not None
+                location_id = repo.add_location(
+                    conn,
+                    company_id,
+                    place.location_type,
+                    country_code=place.country,
+                    city=place.city,
+                    postal_code=place.postal_code,
+                    street=place.street,
+                    document_id=document_id,
+                    provenance=provenance,
+                    latitude=place.latitude,
+                    longitude=place.longitude,
+                    geo_precision="site" if exact else "none",
+                    geo_note="Koordinaten aus schema.org-Daten der Unternehmensseite"
+                    if exact
+                    else "",
+                    evidence_id=repo.add_evidence(conn, ev(place.quote, "jsonld")),
+                    run_id=ctx.run_id,
+                )
+                if location_id:
+                    report.locations += 1
+            for code, label in org.area_served:
+                if repo.add_market(
+                    conn,
+                    company_id,
+                    country_code=code,
+                    region_label="",
+                    presence_type="supplied",
+                    basis=f"schema.org areaServed „{label}“",
+                    evidence=ev(label, "jsonld"),
+                    provenance=provenance,
+                    confidence="medium",
+                    run_id=ctx.run_id,
+                ):
+                    report.markets += 1
+        for brand in org.brands:
+            fact("brand", brand, brand, "medium", "jsonld")
+        for offer in org.offers:
+            fact("product_group", offer, offer, "medium", "jsonld")
+    if kind == "html":
+        for fact_type, heading in product_headings(url, title, list(headings)):
+            fact(fact_type, heading, heading, "low", "heading_rule")
+    for label, quote in lexicon_hits(text, "sales_channel"):
+        fact("sales_channel", label, quote, "low", "keyword_rule")
+    for label, quote in lexicon_hits(text, "target_group"):
+        fact("target_group", label, quote, "low", "keyword_rule")
+    for value, quote in reach_claims(text):
+        fact("market_reach_claim", value, quote, "low", "regex_rule")
+    hints = market_hints(text)
+    with ctx.engine.begin() as conn:
+        for hint in hints:
+            if not quote_in_text(hint.quote, text):
+                continue
+            if hint.presence == "physical":
+                repo.add_location(
+                    conn,
+                    company_id,
+                    hint.location_type or "other_site",
+                    country_code=hint.country,
+                    city=None,
+                    postal_code=None,
+                    street=None,
+                    document_id=document_id,
+                    provenance=provenance,
+                    geo_precision="none",
+                    geo_note="nur Land bekannt (aus Text)",
+                    evidence_id=repo.add_evidence(conn, ev(hint.quote)),
+                    run_id=ctx.run_id,
+                )
+                report.locations += 1
+            elif repo.add_market(
+                conn,
+                company_id,
+                country_code=hint.country,
+                region_label="",
+                presence_type=hint.presence,
+                basis=f"Text nennt „{hint.name}“",
+                evidence=ev(hint.quote),
+                provenance=provenance,
+                confidence="low",
+                run_id=ctx.run_id,
+            ):
+                report.markets += 1

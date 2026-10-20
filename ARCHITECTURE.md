@@ -1,6 +1,6 @@
 # Architektur – Yellotools Market Intelligence
 
-Stand: 2026-10-19 · Revision 3 (Research Engine, Phase 2; verbindlich: **100 % kostenloser Betrieb**) · Version 0.2.0
+Stand: 2026-10-20 · Revision 4 (Company Intelligence, Phase 3; verbindlich: **100 % kostenloser Betrieb**) · Version 0.3.0
 
 Dieses Dokument enthält (1) die Bestandsaufnahme, (2) die Grundsatzentscheidungen inklusive
 Kostenfreiheit, (3) die Architekturentscheidungen (ADRs), (4) Komponenten und Schnittstellen,
@@ -69,7 +69,7 @@ eigene Domain verursachen weiterhin Kosten außerhalb der Software.
 | ADR-12 | Keine Geheimnisse in Dateien; nur Umgebungsvariablen bzw. Windows-Anmeldespeicher | umgesetzt für Konfiguration |
 | ADR-13 *(neu)* | **Keine kostenpflichtige Such-API.** Internetrecherche = Kombination freier, rechtlich nutzbarer Quellen (Register, Wikidata, Ausschreibungen, Nachrichtenindex, Unternehmenswebseiten). Allgemeine Websuche à la Google ist bewusst **nicht** Teil des Kerns | umgesetzt, siehe §5 und `RESEARCH_SOURCES.md` §3 |
 
-## 4. Komponenten (implementiert, Version 0.2.0)
+## 4. Komponenten (implementiert, Version 0.3.0)
 
 ```
 src/market_intel/
@@ -91,7 +91,31 @@ src/market_intel/
   research.py            Auftragsausführung: 8 Schritte, dynamische Aufgaben, Budget,
                          Pause/Fortsetzen, Fortschritt, Fehlerkennzeichnung
   analytics.py, scoring.py, export.py, proof.py, cli.py
+  intel/                 Phase 3 – Company Intelligence (ohne Netz, nur Datenbank):
+                         timeseries (reine Berechnung: Δ, CAGR, Brüche, Lücken, Übernahmen),
+                         series (Umsatz-/Mitarbeiterreihen, Segmente, Personal-Dynamik),
+                         footprint (Standorte/Märkte in drei Stufen, Kartendaten),
+                         competitors (Einordnung ohne Marktanteile), profile (alle Abschnitte
+                         mit Quellenverzeichnis), manual (Erfassung mit Beleg)
+  extraction/profile.py  schema.org-Organisation, Länder in Standort-/Vertriebssätzen,
+                         Reichweite, Vertriebswege, Zielgruppen, Produktüberschriften
+  engine/changes.py      + Profiländerungen (Standorte, Märkte, Produkte, Ereignisse, Berichte)
+  ui/                    lokale Weboberfläche (Standardbibliothek http.server, kein Framework):
+                         render (HTML, alles escaped), server (127.0.0.1, CSRF, CSP, Host-Prüfung),
+                         static/app.js (Diagramme, Karte, Abschnitte – ohne Bibliotheken), app.css
+  cli_intel.py           Kommandos profile, ui, competitors, history, note, add-*
+  data/                  world_map.json (Natural Earth, gemeinfrei), country_names.json (MIT),
+                         profile_lexicon.toml, THIRD_PARTY_NOTICES.md
 ```
+
+**Entscheidung Oberfläche (ADR-12, Phase 3):** Statt FastAPI/Jinja2/ECharts (in Revision 2
+geplant) nutzt die Oberfläche nur die Python-Standardbibliothek und eigenes JavaScript ohne
+Bibliotheken. Gründe: keine neue Abhängigkeit (Lieferkette, Lizenzprüfung), läuft offline,
+identisches Rendering für Server und eigenständigen HTML-Export, strenge CSP ohne Inline-Skripte
+möglich. Grenze: einfacher Ein-Benutzer-Betrieb; für den Teamserver (Anmeldung, Rollen) bleibt
+M15 offen. Karten-Kacheln (z. B. OpenStreetMap) werden **nicht** geladen: Die Kachel-Nutzung
+ist an Bedingungen gebunden und wäre ein externer Dienst; stattdessen eingebettete
+Ländergrenzen (Natural Earth, gemeinfrei).
 
 Der frühere feste Ablauf (`profile.py`, `discovery.py`) ist vollständig in die Adapter und
 die Pipeline überführt worden; es gibt kein paralleles System.
@@ -108,6 +132,12 @@ die Pipeline überführt worden; es gibt kein paralleles System.
 | `mi import-document datei.pdf --company …` | bereitgestelltes Dokument (z. B. Jahresabschluss) auswerten |
 | `mi prove` | Funktionsnachweis (Kriterien 1–9, ohne KI) |
 | `mi sources`, `mi adapters`, `mi llm-status` | Quellen, Adapter, lokale KI |
+| `mi ui [--port 8765]` | lokale Oberfläche (nur 127.0.0.1) mit Profil, Diagrammen, Karte, Notizen, Wettbewerb |
+| `mi profile --company … [--years 5–10] [--estimates] [--html f.html] [--json f.json]` | Profil als Text, eigenständige HTML-Datei oder JSON |
+| `mi competitors --company … [--with …] [--store]` | Wettbewerbsanalyse ohne Marktanteile |
+| `mi history --company …` | erkannte Veränderungen mit Ereignis- und Erfassungsdatum |
+| `mi note --company … --author … "Text"` | interne Notiz |
+| `mi add-figure / add-event / add-location / add-fact / add-market … --file beleg.pdf --quote "…"` | Erfassung mit Beleg; Zitat muss wörtlich im Dokument stehen |
 
 ### 4.2 Adapter-Schnittstelle
 

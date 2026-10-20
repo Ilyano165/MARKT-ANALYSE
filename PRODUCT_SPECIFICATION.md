@@ -1,6 +1,6 @@
 # Produktspezifikation – Yellotools Market Intelligence
 
-Stand: 2026-10-18 · Revision 2 (verbindlich: 100 % kostenloser Betrieb) · Status: Entwurf zur Freigabe
+Stand: 2026-10-20 · Revision 3 (Phase 3 Company Intelligence; verbindlich: 100 % kostenloser Betrieb) · Status: Entwurf zur Freigabe
 
 ## 1. Zweck
 
@@ -82,6 +82,12 @@ Anforderungs-IDs werden in Roadmap und Tests referenziert. Priorität: **M** = M
 | FR-C-08 | Aliase, frühere Namen, Marken | M |
 | FR-C-09 | Notizen (privat/Team) | S |
 | FR-C-10 | Zusammenführen und Trennen von Firmen über die Prüfliste, mit Protokoll | M |
+| FR-C-11 | Profil mit Marken, Produktgruppen/Leistungen, Vertriebswegen, Zielgruppen, Absatzländern und Wachstumshinweisen – jede Angabe mit Beleg (Phase 3, umgesetzt) | M |
+| FR-C-12 | Umsatzentwicklung 5–10 Geschäftsjahre: Δ absolut, Δ %, Gesamtveränderung, CAGR mit Formel; Brüche bei Währung, Geschäftsjahr, Konsolidierungskreis; Übernahmen kennzeichnen (umgesetzt, Regeln §7a) | M |
+| FR-C-13 | Mitarbeiterentwicklung je Jahr, Nettoveränderung getrennt von belegten Einstellungen/Abbau und Stellenanzeigen; nach Land/Standort, wenn belegt (umgesetzt) | M |
+| FR-C-14 | Standorte/Märkte in drei Stufen: physisch – beliefert/Export – nur erwähnt; Karte nur mit ausreichend genauen Koordinaten (umgesetzt) | M |
+| FR-C-15 | Wettbewerbsanalyse direkt/indirekt/verwandter Markt mit Begründung je Dimension, ohne Marktanteile (umgesetzt) | M |
+| FR-C-16 | Änderungserkennung bei erneuter Recherche mit Beleg, Ereignisdatum und Erfassungsdatum (umgesetzt) | M |
 
 ### D. Research Engine
 
@@ -130,6 +136,15 @@ Anforderungs-IDs werden in Roadmap und Tests referenziert. Priorität: **M** = M
 Darstellung von Unsicherheit ist Pflicht: Werte ohne Status werden nie angezeigt; geschätzte
 Werte sind kursiv mit „geschätzt“ gekennzeichnet; Widersprüche haben ein Warnsymbol.
 
+**Umgesetzt in Phase 3 (Version 0.3.0, `mi ui`, lokal):** Firmenliste mit Suche (4, ohne
+Filter), Firmenprofil (5) mit den Abschnitten Überblick, Finanzen, Mitarbeiter, Standorte,
+Produkte, Märkte, Historie, Quellen, interne Notizen; interaktive Diagramme für Umsatz und
+Mitarbeiter (Werte / Δ % / Δ absolut, Tooltip mit Herkunft, Lücken als gestrichelter Rahmen
+„unbekannt“, Brüche als Linie); Karte (Länder nach Präsenzstufe, Punkte nur mit Orts- oder
+Adressgenauigkeit); Kennzahl-Detail (6) als Herkunftsseite; Wettbewerbsanalyse. Ein
+eigenständiger HTML-Export (`mi profile --html`) enthält dieselben Abschnitte ohne Server.
+Offen: Bildschirme 1–3 und 7–11.
+
 ## 6. Chancenbewertung (Scoring v1, Startentwurf)
 
 Teilindikatoren, je 0–1 normiert, Gewichte durch Vertrieb freizugeben:
@@ -161,6 +176,45 @@ wird über die vorhandenen Gewichte renormiert und `data_completeness_pct` ausge
 | NFR-08 | Oberfläche Deutsch (Englisch vorbereitet), barrierearm (Tastatur, Kontraste) |
 | NFR-09 | Datensicherung täglich, Wiederherstellung dokumentiert und getestet |
 | NFR-10 | Datenschutz und Urheberrecht gemäß `SECURITY_AND_PRIVACY.md` |
+
+## 7a. Rechen- und Darstellungsregeln der Unternehmensanalyse (Phase 3, verbindlich)
+
+Umgesetzt in `src/market_intel/intel/timeseries.py`, geprüft in `tests/test_timeseries.py` und
+`tests/test_intel.py`.
+
+1. **Lücken bleiben Lücken.** Ein fehlendes Jahr wird als „unbekannt“ angezeigt – nie als 0,
+   nie interpoliert, nie als Stillstand. Über eine Lücke gibt es keine Vorjahresveränderung,
+   nur eine ausdrücklich gekennzeichnete Mehrjahresveränderung („seit 2019: +15 %“).
+2. **Vorjahresveränderung** Δ absolut = Wert(t) − Wert(t−1); Δ % = (Wert(t) / Wert(t−1) − 1) × 100,
+   nur zwischen vergleichbaren Werten und nur bei Vorjahreswert > 0.
+3. **Gesamtveränderung und CAGR** je vergleichbarem Abschnitt:
+   CAGR = (Endwert / Anfangswert)^(1 / Jahre) − 1. Voraussetzung: mindestens ein Jahr Abstand,
+   beide Werte > 0. Die Formel mit eingesetzten Werten wird angezeigt. Fehlen Zwischenjahre,
+   steht dabei: „CAGR beruht nur auf den Endpunkten“.
+4. **Vergleichbar** sind Werte nur bei gleicher Einheit/Währung, gleichem bekannten
+   Konsolidierungskreis (Konzern ↔ Einzelgesellschaft = Bruch; „unbekannt“ = Hinweis), gleichem
+   Geschäftsjahresende und regulärer Periodenlänge (335–396 Tage). Rumpf- und verlängerte
+   Geschäftsjahre sind Brüche. Jeder Bruch beginnt einen neuen Abschnitt.
+5. **Währungen:** Analyse in Originalwährung. Eine EUR-Umrechnung (EZB-Jahresdurchschnitt) wird
+   als eigene Reihe gezeigt und trägt den Hinweis „enthält Wechselkurseffekte“; eine
+   währungsbereinigte Rate wird nicht berechnet.
+6. **Übernahmen, Verkäufe, Fusionen** im Zeitraum (bestätigt oder gemeldet, Vertrauen
+   mittel/hoch) machen die Veränderung „nicht organisch“ – sie wird gezeigt, aber gekennzeichnet.
+   Änderung des Konsolidierungskreises oder Geschäftsjahres ist ein Bruch. Unbestätigte
+   Regel-Treffer aus Pressetexten erscheinen nur als „möglicher Einfluss“.
+7. **Schätzungen** gehen nur auf ausdrücklichen Wunsch ein, brauchen Methodik, Quelle und
+   Unsicherheit und sind in Tabelle und Diagramm markiert.
+8. **Mitarbeiter:** Stichtag, Jahresdurchschnitt (§ 267 Abs. 5 HGB: Mittel der vier
+   Quartalsstichtage, ohne Auszubildende) und Vollzeitäquivalente sind getrennte Reihen.
+   Nettoveränderung ≠ Einstellungen/Abgänge (1.000 → 1.100 heißt nicht 100 Einstellungen).
+   Belegte Abbau-/Einstellungsmeldungen und Stellenanzeigen (= Bedarf) stehen daneben.
+9. **Jede angezeigte Zahl** nennt Jahr bzw. Stichtag, Konzern/Einzelgesellschaft/unbekannt,
+   Herkunft (amtlich, Unternehmensangabe, Drittquelle, abgeleitet, Schätzung) und [Qn]; über
+   „Beleg“ führt sie zu Beobachtung, Zitat, Fundstelle, Dokument (SHA-256) und Abrufprotokoll.
+10. **Wettbewerb:** keine Marktanteile. Größenvergleiche sind Verhältnisse zweier belegter Werte
+    mit Hinweis auf abweichende Jahre, Konsolidierungskreise oder Umrechnungen.
+11. **Änderungen** bei erneuter Recherche: Ereignisdatum (laut Quelle) und Erfassungsdatum
+    (System) getrennt. Aus dem Fehlen einer Angabe wird nichts abgeleitet (keine „Schließung“).
 
 ## 8. Qualitätsgrundsätze
 

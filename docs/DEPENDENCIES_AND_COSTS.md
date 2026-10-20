@@ -1,6 +1,6 @@
 # Verbindliche Übersicht: Abhängigkeiten, Datenquellen und Kosten
 
-Stand: 2026-10-19 · gilt für market-intel 0.2.0
+Stand: 2026-10-20 · gilt für market-intel 0.3.0
 
 **Ergebnis:** Die Kernanwendung benötigt **keine** kostenpflichtige Software, keinen
 kostenpflichtigen Dienst, kein Abonnement, keine Cloud und keinen KI-Zugang. Optionale Kosten
@@ -33,9 +33,23 @@ Domain/Zertifikat für einen Teamserver.
 Python selbst: PSF-2.0. SQLite: gemeinfrei (in Python enthalten). Keine Komponente verlangt
 Lizenzgebühren. psycopg (LGPL) wird unverändert als Bibliothek genutzt.
 
-Geplante Komponenten für Web-UI/Teambetrieb (noch nicht installiert, Lizenz bei Aufnahme
-erneut zu prüfen): FastAPI (MIT), Uvicorn (BSD-3), Jinja2 (BSD-3), HTMX (BSD-2/0BSD),
-Apache ECharts (Apache-2.0), PostgreSQL (PostgreSQL License), Keycloak (Apache-2.0, optional).
+**Phase 3 (Oberfläche) bringt kein neues Paket:** Die Weboberfläche nutzt `http.server` aus der
+Python-Standardbibliothek und eigenes JavaScript ohne Bibliotheken; Diagramme und Karte werden
+lokal gezeichnet. Für den späteren Teambetrieb weiterhin geplant (nicht installiert, Lizenz bei
+Aufnahme erneut prüfen): PostgreSQL (PostgreSQL License), Keycloak (Apache-2.0, optional).
+
+### 1a. Eingebettete Daten (Phase 3, Hinweise in `src/market_intel/data/THIRD_PARTY_NOTICES.md`)
+
+| Datei | Herkunft | Lizenz | Kosten | Externer Dienst zur Laufzeit |
+|---|---|---|---|---|
+| `world_map.json` (Ländergrenzen, ca. 440 KB) | Natural Earth 1:50m 4.1.0 über npm `world-atlas` 2.0.2, umgerechnet mit `tools/build_world_map.py` | Natural Earth: gemeinfrei; world-atlas: ISC (Hinweis beigefügt) | 0 € | nein |
+| `country_names.json` (Ländernamen de/en) | npm `i18n-iso-countries` 7.14.0, `tools/build_country_names.py` | MIT (Hinweis beigefügt) | 0 € | nein |
+| `profile_lexicon.toml` | eigene Regeln | Projekt | 0 € | nein |
+
+Bewusst **nicht** verwendet: Kartenkacheln von OpenStreetMap oder anderen Anbietern (externer
+Dienst mit Nutzungsbedingungen, Datenabfluss der angesehenen Region), Geokodierungsdienste
+(Nominatim u. a.) – Koordinaten kommen nur aus den Quellen selbst (schema.org, Wikidata) oder
+aus manueller Erfassung mit Herkunftsangabe.
 
 ## 2. Datenquellen
 
