@@ -1,0 +1,106 @@
+# Opportunity-Modell (Phase 4) – transparent und konfigurierbar.
+# Eigene Fassung: Datei kopieren, ändern, `opportunity_file = "…"` in market_intel.toml setzen,
+# mit `mi opportunity-model --check` prüfen. Jede Änderung ändert die Modellversion.
+#
+# Drei getrennte Werte (je 0–100):
+#   product_relevance  – Wie gut ist die Verbindung Tätigkeit ↔ Yellotools-Produkt BELEGT?
+#   business_potential – Größe, Wachstum, Expansion, Erreichbarkeit, strategische Bedeutung
+#   data_quality       – Vollständigkeit, Aktualität, Anteil bestätigter Angaben
+# Priorität = Gewichtung aus Produktrelevanz und Potenzial. Datenqualität fließt NICHT in die
+# Priorität ein, sondern steuert Segmente („weitere Prüfung“).
+# Fehlende Angaben: Komponente gilt als „unbekannt“ und wird nicht mit 0 bewertet; ist das
+# gesamte Potenzial unbekannt, wird es neutral (unknown_potential_value) angesetzt.
+# Ohne Produkt-Fit-Beleg ist die Priorität 0 – unabhängig von Größe oder Wachstum.
+
+[model]
+version = "v2-2026-10-20"
+priority_weights = { product_relevance = 0.65, business_potential = 0.35 }
+unknown_potential_value = 50
+min_relevance_for_priority = 1
+
+[product_relevance]
+# Anteile an der Produktrelevanz
+weights = { activity_evidence = 0.45, process_evidence = 0.25, source_quality = 0.15, application_status = 0.15 }
+# Tätigkeitsbelege: Anzahl verschiedener belegter Begriffe → Wert
+activity_levels = [[1, 0.5], [2, 0.75], [3, 1.0]]
+# nur Drittquellen (Wikidata-Branche, Namenssuche) ohne eigene Unternehmensangabe
+third_party_only = 0.3
+# Gegenindiz (z. B. Folienhersteller statt Anwender) halbiert die Tätigkeitsbewertung
+counter_factor = 0.5
+process_levels = [[1, 0.5], [2, 1.0]]
+application_status = { confirmed = 1.0, hypothesis = 0.5, abgeleitet = 0.4 }
+
+[business_potential]
+weights = { size = 0.25, growth = 0.30, expansion = 0.20, reachability = 0.15, strategic = 0.10 }
+# Größe: Mitarbeiter (Stichtag) → Wert, linear zwischen den Stützstellen (log-Skala)
+size_points = [[10, 0.25], [50, 0.5], [250, 0.75], [1000, 1.0]]
+growth = { strong = 1.0, positive = 0.75, flat = 0.5, negative = 0.25 }
+growth_thresholds = { strong = 10.0, positive = 2.0, flat = -2.0 }
+expansion = { confirmed = 1.0, derived = 0.7, unconfirmed = 0.3 }
+expansion_window_months = 24
+reachability = { core = 1.0, europe = 0.7, other = 0.4 }
+core_countries = ["DE", "AT", "CH"]
+europe_countries = ["BE", "BG", "CZ", "DK", "EE", "ES", "FI", "FR", "GR", "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "NO", "PL", "PT", "RO", "SE", "SI", "SK", "GB", "IS", "LI"]
+# strategisch: viele Standorte, groß, oder Anwendungsfall als Multiplikator (z. B. Hersteller/Händler)
+strategic_min_sites = 5
+strategic_min_headcount = 1000
+strategic_applications = ["technische_folien", "fahrzeughersteller_umbau"]
+strategic_true = 1.0
+strategic_false = 0.3
+
+[data_quality]
+weights = { completeness = 0.5, recency = 0.3, confirmation = 0.2 }
+recency_months = [[12, 1.0], [24, 0.6], [999, 0.3]]
+
+[applications]
+# Kernanwendungen laut Herstellerangabe (Zielgruppen). Alle anderen gelten als „neue Branche“.
+core = ["werbetechnik_beschriftung", "fahrzeugfolierung", "lackschutz_aufbereitung", "glasfolien", "druck_grossformat", "display_beschilderung", "interior_folien"]
+
+# Segmente: in Reihenfolge geprüft, das erste passende gilt. Bedingungen: Feld, Operator, Wert.
+# Felder: product_relevance, business_potential, data_quality, growth_status
+# (strong/positive/flat/negative/unknown), growth_basis (confirmed/derived/unconfirmed/none),
+# expansion (confirmed/derived/unconfirmed/none), size_class (large/medium/small/micro/unknown),
+# core_application (true/false), application_status (confirmed/hypothesis)
+# Operatoren: ">=", "<=", ">", "<", "==", "in", "not_in"
+
+[[segment]]
+key = "kein_produkt_fit"
+name = "Kein belegter Produkt-Fit"
+description = "Keine Tätigkeit belegt, die zu einer Produktgruppe passt – kein Lead, unabhängig von Größe und Wachstum."
+conditions = [["product_relevance", "<", 1]]
+
+[[segment]]
+key = "fit_hoch_wachstum_stark"
+name = "Hoher Produkt-Fit, starke belegte Wachstumssignale"
+description = "Produkt-Fit gut belegt und Wachstum aus Zahlen oder bestätigten Ereignissen erkennbar."
+conditions = [["product_relevance", ">=", 60], ["growth_status", "in", ["strong", "positive"]], ["growth_basis", "in", ["confirmed", "derived"]]]
+
+[[segment]]
+key = "fit_hoch_wachstum_unklar"
+name = "Hoher Produkt-Fit, Wachstum unklar"
+description = "Produkt-Fit gut belegt; Entwicklung unbekannt, stagnierend oder nur unbestätigt."
+conditions = [["product_relevance", ">=", 60]]
+
+[[segment]]
+key = "fit_mittel_expansion"
+name = "Mittlerer Produkt-Fit, interessante Expansion"
+description = "Produkt-Fit teilweise belegt; Expansion bestätigt oder aus Daten abgeleitet."
+conditions = [["product_relevance", ">=", 35], ["expansion", "in", ["confirmed", "derived"]]]
+
+[[segment]]
+key = "strategisch_gross"
+name = "Strategisch interessante Großunternehmen"
+description = "Großes Unternehmen mit zumindest teilweise belegtem Produkt-Fit."
+conditions = [["product_relevance", ">=", 35], ["size_class", "==", "large"]]
+
+[[segment]]
+key = "neue_branche_unbestaetigt"
+name = "Neue Branche mit unbestätigter Produktrelevanz"
+description = "Tätigkeit belegt, aber in einer Branche außerhalb der Herstellerzielgruppen; Relevanz muss der Vertrieb prüfen."
+conditions = [["core_application", "==", false], ["application_status", "==", "hypothesis"]]
+
+[[segment]]
+key = "weitere_pruefung"
+name = "Weitere Prüfung erforderlich"
+description = "Alle übrigen Fälle: Belege oder Daten reichen für eine Einordnung nicht aus."
+conditions = []

@@ -35,7 +35,9 @@ from .engine.strategy import ResearchRequest, SearchStrategy, build_strategy
 from .engine.validation import revenue_per_employee_issue
 from .export import export_all
 from .llm.assistant import Fact
-from .scoring import score_use_case
+from .opportunity.model import load_model
+from .opportunity.run import assess_and_store
+from .products import load_products
 from .usecases import UseCase
 
 TaskResult = tuple[str, dict[str, Any]]  # (Status, Ergebnis)
@@ -500,17 +502,20 @@ def _facts_for(ctx: Ctx, company_id: int) -> list[Fact]:
 
 
 def _store(ctx: Ctx, params: dict[str, Any], cases: dict[str, UseCase]) -> TaskResult:
-    strategy = _strategy(ctx)
     selected = _selected(ctx)
     converted = sum(convert_revenue_to_eur(ctx, cid) for cid in selected)
-    scored = {u: score_use_case(ctx.engine, u, ctx.run_id) for u in strategy.use_cases}
+    catalog = load_products(ctx.settings.products_file)
+    model = load_model(ctx.settings.opportunity_file)
+    best = assess_and_store(ctx.engine, selected, cases, catalog, model, ctx.run_id)
+    scored = {
+        str(cid): {"segment": r["segment"]["key"], "priority": r["scores"]["priority"]}
+        for cid, r in best.items()
+    }
     with ctx.engine.begin() as conn:
         changes = record_changes(conn, ctx.run_id or 0)
         profile_changes = record_profile_changes(conn, ctx.run_id or 0)
     out_dir = Path(run_parameters(ctx.engine, ctx.run_id or 0)["out_dir"])
-    files = export_all(
-        ctx.engine, out_dir / "export", selected, selected, strategy.use_cases, ctx.run_id
-    )
+    files = export_all(ctx.engine, out_dir / "export", selected, selected, ctx.run_id)
     return "succeeded", {
         "fx_conversions": converted,
         "scored": scored,

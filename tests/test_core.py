@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -32,8 +31,6 @@ from market_intel.extraction.text import (
     quote_in_text,
 )
 from market_intel.resolution import legal_form_of, name_similarity, normalize_name
-from market_intel.scoring import assess
-from market_intel.usecases import load_use_cases, register
 
 
 @pytest.mark.parametrize(
@@ -219,32 +216,6 @@ def test_growth_only_between_comparable_values():
     ]
     assert growth(mixed_scope).cagr_pct is None
     assert growth(series[:1]).cagr_pct is None
-
-
-def test_scoring_renormalizes_and_flags_missing_data(engine):
-    company_id = _company(engine)
-    with engine.connect() as conn:
-        result = assess(conn, company_id, "fahrzeugfolierung")
-    assert result["priority"] == "insufficient_data" and result["completeness"] == 0
-    doc_id = _document(engine)
-    register(engine, load_use_cases())
-    with engine.begin() as conn:
-        conn.execute(
-            insert(db.company_product_fit).values(
-                company_id=company_id,
-                use_case_key="fahrzeugfolierung",
-                fit_level="strong",
-                rationale="Test",
-                evidence_ids=json.dumps([]),
-                assessed_by="t",
-                assessed_at=db.utcnow(),
-            )
-        )
-        repo.ingest_observation(conn, _draft(company_id, doc_id, 45), None)
-    with engine.connect() as conn:
-        result = assess(conn, company_id, "fahrzeugfolierung")
-    assert result["completeness"] == 55 and result["missing"] == ["growth", "signals"]
-    assert result["priority"] in ("A", "B")
 
 
 def test_formula_injection_is_neutralised():

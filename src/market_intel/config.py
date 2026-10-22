@@ -49,6 +49,9 @@ class Settings:
     max_attempts: int = 3
     rate_limits: tuple[tuple[str, float], ...] = ()  # Quelle → Mindestabstand in Sekunden
     refresh_days: int = 30  # Quelle gilt so lange als „bereits untersucht“
+    products_file: Path | None = None  # eigene Produktmatrix (sonst mitgelieferte)
+    use_cases_file: Path | None = None  # eigene Anwendungsmatrix
+    opportunity_file: Path | None = None  # eigenes Bewertungsmodell/Segmente
     llm: LLMSettings = field(default_factory=LLMSettings)
 
     @property
@@ -92,6 +95,10 @@ def _rate_limits(raw: object) -> tuple[tuple[str, float], ...]:
     return tuple(out)
 
 
+def _optional_path(value: object) -> Path | None:
+    return Path(str(value)) if value not in (None, "") else None
+
+
 def load_settings(path: Path | None) -> Settings:
     """Liest die Datei; ohne Datei gelten die Standardwerte."""
     if path is None or not path.exists():
@@ -125,5 +132,8 @@ def load_settings(path: Path | None) -> Settings:
         max_attempts=max(1, min(6, int(raw.get("max_attempts", 3)))),
         rate_limits=_rate_limits(raw.get("rate_limits", {})),
         refresh_days=int(raw.get("refresh_days", 30)),
+        products_file=_optional_path(raw.get("products_file")),
+        use_cases_file=_optional_path(raw.get("use_cases_file")),
+        opportunity_file=_optional_path(raw.get("opportunity_file")),
         llm=llm,
     )

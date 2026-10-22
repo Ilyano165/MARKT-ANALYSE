@@ -41,7 +41,8 @@ def _setup(args: argparse.Namespace) -> tuple[Settings, Engine, dict[str, UseCas
         settings = dataclasses.replace(settings, database_url=args.db)
     engine = db.make_engine(settings.database_url)
     db.init_db(engine)
-    cases = load_use_cases(Path(args.use_cases) if getattr(args, "use_cases", None) else None)
+    explicit = getattr(args, "use_cases", None)
+    cases = load_use_cases(Path(explicit) if explicit else settings.use_cases_file)
     register(engine, cases)
     return settings, engine, cases
 

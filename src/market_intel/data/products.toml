@@ -1,0 +1,256 @@
+# Yellotools-Produktmatrix – Ausgangspunkt der Kundensuche (Phase 4).
+#
+# Stand 2026-10-20. Grundlage: öffentliche Yellotools-Produktseiten und -Kategorien, ermittelt
+# über eine Websuche (die Seiten selbst waren aus der Entwicklungsumgebung nicht abrufbar).
+# Status je Produktgruppe:
+#   "researched"  = Funktionen/Grenzen aus Herstellerangaben zusammengefasst, vom Vertrieb NICHT bestätigt
+#   "confirmed"   = vom Yellotools-Produktmanagement/Vertrieb bestätigt (Feld confirmed_by/at setzen)
+# Pflege: Datei kopieren, ändern, mit `mi products validate datei.toml` prüfen und per
+# `products_file = "…"` in market_intel.toml aktivieren; oder `mi products import tabelle.csv`.
+#
+# Felder je Produktgruppe:
+#   key, name, description, examples (Produktnamen), materials, processes, typical_users,
+#   alternative_users (Hypothesen!), applications (Schlüssel aus use_cases.toml),
+#   industries, limitations (bekannte technische Einschränkungen), sources (URL + Inhalt),
+#   process_terms (Begriffe, die auf Unternehmensseiten den Arbeitsprozess belegen)
+
+[meta]
+version = "2026-10-20"
+manufacturer = "Yellotools GmbH, Windeck (laut Herstellerseite)"
+manufacturer_target_groups = ["Werbetechniker", "Fahrzeugfolierer", "Digitaldrucker", "Display- und Beschilderungsspezialisten"]
+manufacturer_source = "https://www.yellotools.com/en/Shop-Service/Company/"
+catalog_source = "https://www.yellotools.com/Catalog/YTKatalog_01-2022_EN.pdf"
+note = "Produktangaben sind Herstellerangaben; Eignung für alternative Anwender ist eine Hypothese."
+
+# Erwähnungen dieser Marken/Werkzeuge auf Unternehmensseiten sind nur ein HINWEIS auf vorhandene
+# Werkzeuge oder alternative Lieferanten – keine belegte Lieferbeziehung.
+[tool_mentions]
+own_brand = ["Yellotools", "YelloBlade", "WrapStick", "BodyGuardKnife", "EdgeWrap", "WallRoller", "WrapGun"]
+other_brands = ["Knifeless Tape", "Olfa", "NT Cutter", "3M Hand Applicator", "Avery Dennison Squeegee", "GT Tools", "Fusion Tools"]
+
+[[product]]
+key = "rakel_kunststoff"
+name = "Kunststoffrakel und Rakelsets"
+status = "researched"
+description = "Rakel aus Kunststoff in mehreren Härten, teils mit Filz- oder Gleitkante, zum Andrücken selbstklebender Folien; Kombinationen mit Folienschneider (AllStar Cutter)."
+examples = ["ProBasic", "ProWrap", "AllStar Gold", "AllStar Cutter"]
+materials = ["selbstklebende PVC-Folien (gegossen/kalandriert)", "Car-Wrapping-Folien", "Digitaldruck-Folien", "Applikationstape"]
+processes = ["Trockenverklebung", "Andrücken/Verkleben", "Folierung großer Flächen"]
+typical_users = ["Werbetechniker", "Fahrzeugfolierer", "Digitaldrucker"]
+alternative_users = ["Möbel- und Innenausbaufolierer", "Ladenbau/Messebau", "Hersteller, die Schutz- oder Dekorfolien in der Fertigung aufbringen"]
+applications = ["werbetechnik_beschriftung", "fahrzeugfolierung", "interior_folien", "ladenbau_messebau", "industrielle_folienverarbeitung"]
+industries = ["Werbetechnik", "Fahrzeugfolierung", "Innenausbau", "Ladenbau", "Industrie"]
+limitations = ["harte Kante ohne Filz/Gleitlippe kann empfindliche Oberflächen oder Folien verkratzen", "für Nassverklebung und Lackschutzfolie gibt es eigene Rakeltypen"]
+process_terms = ["Folie verkleben", "Folierung", "selbstklebende Folie", "Folienapplikation", "Beklebung"]
+sources = [
+  "https://www.yellotools.com/en/Tools/Squeegees/ | Kategorie Rakel (Kunststoff, Filz, Holz, Pads, Sets)",
+  "https://www.yellotools.com/shop/de/rakeln/kunststoffrakeln/allstar-cutter-rakel-mit-folienschneider | AllStar Cutter",
+]
+
+[[product]]
+key = "rakel_nass_glas"
+name = "Rakel für Nassverklebung, Glas und glatte Flächen"
+status = "researched"
+description = "Dünne Rakel mit Gummilippe (YelloFlex) für Nassverklebung und Fensterfolie; Holzrakel mit filzgeschützter Kante (TimberMaxx) für Scheibenbeschriftung und glatte Flächen; Filzrakel."
+examples = ["YelloFlex 3\"/4\"/6\"/12\"", "YelloFlex Shape", "TimberMaxx", "FeltBloc"]
+materials = ["Sonnenschutz-, Sichtschutz- und Sicherheitsfolien", "Glasdekorfolien", "Scheibenbeschriftung"]
+processes = ["Nassverklebung", "Fensterfolierung", "Scheibenbeschriftung"]
+typical_users = ["Fensterfolierer", "Werbetechniker"]
+alternative_users = ["Glasereien", "Sonnenschutz-/Rollladenbetriebe", "Gebäudeausstatter", "Fahrzeugfolierer (Scheibentönung)"]
+applications = ["glasfolien", "werbetechnik_beschriftung", "schaufenster_retail"]
+industries = ["Glas- und Fensterfolierung", "Glaserei", "Sonnenschutz", "Gebäudetechnik"]
+limitations = ["Gummilippe verschleißt und muss ersetzt werden", "für Trockenverklebung großer Car-Wrapping-Flächen weniger geeignet (Herstellerangabe: entwickelt für Nassverklebung)"]
+process_terms = ["Fensterfolie", "Sonnenschutzfolie", "Sichtschutzfolie", "Sicherheitsfolie", "Glasfolie", "Nassverklebung", "Scheibentönung"]
+sources = [
+  "https://www.foliencenter24.com/yellotools-rakel-yelloflex-shape | YelloFlex Shape für Nassverklebung und Fensterfolie (Händlerangabe)",
+  "https://www.yellotools.com/en/Tools/Squeegees/Wooden-Squeegees/ | TimberMaxx Holzrakel, filzgeschützte Kante",
+]
+
+[[product]]
+key = "rakel_ppf"
+name = "Rakel für Lackschutzfolie (PPF)"
+status = "researched"
+description = "Mehrschichtige Rakel für die Montage von Lackschutzfolie (PPF Sandwich)."
+examples = ["PPF Sandwich"]
+materials = ["Lackschutzfolie (PPF, meist TPU)"]
+processes = ["Nassverklebung von Lackschutzfolie", "Fahrzeugaufbereitung"]
+typical_users = ["Fahrzeugfolierer", "Fahrzeugaufbereiter"]
+alternative_users = ["Autohäuser mit Aufbereitung", "Hersteller von Sonder- und Premiumfahrzeugen", "Motorrad-/Fahrradbranche (Rahmenschutz)"]
+applications = ["lackschutz_aufbereitung", "fahrzeughersteller_umbau"]
+industries = ["Fahrzeugaufbereitung", "Autohandel", "Fahrzeugbau"]
+limitations = ["Produktdetails (Härte, Maße) über die Websuche nicht vollständig belegt – vom Vertrieb zu ergänzen"]
+process_terms = ["Lackschutzfolie", "Paint Protection Film", "PPF", "Steinschlagschutzfolie", "Lackschutz"]
+sources = ["https://www.yellotools.com/en/Tools/Removal/ | Rakelkategorien; PPF Sandwich in Suchergebnissen genannt"]
+
+[[product]]
+key = "car_wrapping_detail"
+name = "Car-Wrapping-Detailwerkzeuge (WrapSticks, Spiegel, Demontage)"
+status = "researched"
+description = "Rakelstifte mit integriertem Haltemagnet in verschiedenen Formen (u. a. Hook, Tupp) für Dichtungen, Türgriffe, Scheinwerfergehäuse; Hilfsmittel für Außenspiegel; Demontagewerkzeuge für Fahrzeuganbauteile (StrikerSet)."
+examples = ["WrapStick Hook", "WrapStick Tupp", "Wrap-U-ezee", "StrikerSet"]
+materials = ["Car-Wrapping-Folien", "Lackschutzfolie"]
+processes = ["Folierung von Kanten, Fugen und Dichtungen", "Demontage von Anbauteilen vor der Folierung"]
+typical_users = ["Fahrzeugfolierer"]
+alternative_users = ["Fahrzeugumbauer und Sonderfahrzeugbauer", "Reisemobil- und Caravanhersteller (Dekore)", "Bootsfolierer"]
+applications = ["fahrzeugfolierung", "fahrzeughersteller_umbau", "schifffahrt_luftfahrt_spezial"]
+industries = ["Fahrzeugfolierung", "Fahrzeugbau", "Caravaning", "Bootsbau"]
+limitations = ["auf Fahrzeuggeometrien ausgelegt; Nutzen in anderen Branchen nicht belegt"]
+process_terms = ["Vollfolierung", "Teilfolierung", "Fahrzeugfolierung", "Car Wrapping", "Fahrzeugbeschriftung", "Dekorfolierung"]
+sources = [
+  "https://yellotools.com/shop/en/car-wrapping/wrapsticks/wrapstick-hook-squeegee-pen-with-hook-shape?c=31 | WrapStick mit Haltemagnet",
+  "https://www.yellotools.com/shop/en/car-wrapping/ | Kategorie Car Wrapping (u. a. Wrap-U-ezee)",
+  "https://www.yellotools.com/en/Tools/Labeling/Magnetic-Solutions/ | StrikerSet Demontagewerkzeuge",
+]
+
+[[product]]
+key = "waerme"
+name = "Heißluft und Wärmestrahler (Tempern, Nachwärmen)"
+status = "researched"
+description = "Heißluftgerät WrapGun II (80–630 °C, 50-°C-Kaltstufe, Temperaturscanner im Set) und Wärmestrahler WrapSun für große Flächen; zum Tempern/Nachwärmen gegossener Folien und zum Ablösen alter Folien."
+examples = ["WrapGun II", "WrapGun II Set", "WrapSun Power"]
+materials = ["gegossene Folien", "Car-Wrapping-Folien", "Wand- und Bodenfolien"]
+processes = ["Tempern/Nachwärmen", "Verformen von Folie über Wölbungen", "Ablösen alter Folien mit Wärme"]
+typical_users = ["Fahrzeugfolierer", "Werbetechniker"]
+alternative_users = ["Bootsfolierer", "Messebau (Folien auf Strukturen)", "Fuhrparkbetreiber (Entfolierung)"]
+applications = ["fahrzeugfolierung", "entfolierung_fuhrpark", "schifffahrt_luftfahrt_spezial"]
+industries = ["Fahrzeugfolierung", "Werbetechnik"]
+limitations = ["Heißluftgeräte sind keine Spezialprodukte – Wettbewerb mit allgemeinen Werkzeugherstellern", "Temperatur muss zum Folienmaterial passen (PVC wärmeempfindlich)"]
+process_terms = ["Tempern", "Nachwärmen", "Heißluft", "Entfolierung", "Folie entfernen"]
+sources = [
+  "https://www.yellotools.com/shop/en/car-wrapping/tempering-post-heating/wrapgun-ii-set-heat-gun-set-for-film-application | WrapGun II Set, 80–630 °C",
+  "https://www.yellotools.com/shop/en/car-wrapping/tempering-post-heating/ | WrapSun Strahler",
+]
+
+[[product]]
+key = "schneiden"
+name = "Messer, Cutter, Schneidlineale und Schneidmatten"
+status = "researched"
+description = "Spezialmesser zum Schneiden von Trägerpapier/Liner und Folie mit Teflon-Gleitschuh und Klingenführung zum Schutz der Oberfläche (BodyGuardKnife), Varianten mit 60/90-cm-Griff für breite Folien (LongReach Duo), Cutter, Ersatzklingen, Lineale, Schneidmatten."
+examples = ["BodyGuardKnife", "LongReach Duo", "YelloLip Cutter", "Ersatzklingen (titanbeschichtet)"]
+materials = ["selbstklebende Folien mit Trägerpapier", "Silikonliner", "Digitaldrucke", "Applikationstape"]
+processes = ["Zuschnitt von Folie und Trägerpapier", "Schnitt auf dem Objekt ohne Oberflächenschaden", "Entgittern/Weiterverarbeitung von Plots"]
+typical_users = ["Werbetechniker", "Fahrzeugfolierer", "Digitaldrucker"]
+alternative_users = ["Etiketten- und Aufkleberproduktion", "Verpackungs-Musterbau", "industrielle Folienverarbeiter/Konfektionierer", "Druckereien"]
+applications = ["werbetechnik_beschriftung", "fahrzeugfolierung", "druck_grossformat", "verpackung_etiketten", "industrielle_folienverarbeitung", "technische_folien"]
+industries = ["Werbetechnik", "Druck", "Verpackung", "Folienkonfektion"]
+limitations = ["Handwerkzeuge – für Serienzuschnitt in der Industrie sind Maschinen (Plotter, Stanzen) üblich; Nutzen dort eher in Musterbau, Nacharbeit, Montage"]
+process_terms = ["Folienzuschnitt", "Zuschnitt", "Trägerpapier", "Liner", "Plotten", "Konfektionierung", "schneiden"]
+sources = [
+  "https://www.yellotools.com/en/p/bodyguardknife-special-purpose-knife-for-film-backing-papers/YT11BGK001 | BodyGuardKnife für Trägerpapiere",
+  "https://www.yellotools.com/shop/de/schneiden/messer-cutter-scheren/longreach-duo-folienschneider-mit-verlaengertem-griff | LongReach Duo 60/90 cm",
+  "https://www.yellotools.com/en/Tools/Cutting/ | Kategorie Schneiden (Messer, Klingen, Lineale, Matten)",
+]
+
+[[product]]
+key = "moebelfolierung"
+name = "Werkzeuge für Möbel- und Interiorfolierung"
+status = "researched"
+description = "Schneideschablone für 90°-Kanten von Möbeln und Schildern mit Überständen in Stufen von 0–20 mm (EdgeWrap Cutter Mastermind, POM), weitere Kanten- und Eckwerkzeuge."
+examples = ["EdgeWrap Cutter Mastermind", "APE CornerTool", "IvoCut", "YelloSlipCut"]
+materials = ["Möbel- und Architekturfolien (Interiorfolien)", "Dekorfolien"]
+processes = ["Folierung von Möbelkanten und Ecken", "Renovierung von Türen, Küchenfronten, Tischplatten"]
+typical_users = ["Möbel-/Interiorfolierer", "Werbetechniker"]
+alternative_users = ["Innenausbau und Objekteinrichtung", "Hotel- und Büro-Renovierer", "Ladenbau", "Küchenrenovierer", "Tischlereien"]
+applications = ["interior_folien", "ladenbau_messebau", "architektur_innenausbau"]
+industries = ["Innenausbau", "Objekteinrichtung", "Tischlerei", "Ladenbau"]
+limitations = ["für 90°-Kanten ausgelegt; Rundungen/Profile nur eingeschränkt"]
+process_terms = ["Möbelfolierung", "Küchenfolierung", "Türenfolierung", "Architekturfolie", "Interiorfolie", "Möbelrenovierung", "Dekorfolie"]
+sources = [
+  "https://www.yellotools.com/en/p/edgewrap-cutter-mastermind-cutting-template-for-furniture-wrapping/YT23EWCM01 | EdgeWrap Cutter Mastermind",
+  "https://www.yellotools.com/en/Tools/Furniture-wrapping/ | Kategorie Möbelfolierung",
+]
+
+[[product]]
+key = "entfernen"
+name = "Entschriften: Folien, Aufkleber und Klebereste entfernen"
+status = "researched"
+description = "Lösemittelbeständige Kunststoff-Rakelblätter zum Ablösen von Aufklebern und Folienecken ohne Lack/Glas zu verkratzen (YelloBlade, Maxx, Handle 360), Folienentferner (RapidRemover), Kleberestentferner auf Orangenterpen-Basis (YelloOrange)."
+examples = ["YelloBlade", "YelloBlade Maxx", "YelloBlade Handle 360", "RapidRemover", "YelloOrange"]
+materials = ["alte Folien und Aufkleber auf Lack, Glas, Kunststoff", "Kleberückstände, Bitumen, Teer"]
+processes = ["Entfolierung", "Entfernen von Aufklebern/Etiketten", "Kleberestentfernung"]
+typical_users = ["Werbetechniker", "Fahrzeugfolierer"]
+alternative_users = ["Fuhrpark- und Leasinggesellschaften (Rückgabe)", "Autovermieter", "Fahrzeughandel/Remarketing", "ÖPNV-Betriebe (Verkehrsmittelwerbung)", "Gebäudereinigung/Facility-Management"]
+applications = ["entfolierung_fuhrpark", "fahrzeugfolierung", "werbetechnik_beschriftung", "facility_reinigung"]
+industries = ["Fuhrparkmanagement", "Autovermietung", "Fahrzeughandel", "ÖPNV", "Gebäudereinigung"]
+limitations = ["Wirkung von Reinigern auf empfindlichen Lacken/Kunststoffen vorher prüfen (Herstellerhinweise beachten)"]
+process_terms = ["Entfolierung", "Folie entfernen", "Aufkleber entfernen", "Beschriftung entfernen", "Kleberückstände", "Fahrzeugrückgabe", "Leasingrückläufer"]
+sources = [
+  "https://www.yellotools.com/shop/de/entschriften/yelloblade-rakelblatt-zur-folienentfernung | YelloBlade",
+  "https://www.yellotools.com/shop/de/entschriften/rapidremover-folienentferner | RapidRemover",
+  "https://www.yellotools.com/en/p/yelloorange-adhesive-residue-cleaner-400-ml/YT23YO400ML | YelloOrange",
+]
+
+[[product]]
+key = "reinigen_antistatik"
+name = "Reinigung, Entfettung und Antistatik"
+status = "researched"
+description = "Entfettung vor dem Folieren (YelloJack), Reinigungstücher (YelloFleece Pro), Antistatik-Flüssigkeit für Thermoplaste (PVC, PC, PP, PE, OPP, PES, PS, PMA) und Antistatik-Set gegen Staub auf Plots und Drucken."
+examples = ["YelloJack", "YelloFleece Pro", "AntiStatic Fluid C/E", "Antistatic Set"]
+materials = ["Plattenmaterialien aus Thermoplasten", "Acrylglas/Polycarbonat", "Folienplots und Drucke"]
+processes = ["Untergrundvorbereitung", "Entstauben/Entladen von Kunststoffplatten", "Reinigung vor Kaschierung"]
+typical_users = ["Werbetechniker", "Digitaldrucker"]
+alternative_users = ["Display- und Schilderhersteller", "Acrylglas- und Kunststoffverarbeiter", "Messebau", "Ladenbau"]
+applications = ["display_beschilderung", "druck_grossformat", "werbetechnik_beschriftung", "kunststoffverarbeitung"]
+industries = ["Displaybau", "Kunststoffverarbeitung", "Druck"]
+limitations = ["Wirksamkeitsangaben (Labortest) sind Herstellerangaben, nicht unabhängig geprüft"]
+process_terms = ["Acrylglas", "Plexiglas", "Polycarbonat", "Kunststoffplatten", "Displays", "Kaschierung", "Plattendruck"]
+sources = [
+  "https://www.yellotools.com/en/p/antistatic-fluid-professional-cleaning-fluid/YT12ASFC100M | AntiStatic Fluid, Materialliste",
+  "https://www.yellotools.com/en/p/antistatic-set-tool-set-for-antistatic-cleaning-6-pieces/YT12ATSET01 | Antistatic Set",
+  "https://www.yellotools.com/shop/de/reinigen/reinigungsmittel/yellojack-oberflaechen-entfettungsmittel | YelloJack",
+]
+
+[[product]]
+key = "magnete"
+name = "Magnetlösungen und Positionierhilfen"
+status = "researched"
+description = "Montagemagnete, Magnetpads, Magnetketten, Mehrfachmagnete für Türen/Hauben (JoniMag Strip, APE MagCarpet), selbstklebende GeckoPatch-Pads (machen Glas magnetisch nutzbar), Magnetrakel (TonnyMag), Werkzeugschale mit Magnet (MagTool Tray)."
+examples = ["JoniMag Strip", "APE MagCarpet", "GeckoPatch", "TonnyMag Basic", "MagTool Tray"]
+materials = ["Folien und Drucke beim Positionieren auf Stahl, Glas (mit Pads)"]
+processes = ["Positionieren/Fixieren von Folienbahnen", "Werkzeugorganisation am Fahrzeug"]
+typical_users = ["Fahrzeugfolierer", "Werbetechniker"]
+alternative_users = ["Messe- und Ladenbau (Grafikmontage)", "Fahrzeugumbau"]
+applications = ["fahrzeugfolierung", "werbetechnik_beschriftung", "ladenbau_messebau"]
+industries = ["Fahrzeugfolierung", "Werbetechnik", "Messebau"]
+limitations = ["Haltekraft nur auf magnetischen Untergründen bzw. mit Pads"]
+process_terms = ["Positionieren", "Fahrzeugbeschriftung", "Großformatgrafik", "Montage"]
+sources = [
+  "https://www.yellotools.com/shop/en/labeling/magnetic-solutions/ | Magnetlösungen, GeckoPatch, JoniMag, MagCarpet",
+  "https://www.yellotools.com/en/p/magtool-tray-magnetic-tool-tray/YT13MTT01 | MagTool Tray",
+]
+
+[[product]]
+key = "wand_bodenroller"
+name = "Wand- und Bodenroller"
+status = "researched"
+description = "Andruckroller für Wandgrafiken und Bodenfolien: WallRoller Basic (für wärmeempfindliche PVC-Folien, auch als Bodenroller), Chrissi (leichtere Variante), Hot (mit Heißluft), StreetRoller (Verlegeroller für Bodenfolien)."
+examples = ["WallRoller Basic", "WallRoller Chrissi", "WallRoller Hot II", "StreetRoller Basic"]
+materials = ["Wandfolien/Wall Graphics", "Bodenfolien und Bodengrafiken", "Straßen-/Pflasterfolien"]
+processes = ["Verkleben großflächiger Wand- und Bodengrafiken", "Verkleben auf strukturierten Untergründen mit Wärme"]
+typical_users = ["Werbetechniker", "Digitaldrucker"]
+alternative_users = ["Ladenbau und Retail-Design", "Messe- und Eventbau", "Innenarchitektur/Objektgestaltung", "Logistik (Bodenmarkierung mit Folie – Hypothese)"]
+applications = ["ladenbau_messebau", "schaufenster_retail", "architektur_innenausbau", "druck_grossformat", "bodenmarkierung"]
+industries = ["Ladenbau", "Messebau", "Innenarchitektur", "Druck", "Logistik"]
+limitations = ["Bodenmarkierung mit Folien ist nicht dasselbe wie Markierung mit Farbe/Band – Eignung je Material zu prüfen"]
+process_terms = ["Wandgestaltung", "Wandfolie", "Wall Graphics", "Bodenfolie", "Bodengrafik", "Fußbodenwerbung", "Raumgestaltung", "Tapetendruck"]
+sources = [
+  "https://www.yellotools.com/en/Tools/Labeling/Floor-and-Wall-Rollers/ | Wand- und Bodenroller",
+  "https://www.yellotools.com/en/p/wallroller-basic-pressure-roller-for-self-adhesive-films/YT11WR002 | WallRoller Basic",
+  "https://www.yellotools.com/shop/de/beschriften/wand-und-bodenroller/wallroller-hot-andruckroller-fuer-selbstklebefolien | WallRoller Hot",
+]
+
+[[product]]
+key = "applizieren_kaschieren"
+name = "Applizieren und Kaschieren von Hand"
+status = "researched"
+description = "Abroller/Spender für Applikationstape (AppFix) und AppFix Racer als manuelle Alternative zum Flachbett-Laminator."
+examples = ["AppFix", "AppFix Racer"]
+materials = ["Applikationstape/Übertragungsfolie", "Schutzlaminat", "Plots und Drucke"]
+processes = ["Übertragen von Plots", "Kaschieren/Laminieren ohne Maschine"]
+typical_users = ["Werbetechniker", "Digitaldrucker"]
+alternative_users = ["Aufkleber- und Etikettenhersteller (Kleinserie)", "Druckereien ohne Laminator", "Schilderhersteller"]
+applications = ["druck_grossformat", "werbetechnik_beschriftung", "verpackung_etiketten", "display_beschilderung"]
+industries = ["Druck", "Werbetechnik", "Etiketten"]
+limitations = ["für Kleinserien/Einzelstücke; ersetzt keinen Laminator in der Serienproduktion"]
+process_terms = ["Kaschieren", "Laminieren", "Applikationstape", "Übertragungsfolie", "Aufkleberdruck", "Folienplot"]
+sources = ["https://www.yellotools.com/shop/en/applying/ | Kategorie Applizieren (AppFix)"]

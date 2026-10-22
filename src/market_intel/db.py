@@ -32,7 +32,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.types import TypeDecorator
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class DecimalText(TypeDecorator[Decimal]):
@@ -619,6 +619,59 @@ competitor_assessment = Table(
     Column("method_version", String(30), nullable=False),
     Column("research_run_id", Integer),
     Column("assessed_at", DateTime(timezone=True), nullable=False),
+)
+
+# ------------------------------------------------------------- Phase 4: Opportunity Intelligence
+
+product_group = Table(  # Yellotools-Produktmatrix (Kopie der gepflegten Datei)
+    "product_group",
+    metadata,
+    Column("key", String(60), primary_key=True),
+    Column("name", Text, nullable=False),
+    Column("status", String(20), nullable=False),
+    Column("definition", Text, nullable=False),
+    Column("matrix_version", String(40), nullable=False, default=""),
+    Column("source_path", Text, nullable=False, default=""),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+opportunity_score = Table(  # Bewertung v2: Produktrelevanz, Potenzial, Datenqualität getrennt
+    "opportunity_score",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("company_id", Integer, ForeignKey("company.id"), nullable=False),
+    Column("use_case_key", String(60), nullable=False),
+    Column("model_version", String(40), nullable=False),
+    Column("product_relevance", Integer),
+    Column("business_potential", Integer),
+    Column("data_quality", Integer, nullable=False),
+    Column("priority_score", Integer),
+    Column("segment", String(60), nullable=False),
+    Column("details", Text, nullable=False),
+    Column("research_run_id", Integer),
+    Column("assessed_at", DateTime(timezone=True), nullable=False),
+)
+
+watchlist = Table(
+    "watchlist",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("name", String(120), nullable=False, unique=True),
+    Column("description", Text, nullable=False, default=""),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+watchlist_entry = Table(  # jede Statusänderung ist eine neue Zeile (Historie)
+    "watchlist_entry",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("watchlist_id", Integer, ForeignKey("watchlist.id"), nullable=False),
+    Column("company_id", Integer, ForeignKey("company.id"), nullable=False),
+    # vorgemerkt | in_pruefung | qualifiziert | verworfen | entfernt
+    Column("status", String(20), nullable=False),
+    Column("reason", Text, nullable=False, default=""),
+    Column("author", Text, nullable=False, default=""),
+    Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
 schema_info = Table(

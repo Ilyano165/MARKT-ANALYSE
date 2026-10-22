@@ -100,21 +100,16 @@ def _rows_companies(engine: Engine, company_ids: Sequence[int]) -> list[dict[str
     return out
 
 
-def _rows_opportunities(engine: Engine, use_case_keys: Sequence[str]) -> list[dict[str, Any]]:
-    out = []
+def _rows_opportunities(engine: Engine, company_ids: Sequence[int]) -> list[dict[str, Any]]:
+    """Jüngste Bewertung (Modell v2) je Unternehmen und Anwendungsfall, zerlegt."""
+    table = db.opportunity_score
     with engine.connect() as conn:
         rows = (
             conn.execute(
-                select(
-                    db.opportunity_assessment,
-                    db.company.c.display_name,
-                    db.company.c.country_code,
-                    db.company.c.entity_kind,
-                    db.company.c.website_domain,
-                )
-                .join(db.company, db.company.c.id == db.opportunity_assessment.c.company_id)
-                .where(db.opportunity_assessment.c.use_case_key.in_(list(use_case_keys)))
-                .order_by(db.opportunity_assessment.c.id)
+                select(table, db.company.c.display_name, db.company.c.website_domain)
+                .join(db.company, db.company.c.id == table.c.company_id)
+                .where(table.c.company_id.in_(list(company_ids)))
+                .order_by(table.c.id)
             )
             .mappings()
             .all()
@@ -122,26 +117,34 @@ def _rows_opportunities(engine: Engine, use_case_keys: Sequence[str]) -> list[di
     latest: dict[tuple[int, str], dict[str, Any]] = {}
     for mapping in rows:
         latest[(mapping["company_id"], mapping["use_case_key"])] = dict(mapping)
-    for r in sorted(latest.values(), key=lambda x: (x["use_case_key"], -float(x["total_score"]))):
-        comps = json.loads(r["components"])
-        basis = " | ".join(
-            f"{k}: {v['basis']} (Beitrag {v['contribution']})"
-            for k, v in comps["components"].items()
-        )
+    out = []
+    for r in sorted(latest.values(), key=lambda x: (-(x["priority_score"] or 0), x["company_id"])):
+        details = json.loads(r["details"])
+        scores = details["scores"]
+        parts = {
+            **{f"Relevanz/{k}": v for k, v in scores["product_relevance_parts"].items()},
+            **{f"Potenzial/{k}": v for k, v in scores["business_potential_parts"].items()},
+        }
         out.append(
             {
-                "anwendungsfall": r["use_case_key"],
                 "firma": r["display_name"],
                 "firma_id": r["company_id"],
-                "land": r["country_code"],
-                "art": r["entity_kind"],
                 "website": r["website_domain"],
-                "prioritaet": r["priority"],
-                "score": r["total_score"],
-                "datenvollstaendigkeit_pct": r["data_completeness_pct"],
-                "fehlende_indikatoren": ", ".join(comps["missing"]),
-                "begruendung": basis,
-                "modell": r["scoring_model_version"],
+                "anwendungsfall": r["use_case_key"],
+                "segment": details["segment"]["name"],
+                "prioritaet": r["priority_score"],
+                "produktrelevanz": r["product_relevance"],
+                "potenzial": r["business_potential"]
+                if r["business_potential"] is not None
+                else "unbekannt",
+                "datenqualitaet": r["data_quality"],
+                "hypothese": details["hypothesis"]["statement"],
+                "begruendung": " | ".join(
+                    f"{k}: {v['basis']} (Beitrag {v['contribution']})" for k, v in parts.items()
+                ),
+                "potenzial_unbekannt": ", ".join(scores["business_potential_unknown"]),
+                "luecken": "; ".join(details["gaps"]),
+                "modell": r["model_version"],
             }
         )
     return out
@@ -174,7 +177,6 @@ def export_all(
     out_dir: Path,
     company_ids: Sequence[int],
     compare_ids: Sequence[int],
-    use_case_keys: Sequence[str],
     run_id: int | None,
 ) -> list[Path]:
     """Alle Exporte schreiben; gibt die Dateien zurück."""
@@ -184,7 +186,7 @@ def export_all(
         quality = data_quality(conn, list(company_ids))
     sheets: dict[str, list[dict[str, Any]]] = {
         "vergleich": comparison,
-        "chancen": _rows_opportunities(engine, use_case_keys),
+        "chancen": _rows_opportunities(engine, company_ids),
         "kennzahlen": _rows_observations(engine, company_ids),
         "firmen": _rows_companies(engine, company_ids),
         "signale": _rows_table(engine, db.business_signal),

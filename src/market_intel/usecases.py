@@ -26,6 +26,16 @@ class UseCase:
     tender_terms: tuple[str, ...]
     news_terms: tuple[str, ...]
     industry_terms: tuple[str, ...]
+    origin: str = "auftrag"
+    industries: tuple[str, ...] = ()
+    product_groups: tuple[str, ...] = ()
+    processes: tuple[str, ...] = ()
+    rationale: str = ""
+    counter_indicators: tuple[str, ...] = ()
+    counter_terms: tuple[str, ...] = ()
+
+
+STATUSES = ("hypothesis", "confirmed", "rejected")
 
 
 def load_use_cases(path: Path | None = None) -> dict[str, UseCase]:
@@ -37,23 +47,34 @@ def load_use_cases(path: Path | None = None) -> dict[str, UseCase]:
     data = tomllib.loads(raw.decode("utf-8"))
     cases = {}
     for item in data.get("use_case", []):
+        status = str(item.get("evidence_status", "hypothesis"))
+        if status not in STATUSES:
+            raise ValueError(f"Anwendungsfall {item.get('key')}: Status {status!r} unbekannt")
+        lists = (
+            "website_terms",
+            "name_terms",
+            "tender_terms",
+            "news_terms",
+            "industry_terms",
+            "industries",
+            "product_groups",
+            "processes",
+            "counter_indicators",
+            "counter_terms",
+        )
         case = UseCase(
             key=str(item["key"]),
             name=str(item["name"]),
-            evidence_status=str(item.get("evidence_status", "hypothesis")),
-            **{
-                f: tuple(str(t) for t in item.get(f, []))
-                for f in (
-                    "product_categories",
-                    "website_terms",
-                    "name_terms",
-                    "tender_terms",
-                    "news_terms",
-                    "industry_terms",
-                )
-            },
+            evidence_status=status,
+            product_categories=tuple(
+                str(t) for t in item.get("product_categories", item.get("product_groups", []))
+            ),
+            origin=str(item.get("origin", "auftrag")),
+            rationale=str(item.get("rationale", "")),
+            **{f: tuple(str(t) for t in item.get(f, [])) for f in lists},
         )
-        cases[case.key] = case
+        if case.evidence_status != "rejected":
+            cases[case.key] = case
     return cases
 
 
@@ -67,6 +88,12 @@ def register(engine: Engine, cases: dict[str, UseCase]) -> None:
                 "evidence_status": case.evidence_status,
                 "definition": json.dumps(
                     {
+                        "origin": case.origin,
+                        "industries": case.industries,
+                        "product_groups": case.product_groups,
+                        "processes": case.processes,
+                        "rationale": case.rationale,
+                        "counter_indicators": case.counter_indicators,
                         "website_terms": case.website_terms,
                         "name_terms": case.name_terms,
                         "tender_terms": case.tender_terms,

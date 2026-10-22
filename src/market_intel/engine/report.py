@@ -437,10 +437,10 @@ def build_report(
         )
         opportunities = (
             conn.execute(
-                select(db.opportunity_assessment, db.company.c.display_name)
-                .join(db.company, db.company.c.id == db.opportunity_assessment.c.company_id)
-                .where(db.opportunity_assessment.c.research_run_id == run_id)
-                .order_by(db.opportunity_assessment.c.total_score.desc())
+                select(db.opportunity_score, db.company.c.display_name)
+                .join(db.company, db.company.c.id == db.opportunity_score.c.company_id)
+                .where(db.opportunity_score.c.research_run_id == run_id)
+                .order_by(db.opportunity_score.c.priority_score.desc())
             )
             .mappings()
             .all()
@@ -520,20 +520,23 @@ def build_report(
         ]
     if opportunities:
         lines += [
-            "Potenzielle Kunden (Bewertung zerlegbar, siehe Export „chancen“):",
+            "Potenzielle Kunden (Modell v2, zerlegt im Export „chancen“; Priorität ist kein "
+            "Verkaufsversprechen):",
             "",
-            "| Unternehmen | Anwendungsfall | Priorität | Score | Datenvollständigkeit |",
-            "|---|---|---|---|---|",
+            "| Unternehmen | Anwendungsfall | Segment | Priorität | Produktrelevanz | Potenzial "
+            "| Datenqualität |",
+            "|---|---|---|---|---|---|---|",
         ]
-        seen: set[tuple[int, str]] = set()
+        seen: set[int] = set()
         for o in opportunities:
-            key = (o["company_id"], o["use_case_key"])
-            if key in seen:
+            if o["company_id"] in seen:
                 continue
-            seen.add(key)
+            seen.add(o["company_id"])
+            potential = o["business_potential"] if o["business_potential"] is not None else "?"
             lines.append(
-                f"| {o['display_name']} | {o['use_case_key']} | {o['priority']} | "
-                f"{o['total_score']} | {o['data_completeness_pct']} % |"
+                f"| {o['display_name']} | {o['use_case_key']} | {o['segment']} | "
+                f"{o['priority_score']} | {o['product_relevance']} | {potential} | "
+                f"{o['data_quality']} |"
             )
         lines.append("")
     if changes:

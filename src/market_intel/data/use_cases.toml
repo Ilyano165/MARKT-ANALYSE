@@ -1,66 +1,360 @@
-# Anwendungsfälle für Customer Discovery – STARTHYPOTHESEN, nicht belegt.
-# Status "hypothesis": vom Yellotools-Vertrieb zu bestätigen oder zu verwerfen.
-# Produktkategorien: Arbeitsnamen aus dem öffentlichen Shop (Schneiden, Rakel, Entfernen,
-# Messen, Car-Wrapping-Hilfsmittel); Ersatz durch den echten Artikelstamm in Meilenstein M10.
+# Anwendungs- und Branchenmatrix für Customer Discovery (Phase 4).
+#
+# Jeder Eintrag verbindet eine Branche/Tätigkeit mit konkreten Yellotools-Produktgruppen
+# (Schlüssel aus products.toml) und Arbeitsprozessen. ALLE Einträge sind SUCHHYPOTHESEN:
+#   evidence_status = "hypothesis"  – fachlich plausibel abgeleitet, vom Vertrieb nicht bestätigt
+#   evidence_status = "confirmed"   – vom Yellotools-Vertrieb bestätigt (Kunden vorhanden)
+#   evidence_status = "rejected"    – geprüft und verworfen (bleibt zur Dokumentation stehen)
+# origin: "auftrag" (Branchenliste der Anforderung) oder "abgeleitet" (aus dem Portfolio ergänzt)
 #
 # Felder:
-#   website_terms   Begriffe, die auf der eigenen Webseite eines Unternehmens den Anwendungsfall belegen
-#   name_terms      Begriffe in Firmennamen (GLEIF-Namenssuche)
-#   tender_terms    Volltextbegriffe für EU-Ausschreibungen (TED)
-#   news_terms      Begriffe für die Nachrichtensuche (GDELT)
-#   industry_terms  Suchbegriffe, um Wikidata-Branchen zu finden (Zuordnung wird protokolliert)
-
-[[use_case]]
-key = "fahrzeugfolierung"
-name = "Fahrzeugbeschriftung und Car Wrapping"
-evidence_status = "hypothesis"
-product_categories = ["Rakel", "Schneidwerkzeuge", "Car-Wrapping-Hilfsmittel", "Entfernen"]
-website_terms = ["Fahrzeugfolierung", "Fahrzeugbeschriftung", "Car Wrapping", "Vollfolierung", "Teilfolierung", "Autofolierung", "Flottenbeschriftung", "vehicle wrap"]
-name_terms = ["Fahrzeugfolierung", "Folierung", "Car Wrapping", "Werbetechnik"]
-tender_terms = ["Fahrzeugbeschriftung", "Folierung"]
-news_terms = ["Fahrzeugfolierung"]
-industry_terms = ["Werbetechnik", "sign industry"]
-
-[[use_case]]
-key = "glasfolien"
-name = "Sonnenschutz-, Sicht- und Sicherheitsfolien auf Glas"
-evidence_status = "hypothesis"
-product_categories = ["Rakel", "Schneidwerkzeuge", "Entfernen"]
-website_terms = ["Sonnenschutzfolie", "Sichtschutzfolie", "Sicherheitsfolie", "Fensterfolie", "Glasfolie", "Splitterschutzfolie", "window film"]
-name_terms = ["Sonnenschutz", "Glasfolien", "Fensterfolien"]
-tender_terms = ["Sonnenschutzfolie", "Fensterfolie"]
-news_terms = ["Sonnenschutzfolie"]
-industry_terms = ["Glaserei", "glazing"]
-
-[[use_case]]
-key = "lackschutz_aufbereitung"
-name = "Lackschutzfolie (PPF) und Fahrzeugaufbereitung"
-evidence_status = "hypothesis"
-product_categories = ["Rakel", "Schneidwerkzeuge", "Car-Wrapping-Hilfsmittel"]
-website_terms = ["Lackschutzfolie", "Paint Protection Film", "PPF", "Steinschlagschutzfolie", "Fahrzeugaufbereitung"]
-name_terms = ["Lackschutz", "Fahrzeugaufbereitung"]
-tender_terms = ["Lackschutzfolie"]
-news_terms = ["Lackschutzfolie"]
-industry_terms = ["Fahrzeugaufbereitung", "auto detailing"]
+#   product_groups   Produktgruppen aus products.toml
+#   processes        Arbeitsprozesse, bei denen die Werkzeuge helfen könnten
+#   rationale        Warum ein Bedarf plausibel sein könnte (Hypothese, kein Beleg)
+#   counter_indicators  was gegen einen Bedarf sprechen kann
+#   counter_terms    Begriffe, deren Vorkommen GEGEN die Rolle als Anwender spricht (z. B. Folienhersteller
+#                    statt Folierbetrieb); Treffer werden mit Zitat gezeigt und senken die Tätigkeitsbewertung
+#   website_terms    Begriffe, die auf der eigenen Webseite/den Dokumenten eines Unternehmens die
+#                    Tätigkeit belegen (Grundlage des Produkt-Fits; spezifisch halten!)
+#   name_terms / tender_terms / news_terms / industry_terms  Suchbegriffe je Quelle
 
 [[use_case]]
 key = "werbetechnik_beschriftung"
 name = "Werbetechnik, Schilder und Beschriftung"
+origin = "auftrag"
 evidence_status = "hypothesis"
-product_categories = ["Schneidwerkzeuge", "Rakel", "Messen", "Entfernen"]
-website_terms = ["Werbetechnik", "Beschriftung", "Schilder", "Plotterfolie", "Digitaldruck", "Leuchtreklame", "Schaufensterbeschriftung"]
+industries = ["Werbetechnik", "Beschriftung"]
+product_groups = ["rakel_kunststoff", "schneiden", "entfernen", "magnete", "applizieren_kaschieren", "reinigen_antistatik"]
+processes = ["Plotten und Entgittern", "Übertragen mit Applikationstape", "Verkleben", "Entschriften"]
+rationale = "Kernzielgruppe laut Hersteller (Werbetechniker); verarbeitet selbstklebende Folien täglich."
+counter_indicators = ["reine Agentur ohne Produktion", "nur Druckeinkauf/Vermittlung"]
+counter_terms = ["Hersteller selbstklebender Folien", "Folienhersteller", "film manufacturer", "Folienhandel", "Folien-Großhandel"]
+website_terms = ["Werbetechnik", "Beschriftung", "Schilder", "Plotterfolie", "Folienplot", "Leuchtreklame", "Schaufensterbeschriftung"]
 name_terms = ["Werbetechnik", "Beschriftung", "Schilder"]
 tender_terms = ["Beschilderung", "Beschriftung"]
 news_terms = ["Werbetechnik"]
 industry_terms = ["Werbetechnik", "signage"]
 
 [[use_case]]
-key = "interior_folien"
-name = "Möbel-, Innenausbau- und Architekturfolien"
+key = "fahrzeugfolierung"
+name = "Fahrzeugbeschriftung und Car Wrapping"
+origin = "auftrag"
 evidence_status = "hypothesis"
-product_categories = ["Rakel", "Schneidwerkzeuge", "Car-Wrapping-Hilfsmittel"]
-website_terms = ["Möbelfolierung", "Architekturfolie", "Interior-Folie", "Küchenfolierung", "Türenfolierung", "Dekorfolie"]
+industries = ["Fahrzeugfolierung"]
+product_groups = ["rakel_kunststoff", "car_wrapping_detail", "waerme", "schneiden", "magnete", "entfernen"]
+processes = ["Vollfolierung", "Teilfolierung", "Tempern", "Schnitt auf dem Fahrzeug", "Entfolierung"]
+rationale = "Kernzielgruppe laut Hersteller (Fahrzeugfolierer); Werkzeugsortiment ist auf Fahrzeuggeometrien ausgelegt."
+counter_indicators = ["vermittelt Folierung nur weiter", "nur Folienhandel ohne Montage"]
+counter_terms = ["Hersteller selbstklebender Folien", "Folienhersteller", "film manufacturer", "Folienhandel", "Folien-Großhandel"]
+website_terms = ["Fahrzeugfolierung", "Fahrzeugbeschriftung", "Car Wrapping", "Vollfolierung", "Teilfolierung", "Autofolierung", "Flottenbeschriftung", "vehicle wrap"]
+name_terms = ["Fahrzeugfolierung", "Folierung", "Car Wrapping"]
+tender_terms = ["Fahrzeugbeschriftung", "Folierung"]
+news_terms = ["Fahrzeugfolierung"]
+industry_terms = ["Werbetechnik", "sign industry"]
+
+[[use_case]]
+key = "lackschutz_aufbereitung"
+name = "Lackschutzfolie (PPF) und Fahrzeugaufbereitung"
+origin = "auftrag"
+evidence_status = "hypothesis"
+industries = ["Fahrzeugaufbereitung"]
+product_groups = ["rakel_ppf", "car_wrapping_detail", "schneiden", "reinigen_antistatik"]
+processes = ["Nassverklebung von Lackschutzfolie", "Kantenschnitt am Fahrzeug"]
+rationale = "Lackschutzfolie wird von Hand montiert; eigene PPF-Rakel im Sortiment."
+counter_indicators = ["Aufbereitung nur Reinigung/Politur ohne Folie"]
+counter_terms = ["Hersteller selbstklebender Folien", "Folienhersteller", "film manufacturer", "Folienhandel", "Folien-Großhandel"]
+website_terms = ["Lackschutzfolie", "Paint Protection Film", "PPF", "Steinschlagschutzfolie", "Lackschutz Folierung"]
+name_terms = ["Lackschutz", "Fahrzeugaufbereitung"]
+tender_terms = ["Lackschutzfolie"]
+news_terms = ["Lackschutzfolie"]
+industry_terms = ["Fahrzeugaufbereitung", "auto detailing"]
+
+[[use_case]]
+key = "glasfolien"
+name = "Fenster-, Glas- und Gebäudefolierung"
+origin = "auftrag"
+evidence_status = "hypothesis"
+industries = ["Glas- und Fensterfolierung", "Glaserei", "Sonnenschutz"]
+product_groups = ["rakel_nass_glas", "schneiden", "entfernen"]
+processes = ["Nassverklebung auf Glas", "Kantenschnitt an Rahmen", "Entfernen alter Folien"]
+rationale = "Nassverklebung auf Glas ist ein eigener Einsatzzweck der YelloFlex-Rakel (Herstellerangabe)."
+counter_indicators = ["Glaserei ohne Folienleistungen"]
+counter_terms = ["Hersteller selbstklebender Folien", "Folienhersteller", "film manufacturer", "Folienhandel", "Folien-Großhandel"]
+website_terms = ["Sonnenschutzfolie", "Sichtschutzfolie", "Sicherheitsfolie", "Fensterfolie", "Glasfolie", "Splitterschutzfolie", "window film", "Fensterfolierung"]
+name_terms = ["Sonnenschutz", "Glasfolien", "Fensterfolien"]
+tender_terms = ["Sonnenschutzfolie", "Fensterfolie"]
+news_terms = ["Sonnenschutzfolie"]
+industry_terms = ["Glaserei", "glazing"]
+
+[[use_case]]
+key = "interior_folien"
+name = "Möbel- und Interiorfolierung"
+origin = "auftrag"
+evidence_status = "hypothesis"
+industries = ["Innenausbau", "Möbelrenovierung"]
+product_groups = ["moebelfolierung", "rakel_kunststoff", "schneiden", "waerme"]
+processes = ["Folierung von Möbelkanten", "Renovierung von Türen und Fronten"]
+rationale = "Eigene Werkzeugkategorie Möbelfolierung (EdgeWrap) beim Hersteller."
+counter_indicators = ["Renovierung nur mit Lack/Furnier"]
+counter_terms = ["Hersteller selbstklebender Folien", "Folienhersteller", "film manufacturer", "Folienhandel", "Folien-Großhandel"]
+website_terms = ["Möbelfolierung", "Architekturfolie", "Interiorfolie", "Küchenfolierung", "Türenfolierung", "Dekorfolie", "Möbel folieren"]
 name_terms = ["Möbelfolierung", "Folientechnik"]
 tender_terms = ["Folierung Türen", "Dekorfolie"]
 news_terms = ["Möbelfolierung"]
 industry_terms = ["Innenausbau", "interior design"]
+
+[[use_case]]
+key = "fahrzeughersteller_umbau"
+name = "Fahrzeughersteller, Fahrzeugumbau und Sonderfahrzeuge"
+origin = "auftrag"
+evidence_status = "hypothesis"
+industries = ["Fahrzeugbau", "Karosseriebau", "Sonderfahrzeugbau", "Caravaning"]
+product_groups = ["car_wrapping_detail", "rakel_kunststoff", "rakel_ppf", "schneiden"]
+processes = ["Aufbringen von Dekoren und Kennzeichnungen in der Fertigung", "Beschriftung von Einsatzfahrzeugen", "Schutzfolien an Fahrzeugteilen"]
+rationale = "Umbauer und Sonderfahrzeugbauer bringen Dekore, Beschriftungen und Schutzfolien auf – teils in Eigenleistung."
+counter_indicators = ["Beschriftung wird an Werbetechniker vergeben", "Serienfertigung mit automatisierter Applikation"]
+website_terms = ["Fahrzeugausbau", "Sonderfahrzeugbau", "Einsatzfahrzeuge", "Fahrzeugdekor", "Dekorfolien", "Reisemobile", "Aufbauhersteller"]
+name_terms = ["Fahrzeugbau", "Karosseriebau", "Sonderfahrzeuge"]
+tender_terms = ["Fahrzeugbeschriftung Einsatzfahrzeuge", "Sonderfahrzeug"]
+news_terms = ["Sonderfahrzeugbau"]
+industry_terms = ["Fahrzeugbau", "vehicle manufacturer", "Karosseriebau"]
+
+[[use_case]]
+key = "architektur_innenausbau"
+name = "Architektur, Innenausbau und Objektgestaltung"
+origin = "auftrag"
+evidence_status = "hypothesis"
+industries = ["Innenausbau", "Innenarchitektur", "Objekteinrichtung"]
+product_groups = ["moebelfolierung", "wand_bodenroller", "rakel_kunststoff", "schneiden"]
+processes = ["Wand- und Raumgestaltung mit Folie", "Folierung von Einbauten"]
+rationale = "Objektgestaltung nutzt Wandgrafiken und Architekturfolien; Montage braucht Roller, Rakel, Schnittwerkzeug."
+counter_indicators = ["nur Planung ohne Ausführung"]
+website_terms = ["Architekturfolie", "Wandgestaltung", "Raumgestaltung mit Folie", "Glasdekor", "Objektgestaltung", "Wall Graphics"]
+name_terms = ["Innenausbau", "Objekteinrichtung"]
+tender_terms = ["Folierung", "Wandgestaltung"]
+news_terms = ["Innenausbau"]
+industry_terms = ["Innenausbau", "interior construction"]
+
+[[use_case]]
+key = "ladenbau_messebau"
+name = "Ladenbau und Messebau"
+origin = "auftrag"
+evidence_status = "hypothesis"
+industries = ["Ladenbau", "Messebau", "Eventbau"]
+product_groups = ["wand_bodenroller", "rakel_kunststoff", "moebelfolierung", "magnete", "schneiden", "reinigen_antistatik"]
+processes = ["Grafikmontage auf Wänden und Böden", "Folierung von Möbeln und Displays", "Montage vor Ort"]
+rationale = "Messe- und Ladenbauer montieren Großformatgrafiken und folieren Einbauten, oft unter Zeitdruck vor Ort."
+counter_indicators = ["Grafik wird extern montiert", "nur Systemstände ohne Grafik"]
+website_terms = ["Messebau", "Ladenbau", "Messestand", "Shopdesign", "Großformatgrafik", "Bodengrafik", "Store Design"]
+name_terms = ["Messebau", "Ladenbau"]
+tender_terms = ["Messestand", "Ladenbau"]
+news_terms = ["Messebau"]
+industry_terms = ["Messebau", "exhibition stand builder", "shopfitting"]
+
+[[use_case]]
+key = "druck_grossformat"
+name = "Druckereien und Großformatdruck"
+origin = "auftrag"
+evidence_status = "hypothesis"
+industries = ["Druck", "Digitaldruck", "Großformatdruck"]
+product_groups = ["applizieren_kaschieren", "schneiden", "reinigen_antistatik", "wand_bodenroller", "rakel_kunststoff"]
+processes = ["Kaschieren und Laminieren", "Zuschnitt", "Montage von Drucken"]
+rationale = "Digitaldrucker sind laut Hersteller Zielgruppe; Großformatdrucke werden kaschiert, geschnitten und teils montiert."
+counter_indicators = ["nur Offset-/Papierdruck ohne Folien"]
+website_terms = ["Großformatdruck", "Digitaldruck", "Folien drucken", "Kaschierung", "Plattendruck", "Banner", "Wandtattoo"]
+name_terms = ["Digitaldruck", "Großformatdruck"]
+tender_terms = ["Großformatdruck", "Digitaldruck"]
+news_terms = ["Großformatdruck"]
+industry_terms = ["Druckerei", "printing", "Digitaldruck"]
+
+[[use_case]]
+key = "verpackung_etiketten"
+name = "Verpackung und Etikettierung"
+origin = "auftrag"
+evidence_status = "hypothesis"
+industries = ["Verpackung", "Etikettendruck"]
+product_groups = ["schneiden", "applizieren_kaschieren"]
+processes = ["Musterbau und Kleinserien", "Zuschnitt von Etikettenmaterial", "manuelles Applizieren"]
+rationale = "Handwerkzeuge können in Musterbau, Nacharbeit oder Kleinserien relevant sein; Serienproduktion läuft maschinell."
+counter_indicators = ["vollautomatische Serienfertigung", "nur Papier-/Kartonverpackung ohne Folie"]
+website_terms = ["Etikettendruck", "Haftetiketten", "Aufkleberdruck", "Sticker", "Verpackungsmuster", "Musterbau Verpackung"]
+name_terms = ["Etiketten", "Verpackung"]
+tender_terms = ["Etiketten"]
+news_terms = ["Etikettendruck"]
+industry_terms = ["Etikettendruck", "label printing", "Verpackungshersteller"]
+
+[[use_case]]
+key = "industrielle_folienverarbeitung"
+name = "Industrielle Folienverarbeitung und Oberflächenschutz"
+origin = "auftrag"
+evidence_status = "hypothesis"
+industries = ["Folienverarbeitung", "Oberflächenschutz"]
+product_groups = ["schneiden", "rakel_kunststoff", "entfernen"]
+processes = ["Aufbringen von Schutzfolien", "Zuschnitt und Konfektionierung", "Entfernen von Schutzfolien"]
+rationale = "Wo Folien von Hand aufgebracht oder zugeschnitten werden, sind Rakel und Spezialmesser denkbar."
+counter_indicators = ["Applikation ausschließlich maschinell"]
+website_terms = ["Oberflächenschutzfolie", "Schutzfolie aufbringen", "Folienkaschierung", "Folienkonfektion", "Folienverarbeitung"]
+name_terms = ["Folientechnik", "Folienverarbeitung"]
+tender_terms = ["Schutzfolie"]
+news_terms = ["Folienverarbeitung"]
+industry_terms = ["Folienverarbeitung", "film converting"]
+
+[[use_case]]
+key = "display_beschilderung"
+name = "Hersteller von Displays und Beschilderung"
+origin = "auftrag"
+evidence_status = "hypothesis"
+industries = ["Displaybau", "Schilderherstellung"]
+product_groups = ["reinigen_antistatik", "applizieren_kaschieren", "schneiden", "rakel_kunststoff"]
+processes = ["Bekleben von Platten", "Antistatische Reinigung von Acryl/PC", "Kaschieren"]
+rationale = "Display-/Beschilderungsspezialisten sind laut Hersteller Zielgruppe; Antistatik für Kunststoffplatten im Sortiment."
+counter_indicators = ["nur digitale Displays/Elektronik"]
+website_terms = ["Schilderherstellung", "Displaybau", "POS-Displays", "Leitsysteme", "Acrylglas-Schilder", "Beschilderungssysteme"]
+name_terms = ["Schilder", "Display"]
+tender_terms = ["Beschilderung", "Leitsystem"]
+news_terms = ["Beschilderung"]
+industry_terms = ["Schilderhersteller", "sign manufacturer", "display manufacturer"]
+
+[[use_case]]
+key = "schaufenster_retail"
+name = "Schaufenster- und Retail-Design"
+origin = "auftrag"
+evidence_status = "hypothesis"
+industries = ["Retail-Design", "Visual Merchandising"]
+product_groups = ["rakel_nass_glas", "wand_bodenroller", "entfernen", "schneiden"]
+processes = ["Schaufensterbeklebung", "saisonaler Grafikwechsel", "Entfernen alter Grafiken"]
+rationale = "Regelmäßiger Wechsel von Schaufenster- und Ladengrafiken: Anbringen und Entfernen von Folien."
+counter_indicators = ["nur Dekoration ohne Folien"]
+website_terms = ["Schaufenstergestaltung", "Schaufensterbeklebung", "Visual Merchandising", "Schaufensterdekoration", "Retail Design"]
+name_terms = ["Schaufenster", "Visual Merchandising"]
+tender_terms = ["Schaufenster"]
+news_terms = ["Schaufenstergestaltung"]
+industry_terms = ["Visual Merchandising", "retail design"]
+
+[[use_case]]
+key = "maschinenbeschriftung"
+name = "Beschriftung von Maschinen und Anlagen"
+origin = "auftrag"
+evidence_status = "hypothesis"
+industries = ["Maschinenbau", "Anlagenbau", "Industriekennzeichnung"]
+product_groups = ["rakel_kunststoff", "schneiden", "reinigen_antistatik", "entfernen"]
+processes = ["Aufbringen von Kennzeichnungen und Warnhinweisen", "Typenschilder/Folienschilder", "Untergrundvorbereitung"]
+rationale = "Kennzeichnung von Maschinen erfolgt oft mit Folienetiketten, die von Hand aufgebracht werden."
+counter_indicators = ["Kennzeichnung als Metall-/Gravurschilder", "Kennzeichnung an Dienstleister vergeben"]
+website_terms = ["Maschinenbeschriftung", "Anlagenkennzeichnung", "Typenschilder", "Sicherheitskennzeichnung", "Rohrleitungskennzeichnung", "Industriekennzeichnung"]
+name_terms = ["Kennzeichnung", "Typenschilder"]
+tender_terms = ["Anlagenkennzeichnung", "Rohrleitungskennzeichnung"]
+news_terms = ["Anlagenkennzeichnung"]
+industry_terms = ["Kennzeichnungstechnik", "industrial labeling"]
+
+[[use_case]]
+key = "technische_folien"
+name = "Hersteller und Verarbeiter technischer Folien"
+origin = "auftrag"
+evidence_status = "hypothesis"
+industries = ["Folienherstellung", "Klebstoff- und Klebebandindustrie", "Folienkonfektion"]
+product_groups = ["schneiden", "rakel_kunststoff"]
+processes = ["Musterbau und Anwendungstechnik", "Konfektionierung", "Schulungen für Verarbeiter"]
+rationale = "Folienhersteller und Konfektionierer arbeiten in Anwendungstechnik und Schulung mit Handwerkzeugen; auch als Vertriebspartner denkbar."
+counter_indicators = ["eigene Werkzeuglinie", "nur Rohstoffproduktion ohne Anwendungstechnik"]
+website_terms = ["technische Folien", "Folienkonfektion", "Klebebänder konfektionieren", "Anwendungstechnik Folie", "Stanzteile Folie", "Hersteller selbstklebender Folien", "Folienhersteller", "film manufacturer"]
+name_terms = ["Folientechnik", "Klebetechnik"]
+tender_terms = ["Folien"]
+news_terms = ["Folienhersteller"]
+industry_terms = ["Folienhersteller", "film manufacturer", "adhesive tape manufacturer"]
+
+[[use_case]]
+key = "schifffahrt_luftfahrt_spezial"
+name = "Schifffahrt, Luftfahrt und Spezialfahrzeugausbau"
+origin = "auftrag"
+evidence_status = "hypothesis"
+industries = ["Bootsbau", "Yachtausbau", "Luftfahrt-Innenausstattung", "Spezialfahrzeugbau"]
+product_groups = ["car_wrapping_detail", "waerme", "rakel_kunststoff", "entfernen"]
+processes = ["Folierung von Booten/Rümpfen", "Dekore und Kennzeichnungen", "Entfernen alter Folien"]
+rationale = "Bootsfolierung und Kennzeichnungen nutzen ähnliche Folien und Verfahren wie Fahrzeugfolierung – nur wenn konkrete Folienarbeiten belegt sind."
+counter_indicators = ["Lackierung statt Folie", "Luftfahrt mit eigenen zertifizierten Verfahren"]
+website_terms = ["Bootsfolierung", "Yachtfolierung", "Bootsbeschriftung", "aircraft livery", "Flugzeugbeklebung", "Sonderfahrzeugbau"]
+name_terms = ["Bootsbau", "Yacht"]
+tender_terms = ["Bootsbeschriftung"]
+news_terms = ["Bootsfolierung"]
+industry_terms = ["Bootsbau", "shipbuilding", "boat builder"]
+
+[[use_case]]
+key = "industrielle_fertigung_montage"
+name = "Industrielle Fertigung und Montage mit Folien"
+origin = "auftrag"
+evidence_status = "hypothesis"
+industries = ["Industrie", "Montage"]
+product_groups = ["rakel_kunststoff", "schneiden", "reinigen_antistatik"]
+processes = ["manuelles Aufbringen von Folien/Dekoren in der Montage", "Schutzfolien an Bauteilen"]
+rationale = "Wo Monteure Folien oder Dekore von Hand aufbringen, könnten Rakel und Messer helfen – nur bei belegter Folienarbeit."
+counter_indicators = ["keine Folienarbeit belegt"]
+website_terms = ["Folienmontage", "Dekorfolien aufbringen", "Folien applizieren", "Klebefolien Montage", "Folierung in der Produktion"]
+name_terms = ["Folienmontage"]
+tender_terms = ["Folienmontage"]
+news_terms = ["Folienmontage"]
+industry_terms = ["Montagedienstleister", "assembly"]
+
+[[use_case]]
+key = "entfolierung_fuhrpark"
+name = "Entfolierung und Aufbereitung von Flotten (Leasing, Vermietung, Handel)"
+origin = "abgeleitet"
+evidence_status = "hypothesis"
+industries = ["Fuhrparkmanagement", "Autovermietung", "Fahrzeughandel/Remarketing", "ÖPNV"]
+product_groups = ["entfernen", "waerme", "rakel_kunststoff"]
+processes = ["Entfernen von Flottenbeschriftung", "Kleberestentfernung vor Rückgabe/Verkauf"]
+rationale = "Bei Flottenrückgaben und Wiedervermarktung müssen Beschriftungen und Aufkleber entfernt werden (abgeleitet aus Produktgruppe Entschriften)."
+counter_indicators = ["Entfolierung vollständig an Dienstleister vergeben"]
+website_terms = ["Entfolierung", "Folie entfernen", "Beschriftung entfernen", "Fahrzeugrückgabe", "Leasingrückläufer", "Remarketing", "Fahrzeugaufbereitung Flotte"]
+name_terms = ["Fahrzeugaufbereitung", "Remarketing"]
+tender_terms = ["Entfolierung", "Entfernung Fahrzeugbeschriftung"]
+news_terms = ["Entfolierung"]
+industry_terms = ["Autovermietung", "car rental", "Fuhrparkmanagement"]
+
+[[use_case]]
+key = "facility_reinigung"
+name = "Gebäudereinigung und Facility-Management (Aufkleber/Folien entfernen)"
+origin = "abgeleitet"
+evidence_status = "hypothesis"
+industries = ["Gebäudereinigung", "Facility-Management"]
+product_groups = ["entfernen"]
+processes = ["Entfernen von Aufklebern und Folien von Glas", "Kleberestentfernung"]
+rationale = "Glas- und Sonderreinigung umfasst das Entfernen von Aufklebern und Folien (abgeleitet aus Produktgruppe Entschriften)."
+counter_indicators = ["nur Unterhaltsreinigung ohne Glas-/Sonderreinigung"]
+website_terms = ["Folienentfernung", "Aufkleberentfernung", "Glasreinigung Aufkleber", "Klebereste entfernen", "Sonderreinigung"]
+name_terms = ["Gebäudereinigung", "Glasreinigung"]
+tender_terms = ["Glasreinigung", "Sonderreinigung"]
+news_terms = ["Gebäudereinigung"]
+industry_terms = ["Gebäudereinigung", "cleaning services"]
+
+[[use_case]]
+key = "kunststoffverarbeitung"
+name = "Acrylglas- und Kunststoffplattenverarbeitung"
+origin = "abgeleitet"
+evidence_status = "hypothesis"
+industries = ["Kunststoffverarbeitung", "Acrylglasverarbeitung"]
+product_groups = ["reinigen_antistatik", "schneiden", "applizieren_kaschieren"]
+processes = ["Antistatische Reinigung von Platten", "Kaschieren/Bekleben von Platten"]
+rationale = "Antistatik-Flüssigkeit ist laut Hersteller für PVC, PC, PP, PE, PS u. a. geeignet (abgeleitet aus Produktgruppe Reinigung/Antistatik)."
+counter_indicators = ["Spritzguss ohne Plattenverarbeitung"]
+website_terms = ["Acrylglas", "Plexiglas", "Polycarbonat", "Kunststoffplatten", "Plattenzuschnitt", "Acrylglasverarbeitung"]
+name_terms = ["Kunststofftechnik", "Acryl"]
+tender_terms = ["Acrylglas"]
+news_terms = ["Acrylglas"]
+industry_terms = ["Kunststoffverarbeitung", "plastics processing"]
+
+[[use_case]]
+key = "bodenmarkierung"
+name = "Boden- und Flächenmarkierung mit Folie (Logistik, Events, Retail)"
+origin = "abgeleitet"
+evidence_status = "hypothesis"
+industries = ["Logistik", "Eventbau", "Retail"]
+product_groups = ["wand_bodenroller", "schneiden"]
+processes = ["Verkleben von Bodenfolien und Bodengrafiken"]
+rationale = "Bodenroller sind für Bodenfolien ausgelegt; ob Logistik-Bodenmarkierung mit Folie statt Farbe/Band erfolgt, ist offen (abgeleitet)."
+counter_indicators = ["Markierung mit Farbe oder Band"]
+website_terms = ["Bodenmarkierung Folie", "Bodengrafik", "Bodenfolie", "Fußbodenwerbung", "Floor Graphics"]
+name_terms = ["Bodenmarkierung"]
+tender_terms = ["Bodenmarkierung"]
+news_terms = ["Bodenmarkierung"]
+industry_terms = ["Bodenmarkierung", "floor marking"]
