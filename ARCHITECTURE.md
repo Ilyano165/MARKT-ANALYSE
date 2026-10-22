@@ -1,6 +1,6 @@
 # Architektur – Yellotools Market Intelligence
 
-Stand: 2026-10-20 · Revision 4 (Company Intelligence, Phase 3; verbindlich: **100 % kostenloser Betrieb**) · Version 0.3.0
+Stand: 2026-10-22 · Revision 5 (Customer Discovery, Phase 4; verbindlich: **100 % kostenloser Betrieb**) · Version 0.4.0
 
 Dieses Dokument enthält (1) die Bestandsaufnahme, (2) die Grundsatzentscheidungen inklusive
 Kostenfreiheit, (3) die Architekturentscheidungen (ADRs), (4) Komponenten und Schnittstellen,
@@ -69,7 +69,7 @@ eigene Domain verursachen weiterhin Kosten außerhalb der Software.
 | ADR-12 | Keine Geheimnisse in Dateien; nur Umgebungsvariablen bzw. Windows-Anmeldespeicher | umgesetzt für Konfiguration |
 | ADR-13 *(neu)* | **Keine kostenpflichtige Such-API.** Internetrecherche = Kombination freier, rechtlich nutzbarer Quellen (Register, Wikidata, Ausschreibungen, Nachrichtenindex, Unternehmenswebseiten). Allgemeine Websuche à la Google ist bewusst **nicht** Teil des Kerns | umgesetzt, siehe §5 und `RESEARCH_SOURCES.md` §3 |
 
-## 4. Komponenten (implementiert, Version 0.3.0)
+## 4. Komponenten (implementiert, Version 0.4.0)
 
 ```
 src/market_intel/
@@ -104,9 +104,24 @@ src/market_intel/
                          render (HTML, alles escaped), server (127.0.0.1, CSRF, CSP, Host-Prüfung),
                          static/app.js (Diagramme, Karte, Abschnitte – ohne Bibliotheken), app.css
   cli_intel.py           Kommandos profile, ui, competitors, history, note, add-*
+  products.py            Phase 4 – Produktmatrix laden, prüfen, CSV/TOML-Pflege, in DB ablegen
+  opportunity/           Phase 4 – Customer Discovery (ohne Netz, nur Datenbank + Matrix):
+                         evidence (Belege in Unternehmensdokumenten), growth (Signale mit
+                         Belegstufe), assess (Hypothese + drei Werte + Segment), model (Gewichte,
+                         Segmente, Prüfregeln), run (alle Anwendungsfälle je Firma), report (elf
+                         Abschnitte), watch (Watchlist mit Historie), leads (CSV/XLSX/JSON)
+  cli_opportunity.py     Kommandos products, opportunity-model, opportunities, opportunity,
+                         watch, leads
   data/                  world_map.json (Natural Earth, gemeinfrei), country_names.json (MIT),
                          profile_lexicon.toml, THIRD_PARTY_NOTICES.md
 ```
+
+**Entscheidung Bewertung (ADR-13, Phase 4):** Scoring v1 (ein Gesamtwert, Fit 35 %) wurde
+ersetzt. Grund: Ein einziger Wert vermischte Belegqualität, Größe und Datenlage; ein großes
+Unternehmen ohne Fit konnte über Größe/Wachstum Punkte sammeln. v2 trennt Produktrelevanz,
+Potenzial und Datenqualität, setzt die Priorität ohne Fit-Beleg auf 0 und erzwingt beim Laden,
+dass Produkt-Fit stärker gewichtet ist als Größe. Hypothesen werden deterministisch aus Belegen
+zusammengesetzt; die optionale lokale KI hat keinen Einfluss auf Hypothese oder Bewertung.
 
 **Entscheidung Oberfläche (ADR-12, Phase 3):** Statt FastAPI/Jinja2/ECharts (in Revision 2
 geplant) nutzt die Oberfläche nur die Python-Standardbibliothek und eigenes JavaScript ohne
@@ -138,6 +153,11 @@ die Pipeline überführt worden; es gibt kein paralleles System.
 | `mi history --company …` | erkannte Veränderungen mit Ereignis- und Erfassungsdatum |
 | `mi note --company … --author … "Text"` | interne Notiz |
 | `mi add-figure / add-event / add-location / add-fact / add-market … --file beleg.pdf --quote "…"` | Erfassung mit Beleg; Zitat muss wörtlich im Dokument stehen |
+| `mi research "…" --use-case all` | branchenübergreifende Kandidatensuche über alle 21 Anwendungsfälle |
+| `mi products list/show/validate/export-csv/import-csv` | Produktmatrix ansehen und pflegen |
+| `mi opportunities [--company …]` / `mi opportunity --company … [--md f.md]` | bewerten / Ergebnis je Firma (elf Abschnitte) |
+| `mi watch --company … --status vorgemerkt --reason … --author … [--comment …]` | Watchlist, Status, Kommentar |
+| `mi leads [--out ordner] [--segment …] [--min-priority N]` | Lead-Liste anzeigen oder als CSV/XLSX/JSON exportieren |
 
 ### 4.2 Adapter-Schnittstelle
 

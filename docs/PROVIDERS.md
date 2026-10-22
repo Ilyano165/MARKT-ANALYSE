@@ -1,6 +1,6 @@
 # Anbieter und Adapter – was tatsächlich angebunden ist
 
-Stand: 2026-10-20 · market-intel 0.3.0 · Adapterliste im Programm: `mi adapters`, Quellenregister:
+Stand: 2026-10-22 · market-intel 0.4.0 · Adapterliste im Programm: `mi adapters`, Quellenregister:
 `mi sources`.
 
 **Teststatus-Legende**
@@ -129,6 +129,12 @@ Dokumentation der Anbieter bzw. aus dokumentierten Wiederverwender-Beispielen (P
 Handelsregister (automatisiert unzulässig), Bundesagentur-Jobsuche (keine offizielle API),
 LinkedIn/Xing/Indeed/StepStone (AGB), Marginalia (nur nicht-kommerziell), North Data u. a.
 (kostenpflichtig). Siehe `RESEARCH_SOURCES.md` §3–4.
+
+### Yellotools-Produktinformationen (kein Laufzeit-Anbieter)
+- Die Produktmatrix (`docs/PRODUCT_MATRIX.md`) wurde einmalig aus öffentlichen Herstellerseiten
+  zusammengestellt (über eine Websuche, da die Seiten aus der Entwicklungsumgebung nicht abrufbar
+  waren). Zur Laufzeit ruft das Programm **keine** Yellotools-Seiten ab; die Matrix wird als
+  Datei gepflegt (`mi products …`).
 
 ## 3. KI-Provider
 

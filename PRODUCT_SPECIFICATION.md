@@ -1,6 +1,6 @@
 # Produktspezifikation – Yellotools Market Intelligence
 
-Stand: 2026-10-20 · Revision 3 (Phase 3 Company Intelligence; verbindlich: 100 % kostenloser Betrieb) · Status: Entwurf zur Freigabe
+Stand: 2026-10-22 · Revision 4 (Phase 4 Customer Discovery; verbindlich: 100 % kostenloser Betrieb) · Status: Entwurf zur Freigabe
 
 ## 1. Zweck
 
@@ -67,6 +67,10 @@ Anforderungs-IDs werden in Roadmap und Tests referenziert. Priorität: **M** = M
 | FR-B-06 | Priorisierung A/B/C mit nachvollziehbarer Punktzerlegung und Angabe der Datenvollständigkeit | M |
 | FR-B-07 | Bestehende Yellotools-Kunden (Import einer Firmenliste) markieren und aus Neukundenlisten ausblenden bzw. als Referenz für das Scoring nutzen | S |
 | FR-B-08 | Kandidat verwerfen mit Grund; verworfene Kandidaten erscheinen in späteren Runs nicht erneut als neu | M |
+| FR-B-09 | Produkt- und Anwendungsmatrix (Produktgruppe → Materialien, Prozesse, Anwender, alternative Anwender, Anwendungsfälle, Branchen, Grenzen, Quellen) mit Prüfung und CSV/TOML-Pflege (Phase 4, umgesetzt; FR-B-01/02 damit teilweise erfüllt – Artikelstamm-Import fehlt) | M |
+| FR-B-10 | Bedarfshypothese je Kandidat nur aus Belegen; ohne belegte Tätigkeit keine Hypothese und Priorität 0 (umgesetzt) | M |
+| FR-B-11 | Getrennte Werte Produktrelevanz / Geschäftspotenzial / Datenqualität, konfigurierbar, Produkt-Fit > Größe erzwungen (umgesetzt, §6) | M |
+| FR-B-12 | Dynamische, erklärbare Segmente; Watchlist mit Status-Historie und Kommentaren; Lead-Export (umgesetzt) | M |
 
 ### C. Company Intelligence
 
@@ -145,22 +149,38 @@ Adressgenauigkeit); Kennzahl-Detail (6) als Herkunftsseite; Wettbewerbsanalyse. 
 eigenständiger HTML-Export (`mi profile --html`) enthält dieselben Abschnitte ohne Server.
 Offen: Bildschirme 1–3 und 7–11.
 
-## 6. Chancenbewertung (Scoring v1, Startentwurf)
+## 6. Opportunity-Bewertung (Modell v2, Phase 4 – ersetzt Scoring v1)
 
-Teilindikatoren, je 0–1 normiert, Gewichte durch Vertrieb freizugeben:
+Konfiguration: `src/market_intel/data/opportunity.toml` (eigene Fassung über
+`opportunity_file`), Prüfung mit `mi opportunity-model`. Umsetzung: `src/market_intel/opportunity/`.
 
-| Indikator | Datengrundlage | Startgewicht |
+**Drei getrennte Werte (0–100), jeweils mit Komponenten, Gewicht, Beitrag und Begründung:**
+
+| Wert | Komponenten (Startgewichte) | Grundlage |
 |---|---|---|
-| Produktfit | `company_product_fit` (stark=1, plausibel=0,6, schwach=0,2) | 0,30 |
-| Unternehmensgröße | Mitarbeiter/Umsatz (log-normiert je Branche) | 0,15 |
-| Wachstum | Mitarbeiter-/Umsatz-CAGR (nur vergleichbare Werte) | 0,15 |
-| Aktuelle Signale | Investitionen, neue Standorte, Stellen mit Anwendungsbezug (letzte 12 Monate, zeitlich abklingend) | 0,20 |
-| Marktzugang | Präsenz in Zielland, Nähe zu bestehenden Yellotools-Märkten | 0,10 |
-| Ähnlichkeit zu Bestandskunden | Branche/Größe/Anwendungsfall | 0,10 |
+| Produktrelevanz | belegte Tätigkeit 0,45 · belegte Arbeitsprozesse 0,25 · Quellenqualität 0,15 · Status des Anwendungsfalls 0,15 | wörtliche Treffer der Anwendungs- und Prozessbegriffe in gespeicherten Dokumenten des Unternehmens; eigene Angaben zählen mehr als Drittquellen; Gegenindizien (z. B. „Folienhersteller“ statt Folierbetrieb) halbieren die Tätigkeitsbewertung |
+| Geschäftliches Potenzial | Größe 0,25 · Wachstum 0,30 · Expansion 0,20 · Erreichbarkeit 0,15 · strategische Bedeutung 0,10 | Phase-3-Zeitreihen, Ereignisse, Stellenanzeigen, Standorte; unbekannte Komponenten gehen **neutral (0,5)** ein |
+| Datenqualität | Vollständigkeit 0,5 · Aktualität 0,3 · Bestätigungsanteil 0,2 | fließt nicht in die Priorität ein, steuert Segmente und nächste Schritte |
 
-Fehlende Indikatoren werden **nicht** mit 0 und nicht mit einem Schätzwert gefüllt; der Score
-wird über die vorhandenen Gewichte renormiert und `data_completeness_pct` ausgewiesen. Unter
-50 % Vollständigkeit lautet die Priorität `insufficient_data`.
+**Priorität** = 0,65 × Produktrelevanz + 0,35 × Potenzial. Ist das gesamte Potenzial unbekannt,
+wird es mit 50 angesetzt (keine Strafe für fehlende Daten). **Ohne belegten Produkt-Fit ist die
+Priorität 0** – unabhängig von Größe oder Wachstum. Das Modell wird beim Laden geprüft:
+Gewichte summieren sich zu 1, Produktrelevanz ≥ 50 % der Priorität und stets stärker als die
+Größe, letztes Segment ohne Bedingung.
+
+**Segmente** (in Reihenfolge, das erste passende gilt; Bedingungen werden angezeigt):
+kein belegter Produkt-Fit · hoher Fit + starke belegte Wachstumssignale · hoher Fit, Wachstum
+unklar · mittlerer Fit + Expansion · strategisch interessante Großunternehmen · neue Branche mit
+unbestätigter Relevanz · weitere Prüfung erforderlich.
+
+**Belegstufen für Wachstumssignale:** bestätigt (amtlich, geprüft erfasst, Unternehmensmeldung
+mit hohem/mittlerem Vertrauen) · abgeleitet (aus belegten Zahlen berechnet, Stellenanzeigen als
+Bedarfsindikator, neu belegte Standorte/Länder) · unbestätigt (Regel-Treffer in Pressetexten).
+
+Ein hoher Score bedeutet nur: nach den gewählten Kriterien interessant für eine weitere Prüfung.
+Er ist keine Verkaufsprognose. Bedarf, eingesetzte Werkzeuge, Lieferanten und Kaufbereitschaft
+werden nie behauptet; die Hypothese ist ein Satz aus Belegen und Herstellerangaben mit
+ausdrücklicher Einschränkung. KI-Texte fließen nicht in Hypothese oder Bewertung ein.
 
 ## 7. Nicht-funktionale Anforderungen
 

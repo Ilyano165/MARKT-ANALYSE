@@ -23,6 +23,12 @@ max_attempts = 3
 refresh_days = 30
 
 # Mindestabstand je Quelle in Sekunden (strenger als die eingebauten Werte möglich).
+# Eigene Produkt-/Anwendungsmatrix und Bewertungsmodell (Kopien der mitgelieferten Dateien,
+# siehe docs/PRODUCT_MATRIX.md). Leer = mitgelieferte Fassung.
+# products_file = "meine_produkte.toml"
+# use_cases_file = "meine_anwendungsfaelle.toml"
+# opportunity_file = "mein_modell.toml"
+
 [rate_limits]
 # gleif = 2.0
 # website = 5.0

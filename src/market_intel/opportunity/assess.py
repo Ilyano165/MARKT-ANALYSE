@@ -58,16 +58,21 @@ def _unique_terms(hits: list[Hit]) -> list[str]:
 
 
 def _quote_list(hits: list[Hit]) -> list[dict[str, Any]]:
-    seen: set[tuple[str, int]] = set()
-    out = []
-    for hit in sorted(hits, key=lambda h: (not h.document.own, h.term)):
-        key = (hit.term.lower(), hit.document.document_id)
-        if key in seen:
+    """Zitate je Dokument zusammenfassen: steht ein Begriff schon in einem gezeigten Zitat,
+    wird er dort ergänzt statt das (fast gleiche) Zitat erneut zu zeigen."""
+    out: list[dict[str, Any]] = []
+    for hit in sorted(hits, key=lambda h: (not h.document.own, h.document.document_id, h.term)):
+        same_doc = [o for o in out if o["document_id"] == hit.document.document_id]
+        holder = next((o for o in same_doc if hit.term.lower() in o["quote"].lower()), None)
+        if holder is not None:
+            if hit.term not in holder["terms"]:
+                holder["terms"].append(hit.term)
             continue
-        seen.add(key)
-        out.append(hit.as_dict())
         if len(out) >= MAX_QUOTES:
-            break
+            continue
+        item = hit.as_dict()
+        item["terms"] = [hit.term]
+        out.append(item)
     return out
 
 
@@ -229,12 +234,22 @@ def assess_company(
             ),
         }
     pweights = bp["weights"]
-    available = sum(pweights[k] for k in pot)
+    potential_missing = [k for k in pweights if k not in pot]
+    # Unbekannte Komponenten gehen NEUTRAL ein (weder Strafe noch Bonus). Ein Neugewichten
+    # nur über die bekannten Komponenten würde einzelne Angaben (z. B. Sitzland) aufblähen.
+    neutral = float(bp.get("unknown_component_value", 0.5))
+    known = bool(pot)
+    for key in potential_missing:
+        pot[key] = {
+            "score": neutral,
+            "basis": f"unbekannt – neutral angesetzt ({neutral:.1f})",
+            "unknown": True,
+        }
     for key, part in pot.items():
         part["weight"] = pweights[key]
-        part["contribution"] = round(pweights[key] * part["score"] / available * 100, 1)
-    potential = round(sum(p["contribution"] for p in pot.values())) if pot else None
-    potential_missing = [k for k in pweights if k not in pot]
+        part["contribution"] = round(pweights[key] * part["score"] * 100, 1)
+    pot = {k: pot[k] for k in pweights}
+    potential = round(sum(p["contribution"] for p in pot.values())) if known else None
 
     # ------------------------------------------------------------ Datenqualität
     key_fields = {

@@ -5,7 +5,7 @@ mehrjährige Beobachtung von Unternehmen. **100 % kostenloser Betrieb:** keine B
 keine Abos, keine Cloud, keine KI-Dienste. Jede Zahl ist auf eine Quelle zurückführbar;
 fehlende Daten bleiben sichtbar unbekannt.
 
-Stand: Version 0.3.0 – Research Engine und Unternehmensanalyse (Profile, Entwicklung über 5–10 Jahre, Standorte, Wettbewerb, Änderungen) mit lokaler Oberfläche.
+Stand: Version 0.4.0 – Research Engine, Unternehmensanalyse und Customer Discovery (Produktmatrix, belegte Bedarfshypothesen, transparente Bewertung, Watchlist, Lead-Export) mit lokaler Oberfläche.
 
 ## Schnellstart (Windows)
 
@@ -42,6 +42,10 @@ Linux/macOS: `python3 -m venv .venv && . .venv/bin/activate && pip install -e .`
 | `mi competitors --company "ORAFOL" --store` | Wettbewerbsanalyse (direkt/indirekt/verwandt, keine Marktanteile) |
 | `mi history --company "ORAFOL"` | Veränderungen zwischen Recherchen (Ereignis- und Erfassungsdatum) |
 | `mi add-event --company "ORAFOL" --type acquisition --date 2022-07 --file gb2022.pdf --quote "…"` | belegte Übernahme erfassen (macht Wachstum „nicht organisch“) |
+| `mi research "Finde Anwender von Folienwerkzeugen außerhalb der Werbetechnik" --use-case all --country DE AT CH` | branchenübergreifende Kandidatensuche über alle Anwendungsfälle |
+| `mi opportunities` / `mi opportunity --company "…" --md lead.md` | Kandidaten bewerten / Ergebnis je Firma (Produkte, Belege, Score, Lücken, nächste Recherche) |
+| `mi watch --company "…" --status vorgemerkt --author "Vertrieb"` · `mi leads --out leads/` | Watchlist und Lead-Export (CSV/XLSX/JSON) |
+| `mi products validate` / `mi products export-csv` / `mi products import-csv` | Produktmatrix prüfen und pflegen (`docs/PRODUCT_MATRIX.md`) |
 | `mi add-figure --company … --metric headcount_total --value 350 --period-end 2023-12-31 --segment country:DE --file … --quote "…"` | Kennzahl mit Beleg (auch je Land/Standort, Schätzung nur mit `--methodology`) |
 
 Ergebnisse: `bericht.md` und `bericht_auftrag.html` (Fakten mit Quellenverweis [Qn],
@@ -61,6 +65,10 @@ Welche Anbieter mit welchen Funktionen angebunden sind: [docs/PROVIDERS.md](docs
 - **Unbekannt ist nicht null.** Fehlende Jahre erscheinen als Lücke, nie als 0 oder Stillstand;
   Wachstum wird nur zwischen vergleichbaren Werten berechnet (Regeln:
   `PRODUCT_SPECIFICATION.md` §7a).
+- **Leads brauchen Belege.** Ein Unternehmen wird nur vorgeschlagen, wenn eine Tätigkeit wörtlich
+  belegt ist, die zu einer Yellotools-Produktgruppe passt – Größe allein zählt nicht. Ein hoher
+  Score heißt „weiter prüfen“, nicht „wird kaufen“. Produktmatrix und Anwendungsfälle sind noch
+  vom Vertrieb zu bestätigen.
 - **Lokale KI ist optional** (Ollama). Hardwarehinweise: `docs/DEPENDENCIES_AND_COSTS.md`.
 - **Firmennetz:** Wenn ein Proxy oder eine Firewall die Quellen sperrt, zeigt `mi prove` je
   Quelle den Fehler. Benötigte Hosts: api.gleif.org, www.wikidata.org, query.wikidata.org,
@@ -71,7 +79,7 @@ Welche Anbieter mit welchen Funktionen angebunden sind: [docs/PROVIDERS.md](docs
 
 ```bash
 pip install -e ".[dev]"
-pytest            # 156 Tests mit Mock-Daten (keine echten Abrufe)
+pytest            # 172 Tests mit Mock-Daten (keine echten Abrufe)
 pytest tests/manual -m live -s   # manueller Live-Test, siehe docs/MANUAL_INTEGRATION_TEST.md
 ruff check src tests && mypy
 ```
@@ -86,6 +94,7 @@ ruff check src tests && mypy
 | [RESEARCH_SOURCES.md](RESEARCH_SOURCES.md) | Quellen mit Lizenz, Limits, Rechtsstatus; Such-API-Ersatz |
 | [docs/DEPENDENCIES_AND_COSTS.md](docs/DEPENDENCIES_AND_COSTS.md) | verbindliche Kosten- und Lizenzübersicht |
 | [docs/PROVIDERS.md](docs/PROVIDERS.md) | angebundene Anbieter, Funktionen, Teststatus |
+| [docs/PRODUCT_MATRIX.md](docs/PRODUCT_MATRIX.md) | Produkt- und Anwendungsmatrix, Quellen, Pflegeprozess |
 | [docs/MANUAL_INTEGRATION_TEST.md](docs/MANUAL_INTEGRATION_TEST.md) | manueller Test mit realen Unternehmen |
 | [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md) | Stand, Nachweis-Ergebnisse, Meilensteine |
 | [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md) | Bedrohungsmodell, DSGVO, Urheberrecht |

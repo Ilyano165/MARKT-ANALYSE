@@ -143,7 +143,7 @@ def test_large_company_without_fit_is_rated_zero(world: dict[str, Any], engine: 
     assert bank["scores"]["priority"] == 0
     assert bank["segment"]["key"] == "kein_produkt_fit"
     assert bank["facts"]["size_class"] == "large"  # groß – trotzdem kein Lead
-    assert "keine Tätigkeit belegt" in bank["hypothesis"]["statement"]
+    assert "zu keinem der" in bank["hypothesis"]["statement"]
     folierer = world["best"][world["ids"]["folierer"]]
     assert folierer["scores"]["priority"] > bank["scores"]["priority"]
     names = [r["firma"] for r in lead_rows(engine)]
@@ -253,3 +253,125 @@ def test_assessment_history_is_kept(world: dict[str, Any], engine: Engine) -> No
     }
     with engine.connect() as conn:
         assert repo.company_row(conn, world["ids"]["bank"])["display_name"] == "Großbank Finanz AG"
+
+
+# ---------------------------------------------------------------------- Bericht, Oberfläche
+
+
+def test_report_has_eleven_sections(world: dict[str, Any], engine: Engine) -> None:
+    from market_intel.opportunity.report import SECTIONS, opportunity_report, to_markdown
+
+    report = opportunity_report(
+        engine, world["ids"]["messebau"], world["cases"], world["catalog"], world["model"]
+    )
+    text = to_markdown(report)
+    for number, title in enumerate(SECTIONS, start=1):
+        assert f"## {number}. {title}" in text
+    assert "https://messewerk.test/" in text and "Keine Verkaufsprognose" in text
+    bank = to_markdown(
+        opportunity_report(
+            engine, world["ids"]["bank"], world["cases"], world["catalog"], world["model"]
+        )
+    )
+    assert "Kein Produkt-Fit belegt" in bank
+
+
+def test_ui_opportunity_and_leads(world: dict[str, Any], engine: Engine) -> None:
+    import re
+    import threading
+    import urllib.parse
+    import urllib.request
+
+    from market_intel.ui.server import make_server
+
+    server = make_server(engine, "127.0.0.1", 0, (world["cases"], world["catalog"], world["model"]))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        folierer = world["ids"]["folierer"]
+        page = urllib.request.urlopen(f"{base}/company/{folierer}/opportunity").read().decode()
+        assert "11. Quellen und Datum" in page and "Hoher Produkt-Fit" in page
+        token = re.search(r'name="csrf" value="([^"]+)"', page).group(1)  # type: ignore[union-attr]
+        data = urllib.parse.urlencode(
+            {
+                "csrf": token,
+                "status": "vorgemerkt",
+                "reason": "Test",
+                "author": "V",
+                "comment": "Ansprechpartner Werkstatt klären",
+            }
+        ).encode()
+
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+                return None
+
+        opener = urllib.request.build_opener(NoRedirect)
+        try:
+            opener.open(urllib.request.Request(f"{base}/company/{folierer}/watch", data=data))
+        except urllib.error.HTTPError as exc:  # 303 ohne Weiterleitung
+            assert exc.code == 303
+        page = urllib.request.urlopen(f"{base}/company/{folierer}/opportunity").read().decode()
+        assert "vorgemerkt" in page and "Ansprechpartner Werkstatt klären" in page
+        leads = urllib.request.urlopen(f"{base}/leads").read().decode()
+        assert "Folienprofi Fahrzeugdesign GmbH" in leads and "Großbank" not in leads
+        csv_text = urllib.request.urlopen(f"{base}/leads.csv").read().decode("utf-8-sig")
+        assert csv_text.splitlines()[0].startswith("firma;website;land")
+        assert "vorgemerkt" in csv_text
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_cli_products_and_leads(world: dict[str, Any], engine: Engine, tmp_path: Path) -> None:
+    from market_intel.cli import main
+
+    db_url = str(engine.url)
+    assert main(["--db", db_url, "products", "validate"]) == 0
+    assert main(["--db", db_url, "opportunity-model"]) == 0
+    assert (
+        main(
+            [
+                "--db",
+                db_url,
+                "watch",
+                "--company-id",
+                str(world["ids"]["glas"]),
+                "--status",
+                "in_pruefung",
+                "--author",
+                "V",
+            ]
+        )
+        == 0
+    )
+    assert main(["--db", db_url, "leads", "--out", str(tmp_path)]) == 0
+    assert (tmp_path / "leads.xlsx").exists()
+    assert (
+        main(
+            [
+                "--db",
+                db_url,
+                "opportunity",
+                "--company-id",
+                str(world["ids"]["glas"]),
+                "--md",
+                str(tmp_path / "glas.md"),
+            ]
+        )
+        == 0
+    )
+    assert "Sonnenschutzfolie" in (tmp_path / "glas.md").read_text(encoding="utf-8")
+
+
+def test_single_known_component_does_not_inflate_potential(world: dict[str, Any]) -> None:
+    """Nur das Sitzland bekannt → kein Potenzial 100 (Regression aus der Sichtprüfung)."""
+    glas = world["best"][world["ids"]["glas"]]["scores"]
+    folierer = world["best"][world["ids"]["folierer"]]["scores"]
+    assert glas["business_potential"] is not None and glas["business_potential"] < 65
+    unknown_parts = [k for k, v in glas["business_potential_parts"].items() if v.get("unknown")]
+    assert set(unknown_parts) == set(glas["business_potential_unknown"])
+    assert folierer["business_potential"] > glas["business_potential"]
+    total = sum(p["contribution"] for p in glas["business_potential_parts"].values())
+    assert abs(total - glas["business_potential"]) <= 1

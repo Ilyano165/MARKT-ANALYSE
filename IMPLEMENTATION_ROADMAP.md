@@ -1,10 +1,48 @@
 # Umsetzungsplan – Yellotools Market Intelligence
 
-Stand: 2026-10-20 · Revision 4 (Phase 3 Company Intelligence; verbindlich: **100 % kostenloser Betrieb**)
+Stand: 2026-10-22 · Revision 5 (Phase 4 Customer Discovery; verbindlich: **100 % kostenloser Betrieb**)
 
 Grundsätze: kleine, abnehmbare Meilensteine; jeder endet mit grünen Tests. **Gate „Kosten“
 gilt für jeden Meilenstein: keine neue Abhängigkeit, Quelle oder Infrastruktur mit
 verpflichtenden Kosten** – Prüfung über `docs/DEPENDENCIES_AND_COSTS.md`.
+
+## 0c. Stand nach Phase 4 – Customer Discovery (2026-10-22, Version 0.4.0)
+
+Umgesetzt und getestet (**172 automatische Tests grün, 1 übersprungen (Live-Test)**, `ruff`,
+`mypy --strict` ohne Befund; Lead- und Opportunity-Seiten im Headless-Browser geprüft):
+
+- Produktmatrix (12 Produktgruppen, Herstellerquellen, Einsatzgrenzen) und Anwendungsmatrix
+  (21 Anwendungsfälle, davon 5 aus dem Portfolio abgeleitet) mit Prüfung und CSV/TOML-Pflege –
+  `docs/PRODUCT_MATRIX.md`
+- Bedarfshypothese je Unternehmen und Anwendungsfall nur aus wörtlichen Belegen (Tätigkeit,
+  Arbeitsprozesse, Gegenindizien, Werkzeug-Erwähnungen als Hinweis); keine Aussagen über
+  Bedarf, Lieferanten oder Kaufbereitschaft
+- Wachstumssignale mit Belegstufe (bestätigt / abgeleitet / unbestätigt)
+- Bewertung v2 (Produktrelevanz, Potenzial, Datenqualität getrennt; konfigurierbar; Fit > Größe
+  erzwungen; fehlende Daten neutral), sieben erklärbare Segmente
+- Ergebnis je Firma in elf Abschnitten (CLI, Markdown, JSON, Oberfläche), Watchlist mit
+  Status-Historie und Kommentaren, Lead-Export CSV/XLSX/JSON (ohne Personendaten)
+- Tests mit sieben Testfirmen aus fünf Branchen, Negativfall „groß ohne Fit“ (Priorität 0),
+  KI-Behauptung ohne Beleg (bleibt wirkungslos), fehlende Daten (nicht schlechter bewertet)
+
+Bei der Sichtprüfung gefunden und behoben: Wurde nur das Sitzland erkannt, ergab das Neugewichten
+über diese eine Komponente „Potenzial 100“. Jetzt gehen unbekannte Komponenten neutral ein
+(Regressionstest).
+
+**Nicht erledigt / ehrlich offen:**
+- **Produktmatrix nicht vom Hersteller bestätigt** (Status `researched`); Yellotools-Seiten waren
+  nur über die Websuche einsehbar. Artikelstamm fehlt.
+- **Alle 21 Anwendungsfälle sind Hypothesen**; insbesondere die abgeleiteten Branchen
+  (Fuhrpark/Remarketing, Facility, Kunststoffplatten, Bodenmarkierung) und Industrie-/Verpackungs-
+  anwendungen sind fachlich unbestätigt.
+- Belege entstehen über Begriffstreffer: Verneinungen („keine Folierung“) oder bloße
+  Marktnennungen werden nicht erkannt; Gegenindizien decken nur Hersteller/Händler ab.
+- Die Testfirmen sind erfunden; mit echten Quellen (Live-Test, Abnahme A0) ist die Discovery
+  weiterhin **nicht** geprüft. Ohne allgemeine Websuche findet das System nur Firmen, die über
+  GLEIF, Wikidata, TED, GDELT oder importierte Listen auftauchen.
+- Bestandskunden-Abgleich (FR-B-07) und „verworfen“ als dauerhafter Ausschluss in späteren
+  Discovery-Läufen (FR-B-08) sind noch nicht umgesetzt (Status wird gespeichert, aber nicht
+  bei der Kandidatensuche ausgewertet).
 
 ## 0b. Stand nach Phase 3 – Company Intelligence (2026-10-20, Version 0.3.0)
 

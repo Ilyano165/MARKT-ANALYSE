@@ -138,6 +138,8 @@ def _run_and_report(
 
 def cmd_research(args: argparse.Namespace) -> int:
     settings, engine, cases = _setup(args)
+    if "all" in args.use_case:  # alle Anwendungsfälle der Matrix (branchenübergreifende Suche)
+        args.use_case = sorted(cases)
     unknown = [u for u in args.use_case if u not in cases]
     if unknown:
         print(f"Unbekannte Anwendungsfälle {unknown}; verfügbar: {sorted(cases)}")
@@ -442,8 +444,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("adapters", help="Adapter und ihre Funktionen").set_defaults(func=cmd_adapters)
     sub.add_parser("llm-status", help="lokale KI prüfen").set_defaults(func=cmd_llm)
     from .cli_intel import add_commands
+    from .cli_opportunity import add_commands as add_opportunity_commands
 
     add_commands(sub)
+    add_opportunity_commands(sub)
     return parser
 
 

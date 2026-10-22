@@ -1,6 +1,6 @@
 # Verbindliche Übersicht: Abhängigkeiten, Datenquellen und Kosten
 
-Stand: 2026-10-20 · gilt für market-intel 0.3.0
+Stand: 2026-10-22 · gilt für market-intel 0.4.0
 
 **Ergebnis:** Die Kernanwendung benötigt **keine** kostenpflichtige Software, keinen
 kostenpflichtigen Dienst, kein Abonnement, keine Cloud und keinen KI-Zugang. Optionale Kosten
@@ -33,7 +33,7 @@ Domain/Zertifikat für einen Teamserver.
 Python selbst: PSF-2.0. SQLite: gemeinfrei (in Python enthalten). Keine Komponente verlangt
 Lizenzgebühren. psycopg (LGPL) wird unverändert als Bibliothek genutzt.
 
-**Phase 3 (Oberfläche) bringt kein neues Paket:** Die Weboberfläche nutzt `http.server` aus der
+**Phase 3 (Oberfläche) und Phase 4 (Customer Discovery) bringen kein neues Paket.** Die Produktmatrix ist eine eigene Datendatei (Herstellerangaben mit Quellenverweis, keine Fremdlizenz). Die Weboberfläche nutzt `http.server` aus der
 Python-Standardbibliothek und eigenes JavaScript ohne Bibliotheken; Diagramme und Karte werden
 lokal gezeichnet. Für den späteren Teambetrieb weiterhin geplant (nicht installiert, Lizenz bei
 Aufnahme erneut prüfen): PostgreSQL (PostgreSQL License), Keycloak (Apache-2.0, optional).

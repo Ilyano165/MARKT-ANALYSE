@@ -27,6 +27,12 @@ from .. import db, repo
 from ..intel.competitors import analyze_competitors
 from ..intel.manual import ManualEntryError, document_plain_text
 from ..intel.profile import build_profile, observation_detail
+from ..opportunity.leads import LEAD_COLUMNS, lead_rows
+from ..opportunity.model import Model, load_model
+from ..opportunity.report import opportunity_report
+from ..opportunity.watch import STATUSES, set_status
+from ..products import Catalog, load_products
+from ..usecases import UseCase, load_use_cases
 from . import render
 
 CSP = (
@@ -38,13 +44,25 @@ STATIC = {
     "app.css": "text/css; charset=utf-8",
 }
 MAX_BODY = 64 * 1024
+Discovery = tuple[dict[str, UseCase], Catalog, Model]
 
 
 class App:
     """Zustand der Oberfläche (Engine, CSRF-Token, erlaubte Hosts)."""
 
-    def __init__(self, engine: Engine, host: str, port: int) -> None:
+    def __init__(
+        self,
+        engine: Engine,
+        host: str,
+        port: int,
+        discovery: Discovery | None = None,
+    ) -> None:
         self.engine = engine
+        if discovery is None:
+            discovery = (load_use_cases(), load_products(), load_model())
+        self.cases: dict[str, UseCase] = discovery[0]
+        self.catalog: Catalog = discovery[1]
+        self.model: Model = discovery[2]
         self.csrf = secrets.token_urlsafe(32)
         names = {host, "127.0.0.1", "localhost"} if host in ("127.0.0.1", "localhost") else {host}
         self.allowed_hosts = {f"{n}:{port}" for n in names} | (
@@ -178,6 +196,48 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                 return
             if path == "/favicon.ico":
                 self._send(HTTPStatus.NO_CONTENT, b"", "image/x-icon")
+                return
+            if path in ("/leads", "/leads.csv"):
+                segments = tuple(s for s in query.get("segment", []) if s)
+                rows = lead_rows(
+                    app.engine,
+                    include_no_fit=query.get("nofit", [""])[0] == "1",
+                    segments=segments,
+                )
+                if path.endswith(".csv"):
+                    self._send(
+                        200,
+                        _csv(rows).encode("utf-8-sig"),
+                        "text/csv; charset=utf-8",
+                        {"Content-Disposition": 'attachment; filename="leads.csv"'},
+                    )
+                else:
+                    self._html(
+                        render.page(
+                            "Leads",
+                            render.leads_page(rows, app.model.segments, segments),
+                        )
+                    )
+                return
+            match = re.fullmatch(r"/company/(\d+)/opportunity", path)
+            if match:
+                company_id = int(match.group(1))
+                if not _exists(app.engine, company_id):
+                    self._error(404, "Unternehmen nicht gefunden")
+                    return
+                report = opportunity_report(
+                    app.engine, company_id, app.cases, app.catalog, app.model
+                )
+                with app.engine.connect() as conn:
+                    notes = [
+                        n for n in repo.notes_of(conn, company_id) if n["section"] == "opportunity"
+                    ]
+                self._html(
+                    render.page(
+                        f"Opportunity {report['name']}",
+                        render.opportunity_page(report, notes, app.csrf, STATUSES),
+                    )
+                )
                 return
             if path.startswith("/static/"):
                 name = path.removeprefix("/static/")
@@ -318,6 +378,28 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                     )
                 self._redirect(f"/company/{company_id}#notes")
                 return
+            match = re.fullmatch(r"/company/(\d+)/watch", path)
+            if match:
+                company_id = int(match.group(1))
+                author = form.get("author", [""])[0]
+                try:
+                    set_status(
+                        app.engine,
+                        company_id,
+                        form.get("status", ["vorgemerkt"])[0],
+                        watchlist=form.get("list", ["Leads"])[0],
+                        reason=form.get("reason", [""])[0],
+                        author=author,
+                    )
+                    comment = form.get("comment", [""])[0].strip()
+                    if comment:
+                        with app.engine.begin() as conn:
+                            repo.add_note(conn, company_id, "opportunity", comment, author)
+                except ValueError as exc:
+                    self._error(HTTPStatus.BAD_REQUEST, str(exc))
+                    return
+                self._redirect(f"/company/{company_id}/opportunity")
+                return
             match = re.fullmatch(r"/company/(\d+)/competitors/store", path)
             if match:
                 company_id = int(match.group(1))
@@ -330,6 +412,20 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
+def _csv(rows: list[dict[str, Any]]) -> str:
+    import csv
+    import io
+
+    from ..export import safe_cell
+
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=list(LEAD_COLUMNS), delimiter=";")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({k: safe_cell(row[k]) for k in LEAD_COLUMNS})
+    return out.getvalue()
+
+
 def _int(value: str, default: int, low: int, high: int) -> int:
     try:
         return max(low, min(high, int(value)))
@@ -337,12 +433,20 @@ def _int(value: str, default: int, low: int, high: int) -> int:
         return default
 
 
-def make_server(engine: Engine, host: str = "127.0.0.1", port: int = 8765) -> ThreadingHTTPServer:
-    """Server erzeugen (Port 0 = frei wählen, für Tests)."""
-    server = ThreadingHTTPServer((host, port), make_handler(App(engine, host, port)))
+def make_server(
+    engine: Engine,
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    discovery: Discovery | None = None,
+) -> ThreadingHTTPServer:
+    """Server erzeugen (Port 0 = frei wählen, für Tests).
+
+    ``discovery`` = (Anwendungsfälle, Produktmatrix, Bewertungsmodell); Standard: mitgeliefert.
+    """
+    server = ThreadingHTTPServer((host, port), make_handler(App(engine, host, port, discovery)))
     if port == 0:
         actual = server.server_address[1]
-        server.RequestHandlerClass = make_handler(App(engine, host, int(actual)))
+        server.RequestHandlerClass = make_handler(App(engine, host, int(actual), discovery))
     return server
 
 

@@ -1,6 +1,6 @@
 # Datenmodell – Yellotools Market Intelligence
 
-Stand: 2026-10-20 · Revision 3 (Schema-Version 3, Phase 3 implementiert: §3.26) · relational, Zielsystem PostgreSQL ≥ 16 (SQLite für Einzelplatz,
+Stand: 2026-10-22 · Revision 4 (Schema-Version 4, Phase 3: §3.26, Phase 4: §3.27) · relational, Zielsystem PostgreSQL ≥ 16 (SQLite für Einzelplatz,
 siehe `ARCHITECTURE.md` ADR-04)
 
 ## 1. Grundregeln
@@ -420,6 +420,19 @@ beim Start ergänzt (`_ADDED_COLUMNS`). Sie ersetzen für den Prototyp die gepla
 | `profile_change` | Änderung außerhalb von Kennzahlen (neuer Standort, neue Produktgruppe/Marke/Vertriebsweg/Zielgruppe, neues Absatzland, Ereignis, Mutter/Tochter, neuer Bericht) mit Beleg, Ereignisdatum, `detected_at` | nur für Firmen, die vor dem Auftrag bekannt waren; aus Abwesenheit wird nichts abgeleitet |
 | `company_note` | interne Notiz je Abschnitt, Autor, Zeitpunkt; `supersedes_id`, `deleted` | Bearbeiten/Entfernen erzeugt neue Zeile – Historie bleibt |
 | `competitor_assessment` | Einordnung (`direct`, `indirect`, `related_market`, `no_relation`, `insufficient_data`), Dimensionen (JSON), Begründung, Regelwerk-Version | jede Speicherung ist neue Zeile (Historie) |
+
+### 3.27 Phase 4 – Customer Discovery (Schema-Version 4)
+
+| Tabelle | Inhalt | Regeln |
+|---|---|---|
+| `product_group` | Kopie der gepflegten Produktmatrix je Produktgruppe (Definition als JSON, Status, Matrixversion, Quelldatei) | Quelle der Wahrheit bleibt die Datei (`products.toml` bzw. `products_file`) |
+| `product_use_case` (erweitert) | Anwendungsfall mit Branchen, Produktgruppen, Prozessen, Begründung, Gegenindizien, Herkunft (Auftrag/abgeleitet) | Status `hypothesis`/`confirmed`/`rejected` (verworfene werden nicht bewertet) |
+| `opportunity_score` | Bewertung je Unternehmen und Anwendungsfall: Produktrelevanz, Potenzial (NULL = unbekannt), Datenqualität, Priorität, Segment, vollständige Begründung (JSON inkl. Zitaten, Komponenten, Lücken, nächster Schritte), Modellversion | jede Bewertung ist eine neue Zeile; Anwendungsfall `keiner` = kein Fit belegt |
+| `watchlist`, `watchlist_entry` | benannte Listen; Statusänderungen `vorgemerkt`, `in_pruefung`, `qualifiziert`, `verworfen`, `entfernt` mit Begründung und Autor | jede Änderung neue Zeile (Historie) |
+| `company_note` Abschnitt `opportunity` | interne Kommentare zum Lead | versioniert wie alle Notizen |
+
+`opportunity_assessment` (Scoring v1) bleibt nur für bestehende Datenbanken erhalten und wird
+nicht mehr beschrieben.
 
 ## 4. Beziehungen (Übersicht)
 

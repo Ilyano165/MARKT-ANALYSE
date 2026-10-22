@@ -982,6 +982,7 @@ NOTE_SECTIONS = (
     "history",
     "sources",
     "notes",
+    "opportunity",
 )
 
 

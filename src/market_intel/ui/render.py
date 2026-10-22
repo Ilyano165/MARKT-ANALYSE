@@ -48,6 +48,7 @@ SECTION_NOTE_LABELS = {
     "history": "Historie",
     "sources": "Quellen",
     "notes": "Allgemein",
+    "opportunity": "Vertrieb/Opportunity",
 }
 
 
@@ -142,7 +143,8 @@ def page(title: str, body: str, *, static: bool = False, data: Any = None) -> st
         f"<title>{e(title)}</title>{css}</head><body>"
         f'<header class="top"><a class="brand" href="{"#" if static else "/"}">'
         "Market Intelligence</a>"
-        '<span class="muted">lokal · kostenlos · jede Zahl mit Quelle</span></header>'
+        + ("" if static else '<a href="/">Unternehmen</a><a href="/leads">Leads</a>')
+        + '<span class="muted">lokal · kostenlos · jede Zahl mit Quelle</span></header>'
         f"<main>{body}</main>{data_json}{map_json}{js}</body></html>"
     )
 
@@ -198,6 +200,7 @@ def profile_page(
             + (" checked" if profile["include_estimates"] else "")
             + "> Schätzungen einbeziehen</label><button>Anzeigen</button>"
             f'<a href="/company/{cid}/competitors">Wettbewerbsanalyse</a>'
+            f'<a href="/company/{cid}/opportunity">Opportunity</a>'
             f'<a href="/company/{cid}.json">JSON</a></form>'
         )
     sections = [
@@ -742,4 +745,229 @@ def document_page(doc: dict[str, Any], excerpt: str) -> str:
         f'<h1>Dokument {doc["id"]}</h1><table class="kv">{rows}</table>'
         "<h2>Textauszug (gespeicherte Fassung, ohne Ausführung von Inhalten)</h2>"
         f'<pre class="excerpt">{e(excerpt)}</pre>'
+    )
+
+
+# ---------------------------------------------------------------------- Phase 4: Opportunity
+
+BASIS = {
+    "confirmed": "bestätigt",
+    "derived": "abgeleitet",
+    "unconfirmed": "unbestätigt (Vermutung)",
+    "none": "keine",
+}
+WATCH_LABELS = {
+    "vorgemerkt": "vorgemerkt",
+    "in_pruefung": "in Prüfung",
+    "qualifiziert": "qualifiziert (Vertrieb)",
+    "verworfen": "verworfen",
+    "entfernt": "von Liste entfernt",
+}
+
+
+def _quotes(items: list[dict[str, Any]]) -> str:
+    return _list(
+        [
+            f'„{e(i["quote"][:260])}“ <span class="muted">– {e(i["url"])}, abgerufen '
+            f"{e(i['retrieved_at'][:10])}, "
+            f"{'eigene Angabe' if i['own_source'] else 'Drittquelle'}</span>"
+            for i in items
+        ],
+        "keine",
+    )
+
+
+def _parts(parts: dict[str, Any]) -> str:
+    rows = "".join(
+        f'<tr><th>{e(k)}</th><td class="num">{num(v["score"], 2)}</td>'
+        f'<td class="num">{e(v.get("weight", ""))}</td>'
+        f'<td class="num">{e(v.get("contribution", ""))}</td><td>{e(v["basis"])}</td></tr>'
+        for k, v in parts.items()
+    )
+    return (
+        '<div class="tablewrap"><table><thead><tr><th>Komponente</th><th class="num">Wert</th>'
+        '<th class="num">Gewicht</th><th class="num">Beitrag</th><th>Begründung</th></tr></thead>'
+        f"<tbody>{rows or '<tr><td colspan=5><span class=unknown>unbekannt</span></td></tr>'}"
+        "</tbody></table></div>"
+    )
+
+
+def opportunity_page(
+    report: dict[str, Any], notes: list[dict[str, Any]], csrf: str, statuses: tuple[str, ...]
+) -> str:
+    """Ergebnis je Unternehmen in elf Abschnitten, Watchlist-Formular, Kommentare."""
+    best = report["best"]
+    scores = best["scores"]
+    hyp = best["hypothesis"]
+    cid = report["company_id"]
+    p = report["profile"]
+    fit = bool(report["applications"])
+    products = "".join(
+        f'<li><strong>{e(g["name"])}</strong> <span class="badge">{e(g["status"])}</span>'
+        f'<br><span class="muted">Prozesse: {e(", ".join(g["processes"]))}<br>'
+        f"Grenzen: {e('; '.join(g['limitations']))}<br>Belegte Prozessbegriffe: "
+        f"{e(', '.join(g['matched_process_terms']) or 'keine')}</span> "
+        + " ".join(
+            f'<a class="ref" href="{e(src.split("|")[0].strip())}" rel="noreferrer">Hersteller</a>'
+            for src in g["sources"][:2]
+        )
+        + "</li>"
+        for g in (hyp["products"] if fit else [])
+    )
+    apps = "".join(
+        f"<tr><td>{e(a['use_case_name'])}</td><td>{'Kern' if a['core_application'] else 'neue Branche'}"
+        f' · {e(a["use_case_status"])}</td><td class="num">{a["scores"]["product_relevance"]}</td>'
+        f'<td class="num">{a["scores"]["priority"]}</td><td>{e(a["segment"]["name"])}</td></tr>'
+        for a in report["applications"]
+    )
+    development = "".join(
+        f"<li>{e(s['title'])}: "
+        + ", ".join(
+            f"{e(r['label'])} {num(r['value']) if r['value'] is not None else '<span class=unknown>unbekannt</span>'}"
+            for r in s["rows"]
+        )
+        + (
+            f' · <span class="formula">{e(s["total"]["formula"])}</span>'
+            if s["total"] and s["total"]["formula"]
+            else ""
+        )
+        + "</li>"
+        for s in report["development"]
+    )
+    signals = "".join(
+        f'<tr><td><span class="badge {"warn" if sig["basis"] == "unconfirmed" else ""}">'
+        f"{e(BASIS[sig['basis']])}</span></td><td>{e(sig['label'])}</td><td>{e(sig['text'])}</td>"
+        f'<td>{e(sig["date"] or "unbekannt")}</td><td class="url">{e(sig["source_url"] or "")}</td></tr>'
+        for sig in best["growth"]["signals"]
+    )
+    countries = _list(
+        [
+            f"{e(c['country'])}: {e(c['presence_label'])} {e(', '.join(c['site_types']))}"
+            for c in report["locations"]["countries"]
+        ]
+    )
+    sources = "".join(
+        f'<li>{e(s["url"])} <span class="muted">abgerufen {e(s["retrieved_at"][:10])}, {e(s["source_key"])}</span></li>'
+        for s in report["sources"]["evidence"]
+    ) + "".join(
+        f'<li>[{e(s["ref"])}] {e(s["source_name"])}: {e(s["url"])} <span class="muted">abgerufen '
+        f"{e((s['retrieved_at'] or '')[:10])}</span></li>"
+        for s in report["sources"]["profile"]
+    )
+    history = _list(
+        [
+            f"{e(str(h['created_at'])[:10])} {e(h['watchlist'])}: {e(WATCH_LABELS[h['status']])} – "
+            f'{e(h["reason"])} <span class="muted">({e(h["author"])})</span>'
+            for h in report["watch_history"]
+        ],
+        "nicht auf einer Watchlist",
+    )
+    comments = _list(
+        [
+            f'{e(n["body"])} <span class="muted">– {e(n["author"])}, {e(str(n["created_at"])[:16])}</span>'
+            for n in notes
+        ],
+        "keine Kommentare",
+    )
+    options = "".join(f'<option value="{s}">{e(WATCH_LABELS[s])}</option>' for s in statuses)
+    mentions = hyp["tool_mentions"]
+    potential = scores["business_potential"]
+    return (
+        f'<p><a href="/company/{cid}">← Profil</a> · <a href="/leads">Leads</a></p>'
+        f"<h1>Opportunity: {e(report['name'])}</h1>"
+        f'<div class="cards"><div class="card"><h3>Segment</h3><strong>{e(best["segment"]["name"])}</strong>'
+        f'<br><span class="muted">{e(best["segment"]["description"])}</span></div>'
+        f'<div class="card"><h3>Priorität</h3><strong>{scores["priority"]}</strong><br>'
+        f'<span class="muted">{e(scores["priority_basis"])}</span></div>'
+        f'<div class="card"><h3>Produktrelevanz · Potenzial · Datenqualität</h3>'
+        f"<strong>{scores['product_relevance']} · {potential if potential is not None else 'unbekannt'} · "
+        f"{scores['data_quality']}</strong></div></div>"
+        f'<p class="gapnote">{e(scores["disclaimer"])}</p>'
+        "<h2>1. Unternehmensprofil</h2>"
+        f'<table class="kv"><tr><th>Offizieller Name</th><td>{e(p["official_name"] or "unbekannt")}</td></tr>'
+        f"<tr><th>Website</th><td>{e(p['website'] or 'unbekannt')}</td></tr>"
+        f"<tr><th>Land</th><td>{e(p['country'] or 'unbekannt')}</td></tr>"
+        f"<tr><th>Branche</th><td>{e(', '.join(p['industries']) or 'unbekannt')}</td></tr>"
+        f"<tr><th>Umsatz</th><td>{figure_text(p['latest_revenue'], '', False)}</td></tr>"
+        f"<tr><th>Mitarbeiter</th><td>{figure_text(p['latest_headcount'], '', False)}</td></tr></table>"
+        "<h2>2. Passende Yellotools-Produkte</h2>"
+        + (
+            f"<ul>{products}</ul>"
+            if fit
+            else '<p class="unknown">Kein Produkt-Fit belegt – keine Produktgruppe vorgeschlagen.</p>'
+        )
+        + "<h2>3. Mögliche Anwendungsfälle</h2>"
+        + (
+            '<div class="tablewrap"><table><thead><tr><th>Anwendungsfall</th><th>Art</th>'
+            '<th class="num">Produktrelevanz</th><th class="num">Priorität</th><th>Segment</th></tr>'
+            f"</thead><tbody>{apps}</tbody></table></div>"
+            if apps
+            else '<p class="unknown">keiner belegt</p>'
+        )
+        + f"<h2>4. Belege für den Produkt-Fit</h2><p>{e(hyp['statement'])}</p>"
+        f"<h3>Tätigkeit</h3>{_quotes(hyp['activity_evidence'])}"
+        f"<h3>Arbeitsprozesse</h3>{_quotes(hyp['process_evidence'])}"
+        f"<h3>Gegenindizien</h3>{_quotes(hyp['counter_evidence'])}"
+        f'<h3>Werkzeug-Erwähnungen</h3><p class="muted">{e(mentions["note"])}</p>'
+        f"{_quotes(mentions['own_brand'] + mentions['other_brands'])}"
+        f"<h2>5. Umsatz- und Beschäftigungsentwicklung</h2>{('<ul>' + development + '</ul>') if development else '<p class=unknown>keine Reihe belegt (unbekannt, kein Stillstand)</p>'}"
+        f"<h2>6. Belegte Wachstumsindikatoren</h2><p>Status {e(best['growth']['status'])}, Grundlage "
+        f"{e(BASIS[best['growth']['basis']])}, Expansion {e(BASIS.get(best['growth']['expansion'], best['growth']['expansion']))}</p>"
+        '<div class="tablewrap"><table><thead><tr><th>Belegstufe</th><th>Art</th><th>Inhalt</th>'
+        f"<th>Ereignisdatum</th><th>Quelle</th></tr></thead><tbody>{signals or '<tr><td colspan=5>keine</td></tr>'}</tbody></table></div>"
+        f"<h2>7. Relevante Standorte und Länder</h2>{countries}"
+        "<h2>8. Bewertung mit Einzelbegründungen</h2>"
+        f"<h3>Produktrelevanz {scores['product_relevance']}</h3>{_parts(scores['product_relevance_parts'])}"
+        f"<h3>Geschäftliches Potenzial {potential if potential is not None else 'unbekannt'}</h3>{_parts(scores['business_potential_parts'])}"
+        + (
+            f'<p class="muted">unbekannt (nicht negativ bewertet): {e(", ".join(scores["business_potential_unknown"]))}</p>'
+            if scores["business_potential_unknown"]
+            else ""
+        )
+        + f"<h3>Datenqualität {scores['data_quality']}</h3>{_parts(scores['data_quality_parts'])}"
+        f"<p>Segmentregel: {e('; '.join(best['segment']['reasons']))}</p>"
+        f"<h2>9. Datenlücken und Unsicherheiten</h2>{_list([e(g) for g in best['gaps']])}"
+        f"<h2>10. Empfohlene nächste Recherche</h2>{_list([e(s) for s in best['next_steps']])}"
+        f"<h2>11. Quellen und Datum</h2><ul>{sources}</ul>"
+        f"<h2>Watchlist und Kommentare</h2>{history}<h3>Kommentare</h3>{comments}"
+        f'<form class="noteform" method="post" action="/company/{cid}/watch">'
+        f'<input type="hidden" name="csrf" value="{e(csrf)}">'
+        f'<label for="status">Status</label><select id="status" name="status">{options}</select>'
+        '<label for="list">Watchlist</label><input id="list" name="list" value="Leads" maxlength="120">'
+        '<label for="reason">Begründung</label><input id="reason" name="reason" maxlength="2000">'
+        '<label for="author">Autor</label><input id="author" name="author" maxlength="120" required>'
+        '<label for="comment">Kommentar (intern)</label><textarea id="comment" name="comment" rows="3" maxlength="10000"></textarea>'
+        "<button>Speichern</button></form>"
+    )
+
+
+def leads_page(rows: list[dict[str, Any]], segments: Any, selected: tuple[str, ...]) -> str:
+    """Lead-Liste mit Segmentfilter und CSV-Download."""
+    options = "".join(
+        f'<option value="{e(s.key)}"{" selected" if s.key in selected else ""}>{e(s.name)}</option>'
+        for s in segments
+    )
+    body = "".join(
+        f'<tr><td class="num">{e(r["prioritaet"])}</td><td><a href="/company/{r["firma_id"]}/opportunity">'
+        f'{e(r["firma"])}</a><br><span class="muted">{e(r["website"])} {e(r["land"])}</span></td>'
+        f'<td>{e(r["segment"])}</td><td>{e(r["anwendungsfall"])}<br><span class="muted">{e(r["produktgruppen"])}</span></td>'
+        f'<td class="num">{e(r["produktrelevanz"])}</td><td class="num">{e(r["potenzial"])}</td>'
+        f'<td class="num">{e(r["datenqualitaet"])}</td><td>{e(r["mitarbeiter"])}</td>'
+        f"<td>{e(r['bewertungsstatus'])}</td></tr>"
+        for r in rows
+    )
+    query = "&".join(f"segment={e(s)}" for s in selected)
+    return (
+        "<h1>Leads</h1>"
+        '<p class="gapnote">Ein hoher Score bedeutet nur: nach den gewählten Kriterien interessant für '
+        "eine weitere Prüfung. Bedarf, Werkzeuge, Lieferanten und Kaufbereitschaft sind nicht belegt.</p>"
+        '<form class="search" method="get" action="/leads"><label for="segment">Segment</label>'
+        f'<select id="segment" name="segment"><option value="">alle</option>{options}</select>'
+        "<button>Filtern</button>"
+        f'<a href="/leads.csv{"?" + query if query else ""}">CSV herunterladen</a></form>'
+        '<div class="tablewrap"><table><thead><tr><th class="num">Priorität</th><th>Unternehmen</th>'
+        '<th>Segment</th><th>Anwendungsfall / Produkte</th><th class="num">Fit</th>'
+        '<th class="num">Potenzial</th><th class="num">Datenqualität</th><th>Mitarbeiter</th>'
+        f"<th>Status</th></tr></thead><tbody>{body or '<tr><td colspan=9>Noch keine bewerteten Unternehmen – mi opportunities ausführen.</td></tr>'}"
+        "</tbody></table></div>"
     )

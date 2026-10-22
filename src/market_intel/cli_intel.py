@@ -164,15 +164,24 @@ def _print_profile(profile: dict[str, object]) -> None:
 
 
 def cmd_ui(args: argparse.Namespace) -> int:
+    from .cli import _setup as setup
+    from .opportunity.model import load_model
+    from .products import load_products
     from .ui.server import make_server
 
-    engine = _setup(args)
+    settings, engine, cases = setup(args)
+    repo.sync_sources(engine, (), (), False)
+    discovery = (
+        cases,
+        load_products(settings.products_file),
+        load_model(settings.opportunity_file),
+    )
     if args.host not in ("127.0.0.1", "localhost") and not args.allow_lan:
         raise SystemExit(
             "Die Oberfläche hat keine Anmeldung. Andere Adressen als 127.0.0.1 nur mit "
             "--allow-lan in vertrauenswürdigen Netzen."
         )
-    server = make_server(engine, args.host, args.port)
+    server = make_server(engine, args.host, args.port, discovery)
     print(f"Oberfläche: http://{args.host}:{server.server_address[1]}/  (Beenden: Strg+C)")
     try:
         server.serve_forever()

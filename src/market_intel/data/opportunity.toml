@@ -8,8 +8,9 @@
 #   data_quality       – Vollständigkeit, Aktualität, Anteil bestätigter Angaben
 # Priorität = Gewichtung aus Produktrelevanz und Potenzial. Datenqualität fließt NICHT in die
 # Priorität ein, sondern steuert Segmente („weitere Prüfung“).
-# Fehlende Angaben: Komponente gilt als „unbekannt“ und wird nicht mit 0 bewertet; ist das
-# gesamte Potenzial unbekannt, wird es neutral (unknown_potential_value) angesetzt.
+# Fehlende Angaben: Komponente gilt als „unbekannt“ und geht neutral (0,5) ein – nie mit 0 und
+# ohne die bekannten Komponenten aufzublähen; ist das gesamte Potenzial unbekannt, wird es
+# neutral (unknown_potential_value) angesetzt.
 # Ohne Produkt-Fit-Beleg ist die Priorität 0 – unabhängig von Größe oder Wachstum.
 
 [model]
@@ -32,6 +33,8 @@ application_status = { confirmed = 1.0, hypothesis = 0.5, abgeleitet = 0.4 }
 
 [business_potential]
 weights = { size = 0.25, growth = 0.30, expansion = 0.20, reachability = 0.15, strategic = 0.10 }
+# unbekannte Komponente: neutraler Wert (keine Strafe, kein Bonus); alle unbekannt → Potenzial „unbekannt“
+unknown_component_value = 0.5
 # Größe: Mitarbeiter (Stichtag) → Wert, linear zwischen den Stützstellen (log-Skala)
 size_points = [[10, 0.25], [50, 0.5], [250, 0.75], [1000, 1.0]]
 growth = { strong = 1.0, positive = 0.75, flat = 0.5, negative = 0.25 }

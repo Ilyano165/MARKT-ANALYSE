@@ -59,9 +59,7 @@ def assess_and_store(
                 store_assessment(engine, result, run_id)
             best[company_id] = with_fit[0]
         else:
-            summary = dict(results[0])
-            summary["use_case"] = NO_FIT_KEY
-            summary["use_case_name"] = "kein Anwendungsfall belegt"
+            summary = no_fit_summary(results, len(cases))
             store_assessment(engine, summary, run_id)
             best[company_id] = summary
     return best
@@ -76,3 +74,18 @@ def all_company_ids(engine: Engine) -> list[int]:
                 select(db.company.c.id).where(db.company.c.merged_into_id.is_(None))
             ).scalars()
         ]
+
+
+def no_fit_summary(results: list[dict[str, Any]], n_cases: int) -> dict[str, Any]:
+    """Zusammenfassung, wenn zu keinem Anwendungsfall eine Tätigkeit belegt ist."""
+    summary = dict(results[0])
+    summary["use_case"] = NO_FIT_KEY
+    summary["use_case_name"] = "kein Anwendungsfall belegt"
+    hypothesis = dict(summary["hypothesis"])
+    hypothesis["statement"] = (
+        f"Für {summary['company']} ist zu keinem der {n_cases} Anwendungsfälle der "
+        "Produktmatrix eine Tätigkeit belegt. Eine Bedarfshypothese wird daher nicht aufgestellt."
+    )
+    hypothesis["products"] = []
+    summary["hypothesis"] = hypothesis
+    return summary
