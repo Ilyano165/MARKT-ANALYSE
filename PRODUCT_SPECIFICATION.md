@@ -65,8 +65,8 @@ Anforderungs-IDs werden in Roadmap und Tests referenziert. Priorität: **M** = M
 | FR-B-04 | Je Kandidat Produktfit (stark/plausibel/schwach/ausgeschlossen) mit Begründung und Belegen; ohne Beleg kein „stark“/„plausibel“ | M |
 | FR-B-05 | Wachstumsindikatoren erkennen: neue Standorte, Investitionen, Stellenzuwachs, Ausschreibungsgewinne, Flottenausbau | S |
 | FR-B-06 | Priorisierung A/B/C mit nachvollziehbarer Punktzerlegung und Angabe der Datenvollständigkeit | M |
-| FR-B-07 | Bestehende Yellotools-Kunden (Import einer Firmenliste) markieren und aus Neukundenlisten ausblenden bzw. als Referenz für das Scoring nutzen | S |
-| FR-B-08 | Kandidat verwerfen mit Grund; verworfene Kandidaten erscheinen in späteren Runs nicht erneut als neu | M |
+| FR-B-07 | Bestehende Yellotools-Kunden (Import einer Firmenliste) markieren und aus Neukundenlisten ausblenden bzw. als Referenz für das Scoring nutzen (Markieren/Ausblenden umgesetzt; Referenz fürs Scoring offen) | S |
+| FR-B-08 | Kandidat verwerfen mit Grund; verworfene Kandidaten erscheinen in späteren Runs nicht erneut als neu (umgesetzt) | M |
 | FR-B-09 | Produkt- und Anwendungsmatrix (Produktgruppe → Materialien, Prozesse, Anwender, alternative Anwender, Anwendungsfälle, Branchen, Grenzen, Quellen) mit Prüfung und CSV/TOML-Pflege (Phase 4, umgesetzt; FR-B-01/02 damit teilweise erfüllt – Artikelstamm-Import fehlt) | M |
 | FR-B-10 | Bedarfshypothese je Kandidat nur aus Belegen; ohne belegte Tätigkeit keine Hypothese und Priorität 0 (umgesetzt) | M |
 | FR-B-11 | Getrennte Werte Produktrelevanz / Geschäftspotenzial / Datenqualität, konfigurierbar, Produkt-Fit > Größe erzwungen (umgesetzt, §6) | M |
@@ -169,7 +169,7 @@ Gewichte summieren sich zu 1, Produktrelevanz ≥ 50 % der Priorität und stets 
 Größe, letztes Segment ohne Bedingung.
 
 **Segmente** (in Reihenfolge, das erste passende gilt; Bedingungen werden angezeigt):
-kein belegter Produkt-Fit · hoher Fit + starke belegte Wachstumssignale · hoher Fit, Wachstum
+Bestandskunde · vom Vertrieb verworfen · kein belegter Produkt-Fit · hoher Fit + starke belegte Wachstumssignale · hoher Fit, Wachstum
 unklar · mittlerer Fit + Expansion · strategisch interessante Großunternehmen · neue Branche mit
 unbestätigter Relevanz · weitere Prüfung erforderlich.
 

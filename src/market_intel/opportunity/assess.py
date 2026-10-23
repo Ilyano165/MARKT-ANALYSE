@@ -25,6 +25,7 @@ from ..usecases import UseCase
 from .evidence import EvidenceIndex, Hit
 from .growth import GrowthView, assess_growth
 from .model import Model, assign_segment
+from .watch import customer_lists_of, status_of
 
 MAX_QUOTES = 6
 ZONE_LABELS = {"core": "Kernmarkt", "europe": "Europa", "other": "außerhalb Europas"}
@@ -123,6 +124,8 @@ def assess_company(
     else:
         score, basis = 0.0, "keine Tätigkeit belegt, die zu diesem Anwendungsfall passt"
     counter = [h for h in index.hits(case.counter_terms) if h.document.own] if all_terms else []
+    # Verneinte Tätigkeiten („wir bieten keine Fahrzeugfolierung an“) sind Gegenbelege
+    counter += [h for h in index.negated_hits(case.website_terms) if h.document.own]
     if counter:
         score = round(score * float(pr["counter_factor"]), 3)
         basis += "; Gegenindiz belegt: " + ", ".join(_unique_terms(counter))
@@ -311,7 +314,13 @@ def assess_company(
             + ("" if potential is not None else " (unbekannt, neutral angesetzt)")
         )
     core = case.key in model.section("applications")["core"]
+    customer_lists = customer_lists_of(
+        engine, company_id, list(model.section("crm").get("customer_lists", []))
+    )
+    watch_status = status_of(engine, company_id)
     facts = {
+        "is_customer": bool(customer_lists),
+        "rejected": bool(watch_status and watch_status["status"] == "verworfen"),
         "product_relevance": relevance,
         "business_potential": potential,
         "data_quality": data_quality,
@@ -341,13 +350,19 @@ def assess_company(
         for g in groups
     ]
     gaps = [name for name, known in key_fields.items() if not known]
+    if customer_lists:
+        next_steps_prefix = [f"Bestandskunde (Liste {', '.join(customer_lists)}): Bestandspflege"]
+    elif facts["rejected"]:
+        next_steps_prefix = ["Vom Vertrieb verworfen – nur bei neuen Belegen erneut prüfen"]
+    else:
+        next_steps_prefix = []
     if growth.status == "unknown":
         gaps.append("Umsatz-/Mitarbeiterentwicklung (keine vergleichbare Reihe)")
     gaps.append(
         "tatsächlicher Werkzeugbedarf, eingesetzte Werkzeuge und Lieferanten "
         "(nicht öffentlich belegt)"
     )
-    next_steps = _next_steps(
+    next_steps = next_steps_prefix + _next_steps(
         company, own_terms, all_terms, heads, revenue, growth, tools_own, tools_other, case
     )
     statement = _statement(

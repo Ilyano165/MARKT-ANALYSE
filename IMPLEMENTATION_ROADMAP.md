@@ -8,7 +8,7 @@ verpflichtenden Kosten** – Prüfung über `docs/DEPENDENCIES_AND_COSTS.md`.
 
 ## 0c. Stand nach Phase 4 – Customer Discovery (2026-10-22, Version 0.4.0)
 
-Umgesetzt und getestet (**172 automatische Tests grün, 1 übersprungen (Live-Test)**, `ruff`,
+Umgesetzt und getestet (**176 automatische Tests grün, 1 übersprungen (Live-Test)**, `ruff`,
 `mypy --strict` ohne Befund; Lead- und Opportunity-Seiten im Headless-Browser geprüft):
 
 - Produktmatrix (12 Produktgruppen, Herstellerquellen, Einsatzgrenzen) und Anwendungsmatrix
@@ -35,14 +35,18 @@ Bei der Sichtprüfung gefunden und behoben: Wurde nur das Sitzland erkannt, erga
 - **Alle 21 Anwendungsfälle sind Hypothesen**; insbesondere die abgeleiteten Branchen
   (Fuhrpark/Remarketing, Facility, Kunststoffplatten, Bodenmarkierung) und Industrie-/Verpackungs-
   anwendungen sind fachlich unbestätigt.
-- Belege entstehen über Begriffstreffer: Verneinungen („keine Folierung“) oder bloße
-  Marktnennungen werden nicht erkannt; Gegenindizien decken nur Hersteller/Händler ab.
+- Belege entstehen über Begriffstreffer. Verneinungen im selben Teilsatz („bieten keine
+  Fahrzeugfolierung an“, „führen wir nicht durch“) werden seit 2026-10-23 erkannt und als
+  Gegenbeleg gezeigt; bloße Marktnennungen ohne Verneinung und komplexere Formulierungen
+  („früher haben wir …“) nicht. Gegenindizien decken nur Hersteller/Händler ab.
 - Die Testfirmen sind erfunden; mit echten Quellen (Live-Test, Abnahme A0) ist die Discovery
   weiterhin **nicht** geprüft. Ohne allgemeine Websuche findet das System nur Firmen, die über
   GLEIF, Wikidata, TED, GDELT oder importierte Listen auftauchen.
-- Bestandskunden-Abgleich (FR-B-07) und „verworfen“ als dauerhafter Ausschluss in späteren
-  Discovery-Läufen (FR-B-08) sind noch nicht umgesetzt (Status wird gespeichert, aber nicht
-  bei der Kandidatensuche ausgewertet).
+- Erledigt 2026-10-23: Bestandskunden-Abgleich (FR-B-07: Listen aus `[crm] customer_lists`,
+  Zuordnung über LEI oder Website-Domain) und dauerhafter Ausschluss verworfener Firmen (FR-B-08:
+  eigenes Segment, nicht im Lead-Export, in späteren Recherchen nicht erneut ausgewählt –
+  namentlich genannte Firmen schon). Offen: Abgleich über Namen ohne Website/LEI (bewusst
+  nicht automatisch, Verwechslungsgefahr).
 
 ## 0b. Stand nach Phase 3 – Company Intelligence (2026-10-20, Version 0.3.0)
 

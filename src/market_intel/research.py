@@ -37,6 +37,7 @@ from .export import export_all
 from .llm.assistant import Fact
 from .opportunity.model import load_model
 from .opportunity.run import assess_and_store
+from .opportunity.watch import excluded_reason
 from .products import load_products
 from .usecases import UseCase
 
@@ -272,6 +273,13 @@ def _select(ctx: Ctx, params: dict[str, Any], cases: dict[str, UseCase]) -> Task
         (cid for cid in sources if cid not in named),
         key=lambda cid: (-len(sources[cid]), -best_fit.get(cid, 0), not info[cid][0], cid),
     )
+    lists = list(load_model(ctx.settings.opportunity_file).section("crm").get("customer_lists", []))
+    excluded = {}
+    for cid in others:
+        reason = excluded_reason(ctx.engine, cid, lists)
+        if reason:
+            excluded[cid] = reason
+    others = [cid for cid in others if cid not in excluded]
     chosen = list(dict.fromkeys(named + others))[: max(strategy.max_candidates, len(named))]
     with ctx.engine.begin() as conn:
         conn.execute(
@@ -307,6 +315,7 @@ def _select(ctx: Ctx, params: dict[str, Any], cases: dict[str, UseCase]) -> Task
         "found": len(sources),
         "selected": chosen,
         "not_selected": len(sources) - len(chosen),
+        "excluded": {str(k): v for k, v in excluded.items()},
     }
 
 

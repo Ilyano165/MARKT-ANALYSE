@@ -178,6 +178,7 @@ def cmd_leads(args: argparse.Namespace) -> int:
     _, engine, _, _, _ = _context(args)
     filters = {
         "include_no_fit": args.include_no_fit,
+        "include_excluded": args.include_excluded,
         "min_priority": args.min_priority,
         "segments": tuple(args.segment or ()),
     }
@@ -232,4 +233,7 @@ def add_commands(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> No
     lead.add_argument("--min-priority", type=int, default=0)
     lead.add_argument("--segment", nargs="*")
     lead.add_argument("--include-no-fit", action="store_true")
+    lead.add_argument(
+        "--include-excluded", action="store_true", help="auch Bestandskunden und verworfene"
+    )
     lead.set_defaults(func=cmd_leads)

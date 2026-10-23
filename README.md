@@ -44,7 +44,8 @@ Linux/macOS: `python3 -m venv .venv && . .venv/bin/activate && pip install -e .`
 | `mi add-event --company "ORAFOL" --type acquisition --date 2022-07 --file gb2022.pdf --quote "…"` | belegte Übernahme erfassen (macht Wachstum „nicht organisch“) |
 | `mi research "Finde Anwender von Folienwerkzeugen außerhalb der Werbetechnik" --use-case all --country DE AT CH` | branchenübergreifende Kandidatensuche über alle Anwendungsfälle |
 | `mi opportunities` / `mi opportunity --company "…" --md lead.md` | Kandidaten bewerten / Ergebnis je Firma (Produkte, Belege, Score, Lücken, nächste Recherche) |
-| `mi watch --company "…" --status vorgemerkt --author "Vertrieb"` · `mi leads --out leads/` | Watchlist und Lead-Export (CSV/XLSX/JSON) |
+| `mi watch --company "…" --status vorgemerkt --author "Vertrieb"` · `mi leads --out leads/` | Watchlist und Lead-Export (CSV/XLSX/JSON); `--status verworfen` schließt dauerhaft aus |
+| `mi import-companies kunden.csv --list-name Bestandskunden` | Bestandskunden markieren (erscheinen nicht als neue Leads) |
 | `mi products validate` / `mi products export-csv` / `mi products import-csv` | Produktmatrix prüfen und pflegen (`docs/PRODUCT_MATRIX.md`) |
 | `mi add-figure --company … --metric headcount_total --value 350 --period-end 2023-12-31 --segment country:DE --file … --quote "…"` | Kennzahl mit Beleg (auch je Land/Standort, Schätzung nur mit `--methodology`) |
 
@@ -79,7 +80,7 @@ Welche Anbieter mit welchen Funktionen angebunden sind: [docs/PROVIDERS.md](docs
 
 ```bash
 pip install -e ".[dev]"
-pytest            # 172 Tests mit Mock-Daten (keine echten Abrufe)
+pytest            # 176 Tests mit Mock-Daten (keine echten Abrufe)
 pytest tests/manual -m live -s   # manueller Live-Test, siehe docs/MANUAL_INTEGRATION_TEST.md
 ruff check src tests && mypy
 ```

@@ -55,6 +55,12 @@ strategic_false = 0.3
 weights = { completeness = 0.5, recency = 0.3, confirmation = 0.2 }
 recency_months = [[12, 1.0], [24, 0.6], [999, 0.3]]
 
+[crm]
+# Firmenlisten (mi import-companies … --list-name …), deren Mitglieder Bestandskunden sind.
+# Bestandskunden und vom Vertrieb verworfene Firmen erscheinen nicht als neue Leads und werden
+# in späteren Recherchen nicht erneut als Kandidaten ausgewählt (namentlich genannte schon).
+customer_lists = ["Bestandskunden"]
+
 [applications]
 # Kernanwendungen laut Herstellerangabe (Zielgruppen). Alle anderen gelten als „neue Branche“.
 core = ["werbetechnik_beschriftung", "fahrzeugfolierung", "lackschutz_aufbereitung", "glasfolien", "druck_grossformat", "display_beschilderung", "interior_folien"]
@@ -63,8 +69,21 @@ core = ["werbetechnik_beschriftung", "fahrzeugfolierung", "lackschutz_aufbereitu
 # Felder: product_relevance, business_potential, data_quality, growth_status
 # (strong/positive/flat/negative/unknown), growth_basis (confirmed/derived/unconfirmed/none),
 # expansion (confirmed/derived/unconfirmed/none), size_class (large/medium/small/micro/unknown),
-# core_application (true/false), application_status (confirmed/hypothesis)
+# core_application (true/false), application_status (confirmed/hypothesis),
+# is_customer (true/false), rejected (true/false)
 # Operatoren: ">=", "<=", ">", "<", "==", "in", "not_in"
+
+[[segment]]
+key = "bestandskunde"
+name = "Bestandskunde"
+description = "Steht auf einer Bestandskundenliste – kein Neukunden-Lead; Produkt-Fit dient der Bestandspflege."
+conditions = [["is_customer", "==", true]]
+
+[[segment]]
+key = "verworfen"
+name = "Vom Vertrieb verworfen"
+description = "Jüngster Watchlist-Status „verworfen“ – wird nicht erneut als Lead vorgeschlagen."
+conditions = [["rejected", "==", true]]
 
 [[segment]]
 key = "kein_produkt_fit"

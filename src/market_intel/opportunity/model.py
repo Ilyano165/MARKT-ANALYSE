@@ -19,6 +19,8 @@ FIELDS = (
     "size_class",
     "core_application",
     "application_status",
+    "is_customer",
+    "rejected",
 )
 
 

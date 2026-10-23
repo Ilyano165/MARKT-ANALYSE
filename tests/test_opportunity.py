@@ -375,3 +375,112 @@ def test_single_known_component_does_not_inflate_potential(world: dict[str, Any]
     assert folierer["business_potential"] > glas["business_potential"]
     total = sum(p["contribution"] for p in glas["business_potential_parts"].values())
     assert abs(total - glas["business_potential"]) <= 1
+
+
+# ------------------------------------------------------------- Verneinung, Kunden, Verworfen
+
+
+def test_negation_is_not_evidence() -> None:
+    from market_intel.opportunity.evidence import negated
+
+    def check(sentence: str, term: str) -> bool:
+        start = sentence.lower().index(term.lower())
+        return negated(sentence, start, start + len(term))
+
+    assert check("Wir bieten keine Fahrzeugfolierung an.", "Fahrzeugfolierung")
+    assert check("Fahrzeugfolierung bieten wir nicht mehr an.", "Fahrzeugfolierung")
+    assert check("We do not offer vehicle wrap services.", "vehicle wrap")
+    assert not check("Nicht nur Fahrzeugfolierung, sondern auch Lackschutz.", "Fahrzeugfolierung")
+    assert not check("Fahrzeugfolierung ohne Luftblasen und mit Garantie.", "Fahrzeugfolierung")
+    assert not check("Keine Wartezeit: Fahrzeugfolierung in 2 Tagen.", "Fahrzeugfolierung")
+
+
+def test_negated_activity_gives_no_fit(
+    engine: Engine, make_ctx: Any, cases: dict[str, Any]
+) -> None:
+    from .opportunity_seed import _website_document
+
+    ctx = make_ctx(FakeWeb())
+    with engine.begin() as conn:
+        company_id = repo.create_company(conn, "Nur Lackierung GmbH", country_code="DE")
+    doc = _website_document(
+        engine,
+        "https://nurlack.test/",
+        "<html><body><p>Wir lackieren Fahrzeuge. Wir bieten keine Fahrzeugfolierung an.</p>"
+        "<p>Vollfolierung führen wir nicht durch.</p></body></html>",
+    )
+    from market_intel.engine.extract import extract_company_documents
+
+    extract_company_documents(ctx, company_id, [doc], cases, [])
+    result = assess_company(
+        engine, company_id, cases["fahrzeugfolierung"], load_products(), load_model()
+    )
+    assert result["scores"]["product_relevance"] == 0
+    counter = result["hypothesis"]["counter_evidence"]
+    assert counter and all(c["negated"] for c in counter)
+
+
+def test_customers_and_rejected_are_not_new_leads(
+    world: dict[str, Any], engine: Engine, tmp_path: Path
+) -> None:
+    from market_intel.sources.user_data import import_company_list
+
+    csv_path = tmp_path / "kunden.csv"
+    csv_path.write_text(
+        "name;website\nGlasklar Sonnenschutz GmbH;https://glasklar.test/\n", "utf-8"
+    )
+    import_company_list(
+        engine, csv_path, list_name="Bestandskunden", source_url="intern:crm", publisher="CRM"
+    )
+    set_status(engine, world["ids"]["messebau"], "verworfen", reason="kein Bedarf", author="V")
+    best = assess_and_store(
+        engine, list(world["ids"].values()), world["cases"], world["catalog"], world["model"]
+    )
+    assert best[world["ids"]["glas"]]["segment"]["key"] == "bestandskunde"
+    assert best[world["ids"]["messebau"]]["segment"]["key"] == "verworfen"
+    assert best[world["ids"]["glas"]]["scores"]["product_relevance"] > 0  # Fit bleibt sichtbar
+    names = {r["firma"] for r in lead_rows(engine)}
+    assert "Glasklar Sonnenschutz GmbH" not in names and "Messewerk Ladenbau GmbH" not in names
+    assert "Folienprofi Fahrzeugdesign GmbH" in names
+    everything = {r["firma"] for r in lead_rows(engine, include_excluded=True)}
+    assert {"Glasklar Sonnenschutz GmbH", "Messewerk Ladenbau GmbH"} <= everything
+
+
+def test_rejected_candidates_are_not_selected_again(run_research: Any, engine: Engine) -> None:
+    import dataclasses
+
+    from sqlalchemy import select
+
+    from .test_end_to_end import PROOF_REQUEST
+
+    _, run1, _ = run_research(PROOF_REQUEST)
+    with engine.connect() as conn:
+        chosen = (
+            conn.execute(
+                select(db.run_candidate.c.company_id).where(
+                    db.run_candidate.c.run_id == run1,
+                    db.run_candidate.c.selected.is_(True),
+                    db.run_candidate.c.role != "named",
+                )
+            )
+            .scalars()
+            .first()
+        )
+    assert chosen is not None
+    set_status(engine, chosen, "verworfen", reason="kein Bedarf", author="Vertrieb")
+    _, run2, _ = run_research(dataclasses.replace(PROOF_REQUEST, refresh=True))
+    with engine.connect() as conn:
+        selected = set(
+            conn.execute(
+                select(db.run_candidate.c.company_id).where(
+                    db.run_candidate.c.run_id == run2, db.run_candidate.c.selected.is_(True)
+                )
+            ).scalars()
+        )
+        result = conn.execute(
+            select(db.research_task.c.result).where(
+                db.research_task.c.run_id == run2, db.research_task.c.task_type == "select"
+            )
+        ).scalar()
+    assert chosen not in selected
+    assert "verworfen" in json.loads(result)["excluded"][str(chosen)]

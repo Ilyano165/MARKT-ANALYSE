@@ -105,3 +105,31 @@ def status_of(engine: Engine, company_id: int) -> dict[str, Any] | None:
     """Jüngster Status über alle Watchlists (für Lead-Export)."""
     items = history_of(engine, company_id)
     return items[0] if items and items[0]["status"] != "entfernt" else None
+
+
+def customer_lists_of(engine: Engine, company_id: int, lists: list[str]) -> list[str]:
+    """Bestandskundenlisten, auf denen das Unternehmen steht."""
+    if not lists:
+        return []
+    with engine.connect() as conn:
+        return sorted(
+            conn.execute(
+                select(db.list_membership.c.list_name).where(
+                    db.list_membership.c.company_id == company_id,
+                    db.list_membership.c.list_name.in_(lists),
+                )
+            ).scalars()
+        )
+
+
+def excluded_reason(engine: Engine, company_id: int, lists: list[str]) -> str | None:
+    """Grund, ein Unternehmen nicht als neuen Kandidaten vorzuschlagen (oder None)."""
+    customer = customer_lists_of(engine, company_id, lists)
+    if customer:
+        return f"Bestandskunde (Liste {', '.join(customer)})"
+    status = status_of(engine, company_id)
+    if status and status["status"] == "verworfen":
+        return (
+            f"verworfen am {status['created_at']:%Y-%m-%d}: {status['reason'] or 'ohne Begründung'}"
+        )
+    return None

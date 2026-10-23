@@ -15,6 +15,7 @@ from .assess import latest_assessments
 from .run import NO_FIT_KEY
 from .watch import STATUS_LABELS, status_of
 
+EXCLUDED_SEGMENTS = ("bestandskunde", "verworfen")
 LEAD_COLUMNS = (
     "firma",
     "website",
@@ -53,6 +54,7 @@ def lead_rows(
     engine: Engine,
     *,
     include_no_fit: bool = False,
+    include_excluded: bool = False,
     min_priority: int = 0,
     segments: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
@@ -65,6 +67,8 @@ def lead_rows(
     for company_id, row in best.items():
         details = json.loads(row["details"])
         if row["use_case_key"] == NO_FIT_KEY and not include_no_fit:
+            continue
+        if row["segment"] in EXCLUDED_SEGMENTS and not include_excluded:
             continue
         if (row["priority_score"] or 0) < min_priority:
             continue

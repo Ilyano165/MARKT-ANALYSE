@@ -118,6 +118,20 @@ def import_company_list(
             if domain:
                 identifiers.append(("domain", domain))
                 found = repo.find_company_by_identifier(conn, "domain", domain)
+                if found is None:  # gleiche Website im Firmenstamm (eindeutig) = dieselbe Firma
+                    same = (
+                        conn.execute(
+                            select(db.company.c.id).where(
+                                db.company.c.website_domain == domain,
+                                db.company.c.merged_into_id.is_(None),
+                            )
+                        )
+                        .scalars()
+                        .all()
+                    )
+                    if len(same) == 1:
+                        found = int(same[0])
+                        repo.add_identifier(conn, found, "domain", domain, document_id)
             else:
                 found = None
             if found is None:
