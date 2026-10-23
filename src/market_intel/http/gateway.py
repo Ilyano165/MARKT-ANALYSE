@@ -313,6 +313,13 @@ class FetchGateway:
                 )
             except httpx.HTTPError as exc:
                 last_error = f"{type(exc).__name__}: {exc}"
+                # Proxy/Firewall verweigert die Verbindung grundsätzlich (z. B. CONNECT 403/407):
+                # Wiederholen ändert nichts, kostet nur Zeit und Abrufbudget.
+                policy_block = isinstance(exc, httpx.ProxyError) and any(
+                    code in str(exc) for code in ("403", "407")
+                )
+                if policy_block:
+                    last_error += " (Netzwerkrichtlinie/Proxy sperrt den Host – keine Wiederholung)"
                 self._log(
                     source_key,
                     method,
@@ -325,7 +332,7 @@ class FetchGateway:
                     self._elapsed(started),
                     None,
                 )
-                if attempt < self._max_attempts:
+                if attempt < self._max_attempts and not policy_block:
                     self._sleep(2.0 ** (attempt - 1))
                     continue
                 return FetchResult(FetchStatus.NETWORK_ERROR, url, error=last_error)

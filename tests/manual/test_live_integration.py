@@ -83,3 +83,57 @@ def test_real_companies_end_to_end() -> None:
         assert len({r["period_end"].year for r in revenue}) >= 3
     report = (OUT / "bericht.md").read_text(encoding="utf-8")
     assert "## 7. Quellenverzeichnis" in report
+
+
+# Phase 5: Ende-zu-Ende mit realen Unternehmen aus verschiedenen Branchen. Die Auswahl ist eine
+# Testhypothese (Branche laut allgemeinem Wissen, NICHT als Ergebnis zu lesen); erwartet wird
+# nur, dass jede Aussage belegt ist und das Negativbeispiel keinen hohen Fit bekommt.
+LIVE_COMPANIES = {
+    "ORAFOL": "Folienhersteller (technische Folien)",
+    "Avery Dennison": "Folienhersteller",
+    "Sixt": "Autovermietung (Entfolierung/Remarketing-Hypothese)",
+    "Umdasch Group": "Ladenbau (Shopfitting)",
+    "Steinel": "Werkzeug-/Gerätehersteller (Heißluft) – Wettbewerbs-/Partnerfall",
+    "Deutsche Bank": "Negativbeispiel: Bank, kein Folienbezug erwartet",
+}
+
+
+def test_real_companies_opportunity_end_to_end() -> None:
+    from market_intel.cli import make_ctx
+    from market_intel.intel.manual import document_plain_text
+    from market_intel.opportunity.model import load_model
+    from market_intel.opportunity.run import assess_and_store
+    from market_intel.products import load_products
+
+    OUT.mkdir(exist_ok=True)
+    settings = Settings(database_url=f"sqlite:///{OUT / 'live_opportunity.db'}",
+                        contact_email=os.environ.get("MI_CONTACT_EMAIL", ""))
+    assert settings.contact_email, "MI_CONTACT_EMAIL setzen (Pflicht für SEC/Wikimedia)"
+    engine = db.make_engine(settings.database_url)
+    db.init_db(engine)
+    cases = load_use_cases()
+    register(engine, cases)
+    budget = Budget(max_requests=900, max_candidates=len(LIVE_COMPANIES), max_seconds=3600)
+    request = ResearchRequest(
+        task="Analysiere " + ", ".join(f"„{n}“" for n in LIVE_COMPANIES),
+        companies=list(LIVE_COMPANIES), use_cases=sorted(cases), years=5)
+    run_id = create_research(engine, request, budget, OUT / "opportunity")
+    ctx = make_ctx(settings, engine, budget, no_llm=True)
+    status = execute(ctx, run_id, cases)
+    ctx.gateway.close()
+    named = named_companies(engine, run_id)
+    print(f"Status {status}; aufgelöst: {len(named)}/{len(LIVE_COMPANIES)}")
+    assert named, "keine Firma aufgelöst – Abrufprotokoll in live-out/ prüfen"
+    best = assess_and_store(engine, named, cases, load_products(), load_model(), run_id)
+    for result in best.values():
+        scores = result["scores"]
+        print(f"- {result['company']}: {result['segment']['name']} · Fit "
+              f"{scores['product_relevance']} · Priorität {scores['priority']}")
+        hyp = result["hypothesis"]
+        for item in hyp["activity_evidence"] + hyp["process_evidence"] + hyp["counter_evidence"]:
+            text = " ".join(document_plain_text(engine, item["document_id"]).split())
+            assert " ".join(item["quote"].split()) in text  # jedes Zitat steht im Dokument
+            print(f"    {'GEGEN' if item in hyp['counter_evidence'] else 'PRO'}: "
+                  f"„{item['quote'][:120]}“ – {item['url']}")
+        if result["company"].lower().startswith("deutsche bank"):
+            assert not result["segment"]["key"].startswith("fit_hoch"), "Negativfall mit hohem Fit"

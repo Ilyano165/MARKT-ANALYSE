@@ -75,12 +75,14 @@ Welche Anbieter mit welchen Funktionen angebunden sind: [docs/PROVIDERS.md](docs
   Quelle den Fehler. Benötigte Hosts: api.gleif.org, www.wikidata.org, query.wikidata.org,
   www.sec.gov, data.sec.gov, data-api.ecb.europa.eu, api.ted.europa.eu,
   api.gdeltproject.org, ec.europa.eu sowie die Webseiten der untersuchten Unternehmen.
+  Stand 2026-10-23: Live-Test in der Cloud-Entwicklungsumgebung wegen Proxy-Sperre nicht
+  möglich (`docs/proof/2026-10-23_live-test_phase5.md`).
 
 ## Entwicklung
 
 ```bash
 pip install -e ".[dev]"
-pytest            # 176 Tests mit Mock-Daten (keine echten Abrufe)
+pytest            # 181 Tests mit Mock-Daten (keine echten Abrufe)
 pytest tests/manual -m live -s   # manueller Live-Test, siehe docs/MANUAL_INTEGRATION_TEST.md
 ruff check src tests && mypy
 ```
