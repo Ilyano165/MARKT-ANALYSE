@@ -29,6 +29,9 @@ from ..domain import FetchStatus
 from ..sources.registry import SOURCE_BY_KEY
 
 MAX_BYTES_DEFAULT = 5 * 1024 * 1024
+# Live-Test 2026-10-23: GDELT drosselte jede Anfrage (geteilte Ausgangs-IP); weitere Versuche
+# belasten nur die Quelle und kosten Minuten. Nach so vielen gescheiterten Abrufen in Folge Pause.
+RATE_LIMIT_SUSPEND_AFTER = 2
 RETRY_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
 MAX_ATTEMPTS = 3
 MAX_RETRY_AFTER_SECONDS = 60.0
@@ -128,6 +131,10 @@ class FetchGateway:
         self._sleep = sleep
         self._monotonic = monotonic
         self._last_request: dict[str, float] = {}
+        # Host → Grund: Host hat den Zugriff verweigert (401/403, Bot-Abwehr, Proxy-Sperre).
+        # Weitere Abrufe in dieser Sitzung unterbleiben – Sperren werden respektiert.
+        self._denied_hosts: dict[str, str] = {}
+        self._throttled: dict[str, int] = {}  # Host → Abrufe in Folge, die an 429 scheiterten
         self._robots: dict[str, urllib.robotparser.RobotFileParser | None] = {}
         self.user_agent = user_agent
         self.run_id: int | None = None
@@ -230,6 +237,12 @@ class FetchGateway:
         try:
             self._check_policy(source_key)
             self._check_url(url)
+            denied = self._denied_hosts.get(urlsplit(url).hostname or "")
+            if denied:
+                raise PolicyBlocked(
+                    FetchStatus.BLOCKED_POLICY,
+                    f"{denied} – keine weiteren Abrufe dieses Hosts in diesem Lauf",
+                )
             if respect_robots:
                 self._check_robots(source_key, url)
         except PolicyBlocked as blocked:
@@ -320,6 +333,7 @@ class FetchGateway:
                 )
                 if policy_block:
                     last_error += " (Netzwerkrichtlinie/Proxy sperrt den Host – keine Wiederholung)"
+                    self._deny(url, f"Proxy/Netzwerkrichtlinie sperrt den Host ({exc})")
                 self._log(
                     source_key,
                     method,
@@ -389,9 +403,19 @@ class FetchGateway:
                     duration,
                     None,
                 )
+                if response.status_code in (401, 403):
+                    challenge = response.headers.get("cf-mitigated", "") == "challenge"
+                    self._deny(
+                        url,
+                        f"Host verweigerte den Zugriff (HTTP {response.status_code}"
+                        + (", Bot-Abwehr/Challenge" if challenge else "")
+                        + ")",
+                    )
                 if response.status_code in RETRY_STATUSES and attempt < self._max_attempts:
                     self._sleep(self._retry_delay(response, attempt))
                     continue
+                if response.status_code == 429:
+                    self._rate_limited(url)
                 return FetchResult(
                     FetchStatus.HTTP_ERROR, url, response.status_code, error=last_error
                 )
@@ -410,6 +434,7 @@ class FetchGateway:
                     duration,
                     None,
                 )
+            self._throttled.pop(urlsplit(url).hostname or "", None)
             document_id = self._store_document(source_key, url, body_hash, response, content, title)
             self._cache_store(cache_key, document_id, response, ttl)
             result = self._log(
@@ -524,6 +549,20 @@ class FetchGateway:
         return False
 
     # ------------------------------------------------------------------ Hilfen
+
+    def _deny(self, url: str, reason: str) -> None:
+        host = urlsplit(url).hostname or ""
+        self._denied_hosts.setdefault(host, reason)
+
+    def _rate_limited(self, url: str) -> None:
+        host = urlsplit(url).hostname or ""
+        self._throttled[host] = self._throttled.get(host, 0) + 1
+        if self._throttled[host] >= RATE_LIMIT_SUSPEND_AFTER:
+            self._deny(
+                url,
+                f"Host drosselt dauerhaft (HTTP 429 auch nach allen Wiederholungen, "
+                f"{self._throttled[host]}× in Folge) – Abrufe ausgesetzt",
+            )
 
     def _throttle(self, source_key: str, url: str) -> None:
         interval = max(

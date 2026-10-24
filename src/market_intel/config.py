@@ -56,11 +56,16 @@ class Settings:
 
     @property
     def user_agent(self) -> str:
-        """Eindeutiger User-Agent; mit Kontakt, wenn konfiguriert (Pflicht z. B. bei SEC)."""
+        """Eindeutiger User-Agent; mit Kontakt, wenn konfiguriert (Pflicht z. B. bei SEC).
+
+        Format nach Wikimedia-User-Agent-Policy: ``Client/Version (Kontakt) Bibliothek/Version``.
+        """
+        import httpx
+
         from . import __version__
 
-        contact = f"; mailto:{self.contact_email}" if self.contact_email else ""
-        return f"YellotoolsMarketIntel/{__version__} (+research{contact})"
+        contact = f" (mailto:{self.contact_email})" if self.contact_email else ""
+        return f"YellotoolsMarketIntel/{__version__}{contact} httpx/{httpx.__version__}"
 
     @property
     def companies_house_key(self) -> str | None:

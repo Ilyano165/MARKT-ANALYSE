@@ -16,7 +16,7 @@ from sqlalchemy import insert, select
 from .. import db, repo
 from ..context import Ctx
 from ..domain import EvidenceDraft
-from ..resolution import name_similarity, normalize_name
+from ..resolution import name_similarity, normalize_name, qualified_name_match
 from ..sources import companies_house, eurostat, gdelt, gleif, sec_edgar, ted, website, wikidata
 from ..sources.registry import SOURCE_BY_KEY
 from ..usecases import UseCase
@@ -433,7 +433,11 @@ class UserListAdapter(BaseAdapter):
                 RULES_VERSION,
                 True,
             )
-            out.append(Candidate(row["company_id"], f"Firmenliste „{row['list_name']}“", evidence))
+            out.append(
+                Candidate(
+                    row["company_id"], f"Firmenliste „{row['list_name']}“", evidence, "listed"
+                )
+            )
         return out
 
 
@@ -503,6 +507,62 @@ GLEIF_MIN_SIMILARITY = 0.85
 WIKIDATA_MIN_SIMILARITY = 0.95
 
 
+def _names(record: gleif.GleifRecord) -> tuple[str, ...]:
+    return (record.legal_name, *record.other_names)
+
+
+def _gleif_named(
+    ctx: Ctx, query: str, country: str | None, notes: list[str]
+) -> tuple[gleif.GleifRecord | None, int | None]:
+    """Rechtsnamen-Suche bei GLEIF, erst im Auftragsland, dann weltweit (Sitz im Ausland).
+
+    Gleicher Name (Ähnlichkeit ≥ 0,85) vor Name mit Länder-/Konzernzusatz; mehrere
+    gleichwertige Treffer werden nur über eine gemeinsame, gleichnamige Konzernmutter
+    aufgelöst – sonst bleibt die Firma offen (kein Raten).
+    """
+    for scope in [country, None] if country else [None]:
+        records, doc_id = gleif.search(
+            ctx, query, country=scope, limit=20, field="entity.legalName"
+        )
+        if doc_id is None:  # Abruf fehlgeschlagen (protokolliert)
+            continue
+        active = [r for r in records if (r.entity_status or "ACTIVE") == "ACTIVE"]
+        exact = [
+            r
+            for r in active
+            if max(name_similarity(query, n) for n in _names(r)) >= GLEIF_MIN_SIMILARITY
+        ]
+        pool = exact or [
+            r for r in active if any(qualified_name_match(query, n) for n in _names(r))
+        ]
+        where = f"Land {scope}" if scope else "weltweit"
+        if not pool:
+            notes.append(f"GLEIF ({where}): kein Rechtsname passt zu „{query}“")
+            continue
+        if len(pool) == 1:
+            if not exact:
+                notes.append(
+                    f"GLEIF: „{query}“ als {pool[0].legal_name} ({pool[0].lei}, "
+                    f"{pool[0].country}) übernommen – Name mit Länder-/Konzernzusatz"
+                )
+            return pool[0], doc_id
+        parent, parent_doc, _ = gleif.fetch_parent(ctx, pool[0].lei, "ultimate")
+        if (
+            parent is not None
+            and parent_doc is not None
+            and any(name_similarity(query, n) >= GLEIF_MIN_SIMILARITY for n in _names(parent))
+        ):
+            notes.append(
+                f"GLEIF: {len(pool)} gleichnamige Gesellschaften ({where}); übernommen wurde "
+                f"die oberste Konzernmutter {parent.legal_name} ({parent.lei})"
+            )
+            return parent, parent_doc
+        listed = "; ".join(f"{r.legal_name} ({r.lei}, {r.country})" for r in pool[:5])
+        notes.append(f"GLEIF ({where}): mehrdeutig, nicht übernommen – {listed}")
+        return None, None
+    return None, None
+
+
 def resolve_named(ctx: Ctx, query: str, countries: list[str]) -> tuple[int | None, list[str]]:
     """Ausdrücklich genannte Firma finden: GLEIF (Ähnlichkeit ≥ 0,85), Wikidata (gleicher LEI
     oder neue Firma bei Ähnlichkeit ≥ 0,95), nur starke Kennungen für Zusammenführungen."""
@@ -511,24 +571,10 @@ def resolve_named(ctx: Ctx, query: str, countries: list[str]) -> tuple[int | Non
     lei: str | None = None
     country = countries[0] if len(countries) == 1 else None
     if "gleif" in ctx.gateway.enabled_sources:
-        records, doc_id = gleif.search(ctx, query, country=country)
-        scored = sorted(
-            (
-                (max(name_similarity(query, n) for n in (r.legal_name, *r.other_names)), r)
-                for r in records
-            ),
-            key=lambda x: -x[0],
-        )
-        if scored and doc_id is not None:
-            similarity, best = scored[0]
-            if similarity >= GLEIF_MIN_SIMILARITY:
-                company_id = gleif.store_record(ctx, best, doc_id)
-                lei = best.lei
-            else:
-                notes.append(
-                    f"GLEIF: {best.legal_name} ({best.lei}) Ähnlichkeit "
-                    f"{similarity:.2f} – nicht übernommen"
-                )
+        record, doc_id = _gleif_named(ctx, query, country, notes)
+        if record is not None and doc_id is not None:
+            company_id = gleif.store_record(ctx, record, doc_id)
+            lei = record.lei
     if "wikidata" in ctx.gateway.enabled_sources:
         hits = wikidata.search_entities(ctx, query, "de") or wikidata.search_entities(
             ctx, query, "en"

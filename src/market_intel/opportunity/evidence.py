@@ -115,6 +115,21 @@ def company_documents(engine: Engine, company_id: int) -> list[Document]:
     return [Document(int(r.id), r.url, r.source_key, r.retrieved_at, r.title or "") for r in rows]
 
 
+# Rechtstexte beschreiben keine Tätigkeit. Live-Test 2026-10-23: Der Markenhinweis im Impressum
+# („… geschützt. Dies gilt insbesondere für STEINEL Marken, Typenschilder, Firmenlogos und
+# Embleme.“) ergab Fit 40 für einen Hersteller ohne jeden Tätigkeitsbeleg.
+_LEGAL_PAGE = re.compile(
+    r"/(impressum|imprint|legal[-_]?notice|legal|datenschutz\w*|privacy[-_]?\w*|data[-_]protection"
+    r"|agb|terms\w*|nutzungsbedingungen|cookie\w*|disclaimer)(/|\.html?$|$|\?)",
+    re.IGNORECASE,
+)
+
+
+def legal_page(url: str) -> bool:
+    """Impressum, Datenschutz, AGB u. Ä. (nur für Webseiten, nicht für hochgeladene Dateien)."""
+    return url.startswith("http") and bool(_LEGAL_PAGE.search(url))
+
+
 def _texts(engine: Engine, documents: list[Document]) -> list[tuple[Document, str]]:
     out = []
     for document in documents:
@@ -159,6 +174,8 @@ def find_hits(
     verneint, wird ein verneinter Treffer geliefert (zählt nie als Beleg)."""
     hits = []
     for document, text in texts:
+        if legal_page(document.url):
+            continue
         found = 0
         for term in terms:
             pattern = re.compile(r"(?<![\wäöüß])" + re.escape(term), re.IGNORECASE)
@@ -191,7 +208,16 @@ class EvidenceIndex:
         self.texts = _texts(engine, self.documents)
 
     def all_hits(self, terms: tuple[str, ...]) -> list[Hit]:
-        return find_hits(self.texts, terms, per_document=len(terms) or 1)
+        """Treffer; ein wörtlich gleicher Satz auf mehreren Seiten (Navigation, Fußzeile)
+        zählt nur einmal – sonst wirkt ein Menüeintrag wie viele unabhängige Belege."""
+        seen: set[tuple[str, str, bool]] = set()
+        out = []
+        for hit in find_hits(self.texts, terms, per_document=len(terms) or 1):
+            key = (hit.term.lower(), hit.quote.lower(), hit.negated)
+            if key not in seen:
+                seen.add(key)
+                out.append(hit)
+        return out
 
     def hits(self, terms: tuple[str, ...]) -> list[Hit]:
         """Nur nicht verneinte Treffer (Belege)."""

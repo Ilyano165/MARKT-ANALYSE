@@ -265,7 +265,14 @@ def _select(ctx: Ctx, params: dict[str, Any], cases: dict[str, UseCase]) -> Task
             )
             for r in rows
         }
-    named = [r["company_id"] for r in rows if r["role"] == "named"]
+    # Ausdrücklich angefordert (im Auftrag genannt oder per Firmenliste vorgegeben) geht vor
+    # der freien Suche – Live-Test 2026-10-23: sonst verdrängten 509 Suchtreffer die Liste.
+    named = list(
+        dict.fromkeys(
+            [r["company_id"] for r in rows if r["role"] == "named"]
+            + [r["company_id"] for r in rows if r["role"] == "listed"]
+        )
+    )
     sources: dict[int, set[str]] = {}
     for r in rows:
         sources.setdefault(r["company_id"], set()).add(r["adapter_key"])

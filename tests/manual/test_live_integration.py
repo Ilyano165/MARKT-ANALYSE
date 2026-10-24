@@ -25,6 +25,7 @@ from market_intel.config import Settings
 from market_intel.engine.budget import Budget
 from market_intel.engine.strategy import ResearchRequest
 from market_intel.research import create_research, execute, named_companies
+from market_intel.sources.user_data import import_company_list
 from market_intel.usecases import load_use_cases, register
 
 pytestmark = [
@@ -98,6 +99,30 @@ LIVE_COMPANIES = {
 }
 
 
+# Offizielle Domains als Nutzereingabe (allgemein bekannt; durch den Abruf selbst geprüft –
+# was die Website nicht belegt, fließt nicht ein). Sixt verweigert Abrufe (403) → respektiert.
+LIVE_WEBSITES = {
+    "ORAFOL": "https://www.orafol.com/",
+    "Avery Dennison": "https://graphics.averydennison.com/",
+    "Sixt": "https://www.sixt.de/",
+    "Umdasch Group": "https://www.umdasch.com/",
+    "Steinel": "https://www.steinel.de/",
+    "Deutsche Bank": "https://www.db.com/",
+}
+# Mehrdeutige Treffer löst die App nicht selbst auf; im Test legt der Nutzer fest.
+LIVE_MANUAL_LEI = {
+    "Avery Dennison": ("549300PW7VPFCYKLIV37", "AVERY DENNISON CORPORATION laut GLEIF"),
+}
+LIVE_LIST = "Live-Test Websites"
+
+
+def _named_by_query(conn: object, run_id: int) -> dict[str, int]:
+    prefix = "im Auftrag genannt: "
+    rows = conn.execute(select(db.run_candidate.c.reason, db.run_candidate.c.company_id).where(  # type: ignore[attr-defined]
+        db.run_candidate.c.run_id == run_id, db.run_candidate.c.reason.startswith(prefix)))
+    return {r.reason.removeprefix(prefix): r.company_id for r in rows}
+
+
 def test_real_companies_opportunity_end_to_end() -> None:
     from market_intel.cli import make_ctx
     from market_intel.intel.manual import document_plain_text
@@ -124,7 +149,39 @@ def test_real_companies_opportunity_end_to_end() -> None:
     named = named_companies(engine, run_id)
     print(f"Status {status}; aufgelöst: {len(named)}/{len(LIVE_COMPANIES)}")
     assert named, "keine Firma aufgelöst – Abrufprotokoll in live-out/ prüfen"
-    best = assess_and_store(engine, named, cases, load_products(), load_model(), run_id)
+
+    # Schritt 2: Websites. Ohne Wikidata (Live: 403) kennt die App keine Domain. Wie im
+    # Vertrieb üblich gibt der Nutzer sie per Liste vor; Abgleich per LEI, keine Dublette.
+    rows = ["name;lei;website"]
+    with engine.connect() as conn:
+        for query, company_id in _named_by_query(conn, run_id).items():
+            lei = repo.identifiers_of(conn, company_id).get("lei", "")
+            rows.append(f"{query};{lei};{LIVE_WEBSITES[query]}")
+    resolved = {r.split(";")[0] for r in rows[1:]}
+    for query, (lei, reason) in LIVE_MANUAL_LEI.items():
+        if query not in resolved:
+            print(f"manuell festgelegt: {query} → LEI {lei} ({reason})")
+            rows.append(f"{query};{lei};{LIVE_WEBSITES[query]}")
+    csv_path = OUT / "live_websites.csv"
+    csv_path.write_text("\n".join(rows) + "\n", "utf-8")
+    imported = import_company_list(engine, csv_path, list_name=LIVE_LIST,
+                                   source_url="intern:live-test", publisher=None)
+    before = set(named)
+    assert before <= set(imported.companies), "Listenimport hat Dubletten erzeugt"
+    request2 = ResearchRequest(task="Websites der Live-Testfirmen untersuchen",
+                               lists=[LIVE_LIST], use_cases=sorted(cases), refresh=True)
+    run2 = create_research(engine, request2, budget, OUT / "opportunity2")
+    ctx = make_ctx(settings, engine, budget, no_llm=True)
+    status2 = execute(ctx, run2, cases)
+    ctx.gateway.close()
+    with engine.connect() as conn:
+        for row in conn.execute(select(db.fetch_log.c.source_key, db.fetch_log.c.status,
+                                       db.fetch_log.c.http_status, db.fetch_log.c.url).where(
+                db.fetch_log.c.run_id == run2, db.fetch_log.c.source_key == "website")):
+            print("  website:", row.status, row.http_status, row.url[:100])
+    print(f"Lauf 2 (Websites): {status2}")
+    named = list(imported.companies)
+    best = assess_and_store(engine, named, cases, load_products(), load_model(), run2)
     for result in best.values():
         scores = result["scores"]
         print(f"- {result['company']}: {result['segment']['name']} · Fit "

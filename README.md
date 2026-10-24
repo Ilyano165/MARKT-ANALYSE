@@ -75,14 +75,17 @@ Welche Anbieter mit welchen Funktionen angebunden sind: [docs/PROVIDERS.md](docs
   Quelle den Fehler. Benötigte Hosts: api.gleif.org, www.wikidata.org, query.wikidata.org,
   www.sec.gov, data.sec.gov, data-api.ecb.europa.eu, api.ted.europa.eu,
   api.gdeltproject.org, ec.europa.eu sowie die Webseiten der untersuchten Unternehmen.
-  Stand 2026-10-23: Live-Test in der Cloud-Entwicklungsumgebung wegen Proxy-Sperre nicht
-  möglich (`docs/proof/2026-10-23_live-test_phase5.md`).
+  Stand 2026-10-23 (`docs/proof/2026-10-23_live-test_phase5.md`): GLEIF und Firmenwebseiten
+  live erreichbar; Wikidata sperrt Abrufe aus der Cloud-Umgebung (403, Robot-Policy), GDELT
+  drosselt (429), yellotools.com hat eine Bot-Abwehr – Sperren werden respektiert. Ohne
+  Wikidata kennt die App keine Firmen-Website: Websites per Firmenliste (`website`-Spalte)
+  vorgeben.
 
 ## Entwicklung
 
 ```bash
 pip install -e ".[dev]"
-pytest            # 181 Tests mit Mock-Daten (keine echten Abrufe)
+pytest            # 193 Tests mit Mock-Daten (keine echten Abrufe; 2 Live-Tests nur mit MI_LIVE=1)
 pytest tests/manual -m live -s   # manueller Live-Test, siehe docs/MANUAL_INTEGRATION_TEST.md
 ruff check src tests && mypy
 ```

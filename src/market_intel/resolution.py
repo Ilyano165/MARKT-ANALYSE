@@ -97,6 +97,39 @@ def name_similarity(a: str, b: str) -> float:
     return round(max(ratio, token), 4)
 
 
+# Zusätze, mit denen Konzerne Landes- oder Holdinggesellschaften benennen („ORAFOL Europe
+# GmbH“, „3M Deutschland GmbH“). Tätigkeitswörter („Autovermietung“, „Leasing“) gehören
+# bewusst nicht dazu – sie bezeichnen oft eine andere Gesellschaft oder Firma.
+_QUALIFIERS = frozenset(
+    {
+        "deutschland",
+        "germany",
+        "german",
+        "europe",
+        "europa",
+        "european",
+        "international",
+        "group",
+        "gruppe",
+        "holding",
+        "holdings",
+        "oesterreich",
+        "austria",
+        "schweiz",
+        "switzerland",
+        "suisse",
+        "dach",
+        "emea",
+    }
+)
+
+
+def qualified_name_match(query: str, candidate: str) -> bool:
+    """``candidate`` = genannter Name + nur Länder-/Konzernzusätze (kein Merge-Kriterium)."""
+    q, c = normalize_name(query).split(), normalize_name(candidate).split()
+    return bool(q) and len(c) > len(q) and c[: len(q)] == q and set(c[len(q) :]) <= _QUALIFIERS
+
+
 def is_name_match(query: str, candidate: str, threshold: float = 0.92) -> bool:
     """Starke Namensübereinstimmung – reicht für einen Kandidaten, nie für ein Merge."""
     return name_similarity(query, candidate) >= threshold

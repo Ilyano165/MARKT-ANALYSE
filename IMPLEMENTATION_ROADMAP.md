@@ -6,19 +6,20 @@ Grundsätze: kleine, abnehmbare Meilensteine; jeder endet mit grünen Tests. **G
 gilt für jeden Meilenstein: keine neue Abhängigkeit, Quelle oder Infrastruktur mit
 verpflichtenden Kosten** – Prüfung über `docs/DEPENDENCIES_AND_COSTS.md`.
 
-## 0d. Phase 5 – Live-Test (2026-10-23): NICHT bestanden, Quellen gesperrt
+## 0d. Phase 5 – Live-Test (2026-10-23): mit echten Daten durchgeführt, Teilerfolg
 
 Protokoll: `docs/proof/2026-10-23_live-test_phase5.md`.
 
-- GLEIF, Wikidata, yellotools.com und Firmenwebseiten aus der Entwicklungsumgebung **gesperrt**
-  (Proxy CONNECT 403). Beide Live-Tests ausgeführt und fehlgeschlagen (0 Firmen aufgelöst);
-  **keine echten Daten**, **keine erfundenen Ergebnisse** (0 Datensätze).
-- Behoben: Proxy-Sperren wurden dreimal wiederholt → jetzt ein Versuch (6 statt 18 Abrufe,
-  5 statt ~25 s).
-- Neu: Ende-zu-Ende-Live-Test mit sechs realen Firmen aus fünf Branchen inkl. Negativbeispiel
-  (`tests/manual/test_live_integration.py`), sofort ausführbar, sobald das Netz frei ist.
-- Produktmatrix unverändert und weiterhin unverifiziert.
-- Tests: 181 bestanden, 2 übersprungen (die beiden Live-Tests ohne `MI_LIVE=1`).
+- GLEIF, TED und Firmenwebseiten live genutzt; Wikidata (403 Robot-Policy), yellotools.com
+  (Bot-Abwehr), sixt.de (403) gesperrt, GDELT gedrosselt – Sperren respektiert, nicht umgangen.
+- Ende-zu-Ende mit sechs realen Firmen (fünf Branchen + Negativfall Deutsche Bank: Fit 0):
+  beide Live-Tests bestanden, jedes Zitat gegen den Dokumenttext geprüft.
+- Zehn Live-Befunde behoben (Namensauflösung, Rechtsnamen-Suche, Sitz im Ausland, Mehrdeutigkeit,
+  Host-Sperren, Dauer-Drosselung, Listen-Vorrang, Impressum kein Beleg, Menü einmal zählen,
+  User-Agent), je mit Regressionstest.
+- Offen: Produktmatrix unverifiziert (yellotools.com gesperrt); Materialhersteller (Avery,
+  ORAFOL) erscheinen mit hohem Fit – Grenze dokumentiert.
+- Tests: 193, davon 191 bestanden, 2 übersprungen (Live ohne `MI_LIVE=1`).
 
 ## 0c. Stand nach Phase 4 – Customer Discovery (2026-10-22, Version 0.4.0)
 

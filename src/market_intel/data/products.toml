@@ -21,7 +21,7 @@ manufacturer_target_groups = ["Werbetechniker", "Fahrzeugfolierer", "Digitaldruc
 manufacturer_source = "https://www.yellotools.com/en/Shop-Service/Company/"
 catalog_source = "https://www.yellotools.com/Catalog/YTKatalog_01-2022_EN.pdf"
 note = "Produktangaben sind Herstellerangaben; Eignung für alternative Anwender ist eine Hypothese."
-verification = "2026-10-23: Abgleich mit yellotools.com NICHT möglich – Host aus der Entwicklungsumgebung gesperrt (Proxy CONNECT 403, DNS nicht auflösbar). Alle Produktgruppen bleiben 'researched' = nicht verifiziert; keine Angabe wurde geändert."
+verification = "2026-10-23: Abgleich mit yellotools.com NICHT möglich – erst Proxy-Sperre, ab 20:40 UTC Cloudflare-Bot-Abwehr (HTTP 403, cf-mitigated: challenge, auch für robots.txt und /shop/); Sperre respektiert, nicht umgangen. Eine Websuche bestätigte nur sinngemäß die vorhandenen Gruppen (Rakel, Entfolierung, Schneiden, Magnete, Car-Wrapping) und nannte zusätzlich Werkzeugwände/Lagerregale – keine wörtliche Herstellerquelle, daher keine Änderung. Alle Produktgruppen bleiben researched = nicht verifiziert."
 
 # Erwähnungen dieser Marken/Werkzeuge auf Unternehmensseiten sind nur ein HINWEIS auf vorhandene
 # Werkzeuge oder alternative Lieferanten – keine belegte Lieferbeziehung.

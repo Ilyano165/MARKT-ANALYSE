@@ -74,10 +74,20 @@ def parse_record(item: Any) -> GleifRecord | None:
 
 
 def search(
-    ctx: Ctx, query: str, *, country: str | None = None, limit: int = 10
+    ctx: Ctx,
+    query: str,
+    *,
+    country: str | None = None,
+    limit: int = 10,
+    field: str = "fulltext",
 ) -> tuple[list[GleifRecord], int | None]:
-    """Volltextsuche nach Namen. Gibt Treffer und Dokument-ID zurück."""
-    params = {"filter[fulltext]": query, "page[size]": str(limit)}
+    """Suche nach Namen. Gibt Treffer und Dokument-ID zurück.
+
+    ``field="fulltext"`` durchsucht alle Felder (Begriffssuche), ``"entity.legalName"`` nur
+    den Rechtsnamen – im Live-Test (2026-10-23) fand nur dieser Filter „Sixt SE“ und
+    „DEUTSCHE BANK AKTIENGESELLSCHAFT“ unter den ersten zehn Treffern.
+    """
+    params = {f"filter[{field}]": query, "page[size]": str(limit)}
     if country:
         params["filter[entity.legalAddress.country]"] = country
     result = ctx.gateway.get(

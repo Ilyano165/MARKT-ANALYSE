@@ -385,8 +385,23 @@ class FakeWeb:
                     if record["id"] == lei:
                         return httpx.Response(200, json={"data": record})
             return httpx.Response(404, json={"errors": [{"title": "Not Found"}]})
-        query = request.url.params.get("filter[fulltext]", "")
-        return httpx.Response(200, json={"data": GLEIF.get(query, [])})
+        params = request.url.params
+        country = params.get("filter[entity.legalAddress.country]")
+        if "filter[entity.legalName]" in params:  # wie die echte API: Teilstring im Rechtsnamen
+            needle = params["filter[entity.legalName]"].lower()
+            unique = {r["id"]: r for records in GLEIF.values() for r in records}
+            found = [
+                r
+                for r in unique.values()
+                if needle in r["attributes"]["entity"]["legalName"]["name"].lower()
+            ]
+        else:
+            found = GLEIF.get(params.get("filter[fulltext]", ""), [])
+        if country:
+            found = [
+                r for r in found if r["attributes"]["entity"]["legalAddress"]["country"] == country
+            ]
+        return httpx.Response(200, json={"data": found})
 
     def _wikidata(self, request: httpx.Request) -> httpx.Response:
         params = request.url.params
