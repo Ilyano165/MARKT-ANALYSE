@@ -1,10 +1,28 @@
 # Umsetzungsplan – Yellotools Market Intelligence
 
-Stand: 2026-10-23 · Revision 6 (Phase 5 Live-Test; verbindlich: **100 % kostenloser Betrieb**)
+Stand: 2026-10-25 · Revision 7 (Phase 6 Rollen und Belegstatus; verbindlich: **100 % kostenloser Betrieb**)
 
 Grundsätze: kleine, abnehmbare Meilensteine; jeder endet mit grünen Tests. **Gate „Kosten“
 gilt für jeden Meilenstein: keine neue Abhängigkeit, Quelle oder Infrastruktur mit
 verpflichtenden Kosten** – Prüfung über `docs/DEPENDENCIES_AND_COSTS.md`.
+
+## 0e. Phase 6 – Rollenklassifikation und belastbare Lead-Bewertung (2026-10-25)
+
+Protokoll: `docs/proof/2026-10-25_phase6_rollen_bewertung.md`.
+
+- Rollen Verarbeiter/Hersteller/Händler mit eigenen Satzbelegen (mehrere möglich); Belegklassen
+  Tätigkeitssatz/Produktsatz/Zielgruppensatz/Fremdsatz/Fragment; Belegstatus mit Deckel; neue
+  Segmente „Keine Daten – Eignung unbekannt“ und „Manuelle Prüfung erforderlich“ (Modell v3).
+- Echte Fälle: Avery Dennison 81 → 40 (manuelle Prüfung), ORAFOL 53 → 20 (Hersteller, manuelle
+  Prüfung), Umdasch 80 → 58 (belegt, Verarbeiter + Hersteller), Sixt „keine Daten“ statt „kein
+  Fit“, Steinel und Deutsche Bank unverändert 0.
+- Behoben: Doppelzählung Prozess/Tätigkeit, Menüpunkt vor Satz, Verneinung nach dem Verb,
+  „über den Großhandel“ als Händlerbeleg, veraltete Bewertungen nach Modellwechsel als Lead.
+- Produktmatrix mit yellotools.com abgeglichen (38/44 Beispielnamen belegt), weiter
+  „NICHT verifiziert“ (keine Bestätigung durch Yellotools).
+- Tests: 225, davon 223 bestanden, 2 übersprungen; 16 Gegenproben ausgeführt, alle bestanden.
+- Offen: CSV-Pflege teilt Listeneinträge mit „;“; Seiten ohne extrahierbare Angabe werden nicht
+  zugeordnet; Rollen firmenweit statt je Anwendungsfall; Gewichte nicht kalibriert.
 
 ## 0d. Phase 5 – Live-Test (2026-10-23): mit echten Daten durchgeführt, Teilerfolg
 

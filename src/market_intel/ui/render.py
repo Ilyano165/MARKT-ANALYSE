@@ -792,6 +792,65 @@ def _parts(parts: dict[str, Any]) -> str:
     )
 
 
+PRODUCT_STATUS = {
+    "researched": "recherchiert, nicht bestätigt",
+    "confirmed": "bestätigt",
+    "draft": "Entwurf",
+    "discontinued": "eingestellt",
+}
+
+
+def _assessment_block(best: dict[str, Any]) -> str:
+    """Belegstatus, Rollen mit Satzbelegen, Zuordnung, Datenlage, Produktmatrix (Modell v3)."""
+    a = best.get("assessment")
+    if not a:
+        return '<p class="unknown">Belegstatus nicht ermittelt (Bewertung vor Modell v3).</p>'
+    role_rows = "".join(
+        f"<tr><th>{e(role['label'])}</th><td>"
+        + (
+            "".join(
+                f"„{e(item['quote'][:220])}“ "
+                f'<span class="muted">{e(item["url"])}, abgerufen {e(item["retrieved_at"][:10])}, '
+                f"{e(item['basis'])}</span><br>"
+                for item in role["evidence"]
+            )
+            if role["evidenced"]
+            else '<span class="unknown">nicht belegt (nicht ausgeschlossen)</span>'
+        )
+        + "</td></tr>"
+        for role in a["roles"]["roles"].values()
+    )
+    hints = "".join(
+        f"<li>{e(h['label'])}: „{e(h['quote'][:200])}“ "
+        f'<span class="muted">{e(h["url"])}</span></li>'
+        for h in a["roles"]["hints"]
+    )
+    matrix = a["product_matrix"]
+    review = (
+        '<p class="gapnote"><strong>Manuelle Prüfung erforderlich:</strong> '
+        + e("; ".join(a["manual_review_reasons"]))
+        + "</p>"
+        if a["manual_review"]
+        else ""
+    )
+    capped = (
+        f" Produktrelevanz ohne Deckel {a['relevance_uncapped']}, gedeckelt auf {a['cap']}."
+        if a["capped"]
+        else ""
+    )
+    return (
+        f'<p class="{"gapnote" if not matrix["verified"] else "muted"}">Produktmatrix: '
+        f"{e(matrix['label'])}</p>"
+        f"<h2>Belegstatus und Rolle</h2><p><strong>{e(a['fit_status'])}</strong> – "
+        f"{e(a['fit_status_label'])}.{e(capped)}</p>{review}"
+        f'<table class="kv"><tr><th>Rolle (eigene Angaben)</th><td>{e(a["roles"]["label"])}</td></tr>'
+        f"{role_rows}"
+        f"<tr><th>Firmenzuordnung</th><td>{e(a['identity']['label'])}</td></tr>"
+        f"<tr><th>Datenlage</th><td>{e(a['data_status']['label'])}</td></tr></table>"
+        + (f"<h3>Hinweise</h3><ul>{hints}</ul>" if hints else "")
+    )
+
+
 def opportunity_page(
     report: dict[str, Any], notes: list[dict[str, Any]], csrf: str, statuses: tuple[str, ...]
 ) -> str:
@@ -803,9 +862,17 @@ def opportunity_page(
     p = report["profile"]
     fit = bool(report["applications"])
     products = "".join(
-        f'<li><strong>{e(g["name"])}</strong> <span class="badge">{e(g["status"])}</span>'
+        f'<li><strong>{e(g["name"])}</strong> <span class="badge warn">'
+        f"{e(PRODUCT_STATUS.get(g['status'], g['status']))}</span>"
         f'<br><span class="muted">Prozesse: {e(", ".join(g["processes"]))}<br>'
-        f"Grenzen: {e('; '.join(g['limitations']))}<br>Belegte Prozessbegriffe: "
+        f"Grenzen: {e('; '.join(g['limitations']))}<br>"
+        + (
+            f"Herstellerseiten-Abgleich {e(g['source_checked_at'])}: nicht gefunden "
+            f"{e(', '.join(g['examples_not_found']) or '–')}<br>"
+            if g.get("source_checked_at")
+            else "Kein Abgleich mit Herstellerseiten<br>"
+        )
+        + "Belegte Prozessbegriffe: "
         f"{e(', '.join(g['matched_process_terms']) or 'keine')}</span> "
         + " ".join(
             f'<a class="ref" href="{e(src.split("|")[0].strip())}" rel="noreferrer">Hersteller</a>'
@@ -883,6 +950,7 @@ def opportunity_page(
         f"<strong>{scores['product_relevance']} · {potential if potential is not None else 'unbekannt'} · "
         f"{scores['data_quality']}</strong></div></div>"
         f'<p class="gapnote">{e(scores["disclaimer"])}</p>'
+        f"{_assessment_block(best)}"
         "<h2>1. Unternehmensprofil</h2>"
         f'<table class="kv"><tr><th>Offizieller Name</th><td>{e(p["official_name"] or "unbekannt")}</td></tr>'
         f"<tr><th>Website</th><td>{e(p['website'] or 'unbekannt')}</td></tr>"
@@ -950,7 +1018,9 @@ def leads_page(rows: list[dict[str, Any]], segments: Any, selected: tuple[str, .
     body = "".join(
         f'<tr><td class="num">{e(r["prioritaet"])}</td><td><a href="/company/{r["firma_id"]}/opportunity">'
         f'{e(r["firma"])}</a><br><span class="muted">{e(r["website"])} {e(r["land"])}</span></td>'
-        f'<td>{e(r["segment"])}</td><td>{e(r["anwendungsfall"])}<br><span class="muted">{e(r["produktgruppen"])}</span></td>'
+        f'<td>{e(r["segment"])}<br><span class="muted">{e(r["belegstatus"].split(":")[0])}'
+        f" · {e(r['rolle'])}</span></td>"
+        f'<td>{e(r["anwendungsfall"])}<br><span class="muted">{e(r["produktgruppen"])}</span></td>'
         f'<td class="num">{e(r["produktrelevanz"])}</td><td class="num">{e(r["potenzial"])}</td>'
         f'<td class="num">{e(r["datenqualitaet"])}</td><td>{e(r["mitarbeiter"])}</td>'
         f"<td>{e(r['bewertungsstatus'])}</td></tr>"
@@ -959,14 +1029,15 @@ def leads_page(rows: list[dict[str, Any]], segments: Any, selected: tuple[str, .
     query = "&".join(f"segment={e(s)}" for s in selected)
     return (
         "<h1>Leads</h1>"
-        '<p class="gapnote">Ein hoher Score bedeutet nur: nach den gewählten Kriterien interessant für '
+        + (f'<p class="gapnote">Produktmatrix: {e(rows[0]["produktmatrix"])}</p>' if rows else "")
+        + '<p class="gapnote">Ein hoher Score bedeutet nur: nach den gewählten Kriterien interessant für '
         "eine weitere Prüfung. Bedarf, Werkzeuge, Lieferanten und Kaufbereitschaft sind nicht belegt.</p>"
         '<form class="search" method="get" action="/leads"><label for="segment">Segment</label>'
         f'<select id="segment" name="segment"><option value="">alle</option>{options}</select>'
         "<button>Filtern</button>"
         f'<a href="/leads.csv{"?" + query if query else ""}">CSV herunterladen</a></form>'
         '<div class="tablewrap"><table><thead><tr><th class="num">Priorität</th><th>Unternehmen</th>'
-        '<th>Segment</th><th>Anwendungsfall / Produkte</th><th class="num">Fit</th>'
+        '<th>Segment / Belegstatus · Rolle</th><th>Anwendungsfall / Produkte</th><th class="num">Fit</th>'
         '<th class="num">Potenzial</th><th class="num">Datenqualität</th><th>Mitarbeiter</th>'
         f"<th>Status</th></tr></thead><tbody>{body or '<tr><td colspan=9>Noch keine bewerteten Unternehmen – mi opportunities ausführen.</td></tr>'}"
         "</tbody></table></div>"

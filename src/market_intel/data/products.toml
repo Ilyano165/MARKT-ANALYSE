@@ -1,7 +1,9 @@
 # Yellotools-Produktmatrix – Ausgangspunkt der Kundensuche (Phase 4).
 #
-# Stand 2026-10-20. Grundlage: öffentliche Yellotools-Produktseiten und -Kategorien, ermittelt
-# über eine Websuche (die Seiten selbst waren aus der Entwicklungsumgebung nicht abrufbar).
+# Stand 2026-10-20, Abgleich mit yellotools.com am 2026-10-25 (siehe meta.verification).
+# Grundlage: öffentliche Yellotools-Produktseiten und -Kategorien.
+# Abgleich mit Herstellerseiten je Gruppe: source_checked_at, examples_on_manufacturer_site
+# (Beispielname wörtlich auf einer offiziellen yellotools.com-Seite), examples_not_found.
 # Status je Produktgruppe:
 #   "researched"  = Funktionen/Grenzen aus Herstellerangaben zusammengefasst, vom Vertrieb NICHT bestätigt
 #   "confirmed"   = vom Yellotools-Produktmanagement/Vertrieb bestätigt (Feld confirmed_by/at setzen)
@@ -15,13 +17,13 @@
 #   process_terms (Begriffe, die auf Unternehmensseiten den Arbeitsprozess belegen)
 
 [meta]
-version = "2026-10-20"
+version = "2026-10-25"
 manufacturer = "Yellotools GmbH, Windeck (laut Herstellerseite)"
 manufacturer_target_groups = ["Werbetechniker", "Fahrzeugfolierer", "Digitaldrucker", "Display- und Beschilderungsspezialisten"]
 manufacturer_source = "https://www.yellotools.com/en/Shop-Service/Company/"
 catalog_source = "https://www.yellotools.com/Catalog/YTKatalog_01-2022_EN.pdf"
 note = "Produktangaben sind Herstellerangaben; Eignung für alternative Anwender ist eine Hypothese."
-verification = "2026-10-23: Abgleich mit yellotools.com NICHT möglich – erst Proxy-Sperre, ab 20:40 UTC Cloudflare-Bot-Abwehr (HTTP 403, cf-mitigated: challenge, auch für robots.txt und /shop/); Sperre respektiert, nicht umgangen. Eine Websuche bestätigte nur sinngemäß die vorhandenen Gruppen (Rakel, Entfolierung, Schneiden, Magnete, Car-Wrapping) und nannte zusätzlich Werkzeugwände/Lagerregale – keine wörtliche Herstellerquelle, daher keine Änderung. Alle Produktgruppen bleiben researched = nicht verifiziert."
+verification = "2026-10-25: Abgleich mit yellotools.com durchgeführt (erreichbar, robots.txt erlaubt Produktseiten, kein TDM-Vorbehalt). Je Produktgruppe: Quellseiten und offizielle Sitemap geprüft, Beispielprodukte wörtlich gesucht – 38 von 44 gefunden (Felder examples_on_manufacturer_site / examples_not_found), 6 offizielle Produktseiten als Quelle ergänzt, nichts gelöscht oder umbenannt. Nicht gefunden: AllStar Gold, AllStar Cutter (Quelle 404, nicht in der Sitemap), YelloFlex-Größenangaben, YelloFlex Shape (nur Händlerquelle), AntiStatic Fluid C/E (nur „C“ belegt), StreetRoller Basic (Katalog führt „StreetRoller Flexi“). Geprüft wurden NUR Produktnamen und Quellen, nicht Funktionen, Materialien oder Grenzen. Status bleibt researched: bestätigt ist eine Gruppe erst durch Yellotools selbst (confirmed_by/at). Vorher: 2026-10-23 nicht erreichbar (Proxy-Sperre, danach Cloudflare-Challenge – respektiert)."
 
 # Erwähnungen dieser Marken/Werkzeuge auf Unternehmensseiten sind nur ein HINWEIS auf vorhandene
 # Werkzeuge oder alternative Lieferanten – keine belegte Lieferbeziehung.
@@ -33,6 +35,9 @@ other_brands = ["Knifeless Tape", "Olfa", "NT Cutter", "3M Hand Applicator", "Av
 key = "rakel_kunststoff"
 name = "Kunststoffrakel und Rakelsets"
 status = "researched"
+source_checked_at = "2026-10-25"
+examples_on_manufacturer_site = ["ProBasic", "ProWrap"]
+examples_not_found = ["AllStar Gold", "AllStar Cutter"]
 description = "Rakel aus Kunststoff in mehreren Härten, teils mit Filz- oder Gleitkante, zum Andrücken selbstklebender Folien; Kombinationen mit Folienschneider (AllStar Cutter)."
 examples = ["ProBasic", "ProWrap", "AllStar Gold", "AllStar Cutter"]
 materials = ["selbstklebende PVC-Folien (gegossen/kalandriert)", "Car-Wrapping-Folien", "Digitaldruck-Folien", "Applikationstape"]
@@ -52,6 +57,9 @@ sources = [
 key = "rakel_nass_glas"
 name = "Rakel für Nassverklebung, Glas und glatte Flächen"
 status = "researched"
+source_checked_at = "2026-10-25"
+examples_on_manufacturer_site = ["TimberMaxx", "FeltBloc"]
+examples_not_found = ["YelloFlex 3\"/4\"/6\"/12\"", "YelloFlex Shape"]
 description = "Dünne Rakel mit Gummilippe (YelloFlex) für Nassverklebung und Fensterfolie; Holzrakel mit filzgeschützter Kante (TimberMaxx) für Scheibenbeschriftung und glatte Flächen; Filzrakel."
 examples = ["YelloFlex 3\"/4\"/6\"/12\"", "YelloFlex Shape", "TimberMaxx", "FeltBloc"]
 materials = ["Sonnenschutz-, Sichtschutz- und Sicherheitsfolien", "Glasdekorfolien", "Scheibenbeschriftung"]
@@ -64,13 +72,15 @@ limitations = ["Gummilippe verschleißt und muss ersetzt werden", "für Trockenv
 process_terms = ["Fensterfolie", "Sonnenschutzfolie", "Sichtschutzfolie", "Sicherheitsfolie", "Glasfolie", "Nassverklebung", "Scheibentönung"]
 sources = [
   "https://www.foliencenter24.com/yellotools-rakel-yelloflex-shape | YelloFlex Shape für Nassverklebung und Fensterfolie (Händlerangabe)",
-  "https://www.yellotools.com/en/Tools/Squeegees/Wooden-Squeegees/ | TimberMaxx Holzrakel, filzgeschützte Kante",
-]
+  "https://www.yellotools.com/en/Tools/Squeegees/Wooden-Squeegees/ | TimberMaxx Holzrakel, filzgeschützte Kante", "https://www.yellotools.com/en/p/feltbloc-5-felt-squeegees-for-signmaking-applications/YT15FB005 | Herstellerseite, Titel „FeltBloc | Felt squeegee“ (abgerufen 2026-10-25)", "https://www.yellotools.com/en/p/yelloflex-flat-squeegee-with-rubber-lip/YT06YF003 | Herstellerseite, Titel „YelloFlex | Flat squeegee with rubber lip“ – Größen 3\"/4\"/6\"/12\" dort nicht geprüft (abgerufen 2026-10-25)"]
 
 [[product]]
 key = "rakel_ppf"
 name = "Rakel für Lackschutzfolie (PPF)"
 status = "researched"
+source_checked_at = "2026-10-25"
+examples_on_manufacturer_site = ["PPF Sandwich"]
+examples_not_found = []
 description = "Mehrschichtige Rakel für die Montage von Lackschutzfolie (PPF Sandwich)."
 examples = ["PPF Sandwich"]
 materials = ["Lackschutzfolie (PPF, meist TPU)"]
@@ -81,12 +91,15 @@ applications = ["lackschutz_aufbereitung", "fahrzeughersteller_umbau"]
 industries = ["Fahrzeugaufbereitung", "Autohandel", "Fahrzeugbau"]
 limitations = ["Produktdetails (Härte, Maße) über die Websuche nicht vollständig belegt – vom Vertrieb zu ergänzen"]
 process_terms = ["Lackschutzfolie", "Paint Protection Film", "PPF", "Steinschlagschutzfolie", "Lackschutz"]
-sources = ["https://www.yellotools.com/en/Tools/Removal/ | Rakelkategorien; PPF Sandwich in Suchergebnissen genannt"]
+sources = ["https://www.yellotools.com/en/Tools/Removal/ | Rakelkategorien; PPF Sandwich in Suchergebnissen genannt", "https://www.yellotools.com/en/p/ppf-sandwich-multi-layer-squeegee-for-paint-protection-films/YT20PPFS04 | Herstellerseite, Titel „PPF Sandwich | Multi-layer PPF squeegee“ (abgerufen 2026-10-25)"]
 
 [[product]]
 key = "car_wrapping_detail"
 name = "Car-Wrapping-Detailwerkzeuge (WrapSticks, Spiegel, Demontage)"
 status = "researched"
+source_checked_at = "2026-10-25"
+examples_on_manufacturer_site = ["WrapStick Hook", "WrapStick Tupp", "Wrap-U-ezee", "StrikerSet"]
+examples_not_found = []
 description = "Rakelstifte mit integriertem Haltemagnet in verschiedenen Formen (u. a. Hook, Tupp) für Dichtungen, Türgriffe, Scheinwerfergehäuse; Hilfsmittel für Außenspiegel; Demontagewerkzeuge für Fahrzeuganbauteile (StrikerSet)."
 examples = ["WrapStick Hook", "WrapStick Tupp", "Wrap-U-ezee", "StrikerSet"]
 materials = ["Car-Wrapping-Folien", "Lackschutzfolie"]
@@ -107,6 +120,9 @@ sources = [
 key = "waerme"
 name = "Heißluft und Wärmestrahler (Tempern, Nachwärmen)"
 status = "researched"
+source_checked_at = "2026-10-25"
+examples_on_manufacturer_site = ["WrapGun II", "WrapGun II Set", "WrapSun Power"]
+examples_not_found = []
 description = "Heißluftgerät WrapGun II (80–630 °C, 50-°C-Kaltstufe, Temperaturscanner im Set) und Wärmestrahler WrapSun für große Flächen; zum Tempern/Nachwärmen gegossener Folien und zum Ablösen alter Folien."
 examples = ["WrapGun II", "WrapGun II Set", "WrapSun Power"]
 materials = ["gegossene Folien", "Car-Wrapping-Folien", "Wand- und Bodenfolien"]
@@ -126,6 +142,9 @@ sources = [
 key = "schneiden"
 name = "Messer, Cutter, Schneidlineale und Schneidmatten"
 status = "researched"
+source_checked_at = "2026-10-25"
+examples_on_manufacturer_site = ["BodyGuardKnife", "LongReach Duo", "YelloLip Cutter", "Ersatzklingen (titanbeschichtet)"]
+examples_not_found = []
 description = "Spezialmesser zum Schneiden von Trägerpapier/Liner und Folie mit Teflon-Gleitschuh und Klingenführung zum Schutz der Oberfläche (BodyGuardKnife), Varianten mit 60/90-cm-Griff für breite Folien (LongReach Duo), Cutter, Ersatzklingen, Lineale, Schneidmatten."
 examples = ["BodyGuardKnife", "LongReach Duo", "YelloLip Cutter", "Ersatzklingen (titanbeschichtet)"]
 materials = ["selbstklebende Folien mit Trägerpapier", "Silikonliner", "Digitaldrucke", "Applikationstape"]
@@ -139,13 +158,15 @@ process_terms = ["Folienzuschnitt", "Zuschnitt", "Trägerpapier", "Liner", "Plot
 sources = [
   "https://www.yellotools.com/en/p/bodyguardknife-special-purpose-knife-for-film-backing-papers/YT11BGK001 | BodyGuardKnife für Trägerpapiere",
   "https://www.yellotools.com/shop/de/schneiden/messer-cutter-scheren/longreach-duo-folienschneider-mit-verlaengertem-griff | LongReach Duo 60/90 cm",
-  "https://www.yellotools.com/en/Tools/Cutting/ | Kategorie Schneiden (Messer, Klingen, Lineale, Matten)",
-]
+  "https://www.yellotools.com/en/Tools/Cutting/ | Kategorie Schneiden (Messer, Klingen, Lineale, Matten)", "https://www.yellotools.com/en/p/yellolip-cutter-cutting-insert-for-yellotwin-base/YT20YLC01 | Herstellerseite, Titel „YelloLip Cutter | Film cutter for squeegee base“ (abgerufen 2026-10-25)"]
 
 [[product]]
 key = "moebelfolierung"
 name = "Werkzeuge für Möbel- und Interiorfolierung"
 status = "researched"
+source_checked_at = "2026-10-25"
+examples_on_manufacturer_site = ["EdgeWrap Cutter Mastermind", "APE CornerTool", "IvoCut", "YelloSlipCut"]
+examples_not_found = []
 description = "Schneideschablone für 90°-Kanten von Möbeln und Schildern mit Überständen in Stufen von 0–20 mm (EdgeWrap Cutter Mastermind, POM), weitere Kanten- und Eckwerkzeuge."
 examples = ["EdgeWrap Cutter Mastermind", "APE CornerTool", "IvoCut", "YelloSlipCut"]
 materials = ["Möbel- und Architekturfolien (Interiorfolien)", "Dekorfolien"]
@@ -165,6 +186,9 @@ sources = [
 key = "entfernen"
 name = "Entschriften: Folien, Aufkleber und Klebereste entfernen"
 status = "researched"
+source_checked_at = "2026-10-25"
+examples_on_manufacturer_site = ["YelloBlade", "YelloBlade Maxx", "YelloBlade Handle 360", "RapidRemover", "YelloOrange"]
+examples_not_found = []
 description = "Lösemittelbeständige Kunststoff-Rakelblätter zum Ablösen von Aufklebern und Folienecken ohne Lack/Glas zu verkratzen (YelloBlade, Maxx, Handle 360), Folienentferner (RapidRemover), Kleberestentferner auf Orangenterpen-Basis (YelloOrange)."
 examples = ["YelloBlade", "YelloBlade Maxx", "YelloBlade Handle 360", "RapidRemover", "YelloOrange"]
 materials = ["alte Folien und Aufkleber auf Lack, Glas, Kunststoff", "Kleberückstände, Bitumen, Teer"]
@@ -178,13 +202,15 @@ process_terms = ["Entfolierung", "Folie entfernen", "Aufkleber entfernen", "Besc
 sources = [
   "https://www.yellotools.com/shop/de/entschriften/yelloblade-rakelblatt-zur-folienentfernung | YelloBlade",
   "https://www.yellotools.com/shop/de/entschriften/rapidremover-folienentferner | RapidRemover",
-  "https://www.yellotools.com/en/p/yelloorange-adhesive-residue-cleaner-400-ml/YT23YO400ML | YelloOrange",
-]
+  "https://www.yellotools.com/en/p/yelloorange-adhesive-residue-cleaner-400-ml/YT23YO400ML | YelloOrange", "https://www.yellotools.com/en/p/yelloblade-360-vinyl-removal-squeegee-with-handle/YT12YBH360 | Herstellerseite, Titel „YelloBlade 360 | Film removal blade“, Variante „YelloBlade Handle 360“ (abgerufen 2026-10-25)"]
 
 [[product]]
 key = "reinigen_antistatik"
 name = "Reinigung, Entfettung und Antistatik"
 status = "researched"
+source_checked_at = "2026-10-25"
+examples_on_manufacturer_site = ["YelloJack", "YelloFleece Pro", "Antistatic Set"]
+examples_not_found = ["AntiStatic Fluid C/E"]
 description = "Entfettung vor dem Folieren (YelloJack), Reinigungstücher (YelloFleece Pro), Antistatik-Flüssigkeit für Thermoplaste (PVC, PC, PP, PE, OPP, PES, PS, PMA) und Antistatik-Set gegen Staub auf Plots und Drucken."
 examples = ["YelloJack", "YelloFleece Pro", "AntiStatic Fluid C/E", "Antistatic Set"]
 materials = ["Plattenmaterialien aus Thermoplasten", "Acrylglas/Polycarbonat", "Folienplots und Drucke"]
@@ -205,6 +231,9 @@ sources = [
 key = "magnete"
 name = "Magnetlösungen und Positionierhilfen"
 status = "researched"
+source_checked_at = "2026-10-25"
+examples_on_manufacturer_site = ["JoniMag Strip", "APE MagCarpet", "GeckoPatch", "TonnyMag Basic", "MagTool Tray"]
+examples_not_found = []
 description = "Montagemagnete, Magnetpads, Magnetketten, Mehrfachmagnete für Türen/Hauben (JoniMag Strip, APE MagCarpet), selbstklebende GeckoPatch-Pads (machen Glas magnetisch nutzbar), Magnetrakel (TonnyMag), Werkzeugschale mit Magnet (MagTool Tray)."
 examples = ["JoniMag Strip", "APE MagCarpet", "GeckoPatch", "TonnyMag Basic", "MagTool Tray"]
 materials = ["Folien und Drucke beim Positionieren auf Stahl, Glas (mit Pads)"]
@@ -224,6 +253,9 @@ sources = [
 key = "wand_bodenroller"
 name = "Wand- und Bodenroller"
 status = "researched"
+source_checked_at = "2026-10-25"
+examples_on_manufacturer_site = ["WallRoller Basic", "WallRoller Chrissi", "WallRoller Hot II"]
+examples_not_found = ["StreetRoller Basic"]
 description = "Andruckroller für Wandgrafiken und Bodenfolien: WallRoller Basic (für wärmeempfindliche PVC-Folien, auch als Bodenroller), Chrissi (leichtere Variante), Hot (mit Heißluft), StreetRoller (Verlegeroller für Bodenfolien)."
 examples = ["WallRoller Basic", "WallRoller Chrissi", "WallRoller Hot II", "StreetRoller Basic"]
 materials = ["Wandfolien/Wall Graphics", "Bodenfolien und Bodengrafiken", "Straßen-/Pflasterfolien"]
@@ -237,13 +269,15 @@ process_terms = ["Wandgestaltung", "Wandfolie", "Wall Graphics", "Bodenfolie", "
 sources = [
   "https://www.yellotools.com/en/Tools/Labeling/Floor-and-Wall-Rollers/ | Wand- und Bodenroller",
   "https://www.yellotools.com/en/p/wallroller-basic-pressure-roller-for-self-adhesive-films/YT11WR002 | WallRoller Basic",
-  "https://www.yellotools.com/shop/de/beschriften/wand-und-bodenroller/wallroller-hot-andruckroller-fuer-selbstklebefolien | WallRoller Hot",
-]
+  "https://www.yellotools.com/shop/de/beschriften/wand-und-bodenroller/wallroller-hot-andruckroller-fuer-selbstklebefolien | WallRoller Hot", "https://www.yellotools.com/en/p/wallroller-chrissi-lightweight-pressure-roller-for-self-adhesive-films/YT11WRC01 | Herstellerseite, Produkt „WallRoller Chrissi“ (abgerufen 2026-10-25)"]
 
 [[product]]
 key = "applizieren_kaschieren"
 name = "Applizieren und Kaschieren von Hand"
 status = "researched"
+source_checked_at = "2026-10-25"
+examples_on_manufacturer_site = ["AppFix", "AppFix Racer"]
+examples_not_found = []
 description = "Abroller/Spender für Applikationstape (AppFix) und AppFix Racer als manuelle Alternative zum Flachbett-Laminator."
 examples = ["AppFix", "AppFix Racer"]
 materials = ["Applikationstape/Übertragungsfolie", "Schutzlaminat", "Plots und Drucke"]

@@ -67,6 +67,7 @@ eigene Domain verursachen weiterhin Kosten außerhalb der Software.
 | ADR-10 | Scoring transparent, versioniert, renormiert bei fehlenden Indikatoren | umgesetzt (`scoring.py`, Modell `v1-entwurf`) |
 | ADR-11 | Benutzer/Rollen erst mit Teambetrieb (OIDC über eigenen/freien Identity-Provider, z. B. vorhandenes Entra ID oder selbst gehostetes Keycloak – Apache-2.0) | geplant (M15) |
 | ADR-12 | Keine Geheimnisse in Dateien; nur Umgebungsvariablen bzw. Windows-Anmeldespeicher | umgesetzt für Konfiguration |
+| ADR-14 *(Phase 6)* | **Belegstatus vor Score:** Eine Rolle oder Tätigkeit gilt nur mit einem ganzen Satz mit Selbstbezug aus eigenen Angaben; Menüpunkte, Produkt- und Zielgruppensätze sind Hinweise. Der Belegstatus deckelt die Produktrelevanz unterhalb der Segmentschwellen; fehlende Daten werden als „keine Daten“ ausgewiesen, nie als „kein Bedarf“. Regeln als Datei (`roles.toml`), keine Sprach-KI | umgesetzt (`opportunity/roles.py`, Modell `v3-2026-10-25`) |
 | ADR-13 *(neu)* | **Keine kostenpflichtige Such-API.** Internetrecherche = Kombination freier, rechtlich nutzbarer Quellen (Register, Wikidata, Ausschreibungen, Nachrichtenindex, Unternehmenswebseiten). Allgemeine Websuche à la Google ist bewusst **nicht** Teil des Kerns | umgesetzt, siehe §5 und `RESEARCH_SOURCES.md` §3 |
 
 ## 4. Komponenten (implementiert, Version 0.4.0)

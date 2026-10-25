@@ -434,6 +434,13 @@ beim Start ergänzt (`_ADDED_COLUMNS`). Sie ersetzen für den Prototyp die gepla
 `opportunity_assessment` (Scoring v1) bleibt nur für bestehende Datenbanken erhalten und wird
 nicht mehr beschrieben.
 
+**Phase 6 (ohne Schemaänderung, Schema-Version bleibt 4):** `opportunity_score.details` enthält
+ab Modell v3 den Block `assessment` (Belegstatus, Deckel, Belegklassen, Rollen mit Satzbelegen,
+Hinweise, Firmenzuordnung, Datenlage, Gründe für manuelle Prüfung, Matrixstand) und die Kennung
+`batch` der Bewertungsrunde. `latest_assessments` berücksichtigt je Firma nur die jüngste Runde;
+ältere Zeilen bleiben als Historie. Die Produktmatrix-Datei hat je Gruppe zusätzlich
+`source_checked_at`, `examples_on_manufacturer_site`, `examples_not_found`.
+
 ## 4. Beziehungen (Übersicht)
 
 ```mermaid

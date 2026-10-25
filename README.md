@@ -69,7 +69,11 @@ Welche Anbieter mit welchen Funktionen angebunden sind: [docs/PROVIDERS.md](docs
 - **Leads brauchen Belege.** Ein Unternehmen wird nur vorgeschlagen, wenn eine Tätigkeit wörtlich
   belegt ist, die zu einer Yellotools-Produktgruppe passt – Größe allein zählt nicht. Ein hoher
   Score heißt „weiter prüfen“, nicht „wird kaufen“. Produktmatrix und Anwendungsfälle sind noch
-  vom Vertrieb zu bestätigen.
+  vom Vertrieb zu bestätigen (die Matrix wird überall als „NICHT verifiziert“ ausgewiesen).
+- **Rolle vor Score (Modell v3).** Produktnamen, Menüpunkte oder Impressum belegen keine
+  Tätigkeit. Hoher Fit nur mit Satzbeleg für eigene Verarbeitung/Installation; Hersteller und
+  Händler ohne diesen Beleg landen in „Manuelle Prüfung“ (nicht ausgeschlossen); gesperrte
+  Websites ergeben „Keine Daten“, nie „kein Bedarf“ (`docs/PRODUCT_MATRIX.md` §4).
 - **Lokale KI ist optional** (Ollama). Hardwarehinweise: `docs/DEPENDENCIES_AND_COSTS.md`.
 - **Firmennetz:** Wenn ein Proxy oder eine Firewall die Quellen sperrt, zeigt `mi prove` je
   Quelle den Fehler. Benötigte Hosts: api.gleif.org, www.wikidata.org, query.wikidata.org,
@@ -85,7 +89,7 @@ Welche Anbieter mit welchen Funktionen angebunden sind: [docs/PROVIDERS.md](docs
 
 ```bash
 pip install -e ".[dev]"
-pytest            # 193 Tests mit Mock-Daten (keine echten Abrufe; 2 Live-Tests nur mit MI_LIVE=1)
+pytest            # 225 Tests mit Mock-Daten und echten Live-Zitaten (keine Abrufe; 2 Live-Tests nur mit MI_LIVE=1)
 pytest tests/manual -m live -s   # manueller Live-Test, siehe docs/MANUAL_INTEGRATION_TEST.md
 ruff check src tests && mypy
 ```

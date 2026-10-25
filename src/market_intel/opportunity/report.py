@@ -114,6 +114,40 @@ def _fig(point: dict[str, Any] | None) -> str:
     )
 
 
+def _assessment_lines(best: dict[str, Any]) -> list[str]:
+    """Belegstatus, Rollen, Zuordnung, Datenlage und Matrixstand (Modell v3)."""
+    a = best.get("assessment")
+    if not a:
+        return ["- Belegstatus: nicht ermittelt (Bewertung vor Modell v3)"]
+    lines = [
+        f"- **Belegstatus:** {a['fit_status']} – {a['fit_status_label']}"
+        + (
+            f" (Produktrelevanz ohne Deckel {a['relevance_uncapped']}, gedeckelt auf {a['cap']})"
+            if a["capped"]
+            else ""
+        ),
+        f"- **Rolle (eigene Angaben):** {a['roles']['label']}",
+    ]
+    for role in a["roles"]["roles"].values():
+        for item in role["evidence"][:2]:
+            lines.append(
+                f"  - {role['label']}: „{item['quote'][:200]}“ – {item['url']} "
+                f"(abgerufen {item['retrieved_at'][:10]}, {item['basis']})"
+            )
+    for hint in a["roles"]["hints"][:2]:
+        lines.append(f"  - Hinweis ({hint['label']}): „{hint['quote'][:200]}“ – {hint['url']}")
+    lines += [
+        f"- **Firmenzuordnung:** {a['identity']['label']}",
+        f"- **Datenlage:** {a['data_status']['label']}",
+        f"- **Produktmatrix:** {a['product_matrix']['label']}",
+    ]
+    if a["manual_review"]:
+        lines.append(
+            "- **Manuelle Prüfung erforderlich:** " + "; ".join(a["manual_review_reasons"])
+        )
+    return lines
+
+
 def to_markdown(report: dict[str, Any]) -> str:
     """Lesbarer Bericht mit den elf Abschnitten."""
     best = report["best"]
@@ -126,6 +160,8 @@ def to_markdown(report: dict[str, Any]) -> str:
         f"Segment: **{best['segment']['name']}** · Priorität {scores['priority']}",
         "",
         f"> {scores['disclaimer']}",
+        "",
+        *_assessment_lines(best),
         "",
         f"## 1. {SECTIONS[0]}",
         "",
@@ -157,8 +193,10 @@ def to_markdown(report: dict[str, Any]) -> str:
         lines.append("- keiner belegt")
     lines += ["", f"## 4. {SECTIONS[3]}", "", best["hypothesis"]["statement"], ""]
     for item in best["hypothesis"]["activity_evidence"] + best["hypothesis"]["process_evidence"]:
+        kind = f"[{item['evidence_class_label']}] " if item.get("evidence_class_label") else ""
         lines.append(
-            f"- „{item['quote'][:240]}“ – {item['url']} (abgerufen {item['retrieved_at'][:10]}, "
+            f"- {kind}„{item['quote'][:240]}“ – {item['url']} "
+            f"(abgerufen {item['retrieved_at'][:10]}, "
             f"{'eigene Angabe' if item['own_source'] else 'Drittquelle'})"
         )
     for item in best["hypothesis"]["counter_evidence"]:

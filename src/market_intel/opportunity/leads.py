@@ -33,6 +33,11 @@ LEAD_COLUMNS = (
     "datenqualitaet",
     "prioritaet",
     "segment",
+    "belegstatus",
+    "rolle",
+    "zuordnung",
+    "manuelle_pruefung",
+    "produktmatrix",
     "bewertungsstatus",
     "quellenlinks",
     "letzte_recherche",
@@ -48,6 +53,25 @@ def _figure(point: dict[str, Any] | None) -> str:
     unit = "Personen" if point["unit"] == "persons" else point["unit"]
     value = f"{float(point['value']):,.0f}".replace(",", ".")
     return f"{value} {unit} ({point['label']}, {point['scope']}, {point['provenance']})"
+
+
+def _assessment_columns(details: dict[str, Any]) -> dict[str, str]:
+    """Belegstatus, Rolle, Zuordnung, Prüfbedarf, Matrixstand (Bewertungen ab Modell v3)."""
+    a = details.get("assessment")
+    if not a:
+        old = "nicht ermittelt (Bewertung vor Modell v3 – neu bewerten)"
+        return {k: old for k in ("belegstatus", "rolle", "zuordnung", "manuelle_pruefung")} | {
+            "produktmatrix": old
+        }
+    return {
+        "belegstatus": f"{a['fit_status']}: {a['fit_status_label']}",
+        "rolle": a["roles"]["label"],
+        "zuordnung": a["identity"]["label"],
+        "manuelle_pruefung": "ja: " + "; ".join(a["manual_review_reasons"])
+        if a["manual_review"]
+        else "nein",
+        "produktmatrix": a["product_matrix"]["label"],
+    }
 
 
 def lead_rows(
@@ -113,6 +137,7 @@ def lead_rows(
                 "datenqualitaet": row["data_quality"],
                 "prioritaet": row["priority_score"],
                 "segment": details["segment"]["name"],
+                **_assessment_columns(details),
                 "bewertungsstatus": STATUS_LABELS[status["status"]]
                 if status
                 else "automatisch bewertet, nicht geprüft",
@@ -146,6 +171,10 @@ def export_leads(engine: Engine, out_dir: Path, **filters: Any) -> list[Path]:
         "Prüfung. Keine Verkaufsprognose.",
         "Bedarf, eingesetzte Werkzeuge, Lieferanten und Kaufbereitschaft sind nicht belegt.",
         "Keine Kontaktdaten von Personen enthalten.",
+        "Belegstatus „belegt“ verlangt einen Tätigkeitssatz und eine belegte eigene "
+        "Verarbeitung/Installation; alles andere ist zu prüfen (Spalte manuelle_pruefung).",
+        "Produktmatrix-Spalte: Stand der Yellotools-Produktmatrix; „NICHT verifiziert“ heißt, die "
+        "Produktangaben sind recherchiert, aber nicht vom Hersteller bestätigt.",
     ):
         notes.append([line])
     xlsx = out_dir / "leads.xlsx"

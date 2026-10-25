@@ -18,6 +18,7 @@ from .products import (
     export_csv,
     import_csv,
     load_products,
+    matrix_status,
     register_products,
     to_toml,
     validate,
@@ -57,6 +58,10 @@ def cmd_products(args: argparse.Namespace) -> int:
         return 1 if problems else 0
     catalog = load_products(settings.products_file)
     if args.action == "list":
+        status = matrix_status(catalog)
+        print(f"Produktmatrix {status['version']}: {status['label']}")
+        if not status["verified"] and status["note"]:
+            print(f"  Prüfvermerk: {status['note']}")
         for group in catalog.products.values():
             print(f"{group.key:24} {group.status:11} {group.name}")
             print(f"{'':24} Anwendungsfälle: {', '.join(group.applications)}")
@@ -99,6 +104,7 @@ def cmd_model(args: argparse.Namespace) -> int:
     print(f"Modell {model.version}: in Ordnung")
     print(f"  Priorität: {model.section('model')['priority_weights']}")
     print(f"  Produktrelevanz: {model.section('product_relevance')['weights']}")
+    print(f"  Deckel nach Belegstatus: {model.section('product_relevance')['evidence_caps']}")
     print(f"  Potenzial: {model.section('business_potential')['weights']}")
     print("  Segmente (in Reihenfolge):")
     for segment in model.segments:
@@ -119,7 +125,8 @@ def cmd_opportunities(args: argparse.Namespace) -> int:
     best = assess_and_store(engine, ids, cases, catalog, model)
     rows = sorted(best.values(), key=lambda r: -r["scores"]["priority"])
     print(f"{len(rows)} Unternehmen bewertet (Modell {model.version}; jede Bewertung gespeichert)")
-    print("Hinweis: Priorität = interessant für weitere Prüfung, keine Verkaufsprognose.\n")
+    print("Hinweis: Priorität = interessant für weitere Prüfung, keine Verkaufsprognose.")
+    print(f"Produktmatrix: {matrix_status(catalog)['label']}\n")
     for r in rows[: args.limit]:
         s = r["scores"]
         potential = s["business_potential"] if s["business_potential"] is not None else "?"
@@ -127,6 +134,8 @@ def cmd_opportunities(args: argparse.Namespace) -> int:
             f"{s['priority']:>3}  {r['company'][:40]:40}  Fit {s['product_relevance']:>3}  "
             f"Pot. {potential!s:>3}  DQ {s['data_quality']:>3}  {r['segment']['name']}"
         )
+        a = r["assessment"]
+        print(f"     Belegstatus: {a['fit_status']} · Rolle: {a['roles']['label']}")
         if r["scores"]["product_relevance"]:
             print(f"     {r['use_case_name']}")
     return 0

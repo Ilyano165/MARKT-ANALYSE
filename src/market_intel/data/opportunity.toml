@@ -14,7 +14,7 @@
 # Ohne Produkt-Fit-Beleg ist die Priorität 0 – unabhängig von Größe oder Wachstum.
 
 [model]
-version = "v2-2026-10-20"
+version = "v3-2026-10-25"
 priority_weights = { product_relevance = 0.65, business_potential = 0.35 }
 unknown_potential_value = 50
 min_relevance_for_priority = 1
@@ -29,6 +29,27 @@ third_party_only = 0.3
 # Gegenindiz (z. B. Folienhersteller statt Anwender) halbiert die Tätigkeitsbewertung
 counter_factor = 0.5
 process_levels = [[1, 0.5], [2, 1.0]]
+# Phase 6 – Belegklassen (Regeln: data/roles.toml):
+#   Tätigkeitssatz  = ganzer Satz eigener Angaben mit Tätigkeitsbegriff, in dem das Unternehmen
+#                     über sich spricht (wir/unser/Name) oder die Leistung am Satzanfang nennt;
+#                     kein Produkt- oder Zielgruppensatz (Schulung, Netzwerk, Verarbeiter)
+#   Produktnennung  = Menüpunkt, Kategorie, Produktname, Überschrift, Produkt-, Zielgruppen-
+#                     oder Fremdsatz
+# Nur Tätigkeitssätze zählen für activity_levels, process_levels und source_quality.
+# Nur Produktnennungen → kleiner Tätigkeitswert (mention_only) und Quellenwert (mention_quality),
+# damit die Firma sichtbar bleibt (nicht ausgeschlossen), aber nicht aufsteigt.
+mention_only = 0.2
+mention_quality = 0.2
+# Belegstatus deckelt die Produktrelevanz (Voraussetzung, keine zusätzliche Gewichtung).
+# Die Deckel liegen je einen Punkt unter den Segmentschwellen 35 (mittel) und 60 (hoch):
+#   belegt           Tätigkeitssatz + belegte eigene Verarbeitung/Installation → kein Deckel
+#   hinweis          Tätigkeitssatz, eigene Verarbeitung nicht belegt → unter „hoch“, manuelle Prüfung
+#   widerspruechlich Tätigkeitssatz + Gegenbeleg → unter „hoch“, manuelle Prüfung
+#   unklar           nur Produktnennung/Menü/Drittquelle → unter „mittel“, manuelle Prüfung
+#   kein_beleg       eigene Angaben ohne passende Tätigkeit → 0
+#   keine_daten      keine eigenen Angaben (z. B. Website gesperrt) → 0, Segment „Keine Daten“
+# `mi opportunity-model` prüft, dass Deckel und Schwellen zusammenpassen.
+evidence_caps = { belegt = 100, hinweis = 59, widerspruechlich = 59, unklar = 34, kein_beleg = 0, keine_daten = 0 }
 application_status = { confirmed = 1.0, hypothesis = 0.5, abgeleitet = 0.4 }
 
 [business_potential]
@@ -70,7 +91,9 @@ core = ["werbetechnik_beschriftung", "fahrzeugfolierung", "lackschutz_aufbereitu
 # (strong/positive/flat/negative/unknown), growth_basis (confirmed/derived/unconfirmed/none),
 # expansion (confirmed/derived/unconfirmed/none), size_class (large/medium/small/micro/unknown),
 # core_application (true/false), application_status (confirmed/hypothesis),
-# is_customer (true/false), rejected (true/false)
+# is_customer (true/false), rejected (true/false),
+# fit_status (belegt/hinweis/widerspruechlich/unklar/kein_beleg/keine_daten),
+# data_status (eigene_angaben/website_gesperrt/website_fehler/keine_website/nicht_untersucht)
 # Operatoren: ">=", "<=", ">", "<", "==", "in", "not_in"
 
 [[segment]]
@@ -86,10 +109,22 @@ description = "Jüngster Watchlist-Status „verworfen“ – wird nicht erneut 
 conditions = [["rejected", "==", true]]
 
 [[segment]]
+key = "keine_daten"
+name = "Keine Daten – Eignung unbekannt"
+description = "Keine eigenen Unternehmensangaben abrufbar (z. B. Website gesperrt). Das ist KEIN Beleg für fehlenden Bedarf; Daten beschaffen und erneut bewerten."
+conditions = [["fit_status", "==", "keine_daten"]]
+
+[[segment]]
 key = "kein_produkt_fit"
 name = "Kein belegter Produkt-Fit"
 description = "Keine Tätigkeit belegt, die zu einer Produktgruppe passt – kein Lead, unabhängig von Größe und Wachstum."
 conditions = [["product_relevance", "<", 1]]
+
+[[segment]]
+key = "manuelle_pruefung"
+name = "Manuelle Prüfung erforderlich"
+description = "Eigene Verarbeitung/Installation nicht belegt (nur Tätigkeitsnennung, Produktnennungen, Menüpunkte, Drittquellen) oder Belege widersprechen sich – Rolle und Werkzeugbedarf sind unklar, nicht ausgeschlossen."
+conditions = [["fit_status", "in", ["hinweis", "unklar", "widerspruechlich"]]]
 
 [[segment]]
 key = "fit_hoch_wachstum_stark"

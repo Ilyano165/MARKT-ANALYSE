@@ -31,6 +31,8 @@ LIST_FIELDS = (
     "limitations",
     "process_terms",
     "sources",
+    "examples_on_manufacturer_site",
+    "examples_not_found",
 )
 REQUIRED = ("key", "name", "description", "materials", "processes", "typical_users", "sources")
 STATUSES = ("researched", "confirmed", "draft", "discontinued")
@@ -54,6 +56,11 @@ class ProductGroup:
     limitations: tuple[str, ...] = ()
     process_terms: tuple[str, ...] = ()
     sources: tuple[str, ...] = ()
+    # Abgleich mit Herstellerseiten (Phase 6): Beispielnamen wörtlich gefunden / nicht gefunden.
+    # Nicht gefunden heißt NICHT, dass es das Produkt nicht gibt.
+    examples_on_manufacturer_site: tuple[str, ...] = ()
+    examples_not_found: tuple[str, ...] = ()
+    source_checked_at: str = ""
     confirmed_by: str = ""
     confirmed_at: str = ""
 
@@ -64,6 +71,7 @@ class ProductGroup:
             "status": self.status,
             "description": self.description,
             **{f: list(getattr(self, f)) for f in LIST_FIELDS},
+            "source_checked_at": self.source_checked_at,
             "confirmed_by": self.confirmed_by,
             "confirmed_at": self.confirmed_at,
         }
@@ -87,6 +95,7 @@ def _group(item: dict[str, Any]) -> ProductGroup:
         name=str(item.get("name", "")).strip(),
         status=str(item.get("status", "draft")),
         description=str(item.get("description", "")).strip(),
+        source_checked_at=str(item.get("source_checked_at", "")),
         confirmed_by=str(item.get("confirmed_by", "")),
         confirmed_at=str(item.get("confirmed_at", "")),
         **{
@@ -116,6 +125,47 @@ def parse_catalog(text: str, source_path: str = "mitgeliefert") -> Catalog:
     )
 
 
+STATUS_LABELS = {
+    "researched": "recherchiert, nicht bestätigt",
+    "confirmed": "vom Hersteller/Vertrieb bestätigt",
+    "draft": "Entwurf",
+    "discontinued": "eingestellt",
+}
+
+
+def matrix_status(catalog: Catalog) -> dict[str, Any]:
+    """Verifikationsstand: „verifiziert“ nur, wenn ALLE aktiven Gruppen bestätigt sind."""
+    active = [g for g in catalog.products.values() if g.status != "discontinued"]
+    confirmed = sum(g.status == "confirmed" for g in active)
+    verified = bool(active) and confirmed == len(active)
+    checked = [g for g in active if g.source_checked_at]
+    found = sum(len(g.examples_on_manufacturer_site) for g in checked)
+    examples = sum(len(g.examples) for g in checked)
+    site = (
+        f"; Herstellerseiten-Abgleich {max(g.source_checked_at for g in checked)}: {found} von "
+        f"{examples} Beispielprodukten wörtlich gefunden ({len(checked)} von {len(active)} "
+        "Gruppen geprüft)"
+        if checked
+        else "; kein Abgleich mit Herstellerseiten"
+    )
+    return {
+        "verified": verified,
+        "confirmed": confirmed,
+        "total": len(active),
+        "examples_found": found,
+        "examples_checked": examples,
+        "groups_checked": len(checked),
+        "label": (
+            "verifiziert (alle Produktgruppen bestätigt)"
+            if verified
+            else f"NICHT verifiziert – {confirmed} von {len(active)} Produktgruppen vom "
+            f"Hersteller/Vertrieb bestätigt{site}"
+        ),
+        "note": str(catalog.meta.get("verification", "")),
+        "version": str(catalog.meta.get("version", "")),
+    }
+
+
 def load_products(path: Path | None = None) -> Catalog:
     """Eigene Datei oder mitgelieferte Matrix."""
     if path is None:
@@ -138,6 +188,13 @@ def validate(catalog: Catalog, cases: dict[str, UseCase]) -> list[str]:
             )
         if group.status == "confirmed" and not (group.confirmed_by and group.confirmed_at):
             problems.append(f"{group.key}: bestätigt, aber ohne confirmed_by/confirmed_at")
+        checked = set(group.examples_on_manufacturer_site) | set(group.examples_not_found)
+        if checked - set(group.examples):
+            problems.append(f"{group.key}: Abgleich nennt Namen, die keine Beispiele sind")
+        if set(group.examples_on_manufacturer_site) & set(group.examples_not_found):
+            problems.append(f"{group.key}: Beispiel zugleich gefunden und nicht gefunden")
+        if checked and not group.source_checked_at:
+            problems.append(f"{group.key}: Abgleich ohne source_checked_at")
         for source in group.sources:
             if not source.split("|", 1)[0].strip().startswith(("https://", "http://", "intern:")):
                 problems.append(f"{group.key}: Quelle ohne URL oder 'intern:'-Verweis: {source}")
@@ -192,7 +249,16 @@ def register_products(engine: Engine, catalog: Catalog) -> None:
 
 # ---------------------------------------------------------------------- Pflege (CSV ↔ TOML)
 
-CSV_COLUMNS = ("key", "name", "status", "description", *LIST_FIELDS, "confirmed_by", "confirmed_at")
+CSV_COLUMNS = (
+    "key",
+    "name",
+    "status",
+    "description",
+    *LIST_FIELDS,
+    "source_checked_at",
+    "confirmed_by",
+    "confirmed_at",
+)
 LIST_SEPARATOR = ";"
 
 

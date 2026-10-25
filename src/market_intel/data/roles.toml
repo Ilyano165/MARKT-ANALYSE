@@ -1,0 +1,108 @@
+# Rollen- und Belegregeln (Phase 6) – transparent und pflegbar.
+#
+# Zweck: Aus den gespeicherten Texten eines Unternehmens erkennen, WELCHE Rolle es nach eigenen
+# Angaben hat (Verarbeitung/Installation, Herstellung, Handel) und ob ein Treffer ein echter
+# Satz oder nur eine Produktnennung ist. Jede Rolle wird für sich belegt – Hersteller und
+# Verarbeiter schließen sich NICHT aus (ein Hersteller kann montieren, ein Ladenbauer fertigen).
+#
+# Alle Muster sind reguläre Ausdrücke (Python, ohne Groß-/Kleinschreibung). Sie gelten je Satz.
+# Grenzen (bewusst, siehe docs/PRODUCT_MATRIX.md „Rollen und Belegstatus“): Es ist eine
+# Regel-, keine Sprachanalyse. Wer handelt, wird nur über Selbstbezug (wir/unser/Firmenname)
+# oder eine Leistungsangabe am Satzanfang erkannt. Was keine Regel trifft, bleibt „unklar“.
+
+[meta]
+version = "roles-2026-10-25"
+
+[statement]
+# Ein Treffer gilt nur als SATZ (direkter Beleg), wenn er mindestens so viele Wörter hat UND mit
+# Satzzeichen endet. Menüpunkte, Kategorien, Produktnamen, Jobtitel und Überschriften haben das
+# in den Live-Daten nie (z. B. „Banners“, „Vehicle Wrapping Films“,
+# „Projektleiter / Projektmanager (m/w/d) Ladenbau“).
+min_words = 6
+end_marks = ".!?…"
+
+[self_reference]
+# Der Satz spricht über das Unternehmen selbst. Zusätzlich zählen Namensbestandteile der Firma
+# (ohne Rechtsform und ohne die allgemeinen Wörter unten).
+# Live: „…Claas is … one of the world's leading manufacturers“ auf db.com ist KEIN Selbstbezug.
+patterns = [
+  '\b(wir|uns|unser\w*|we|our|us)\b',
+  '\b(das|unser) unternehmen\b',
+  '\bthe company\b',
+  '\bleistung(en|spaket|sangebot|sspektrum)\b',
+]
+generic_name_words = ["deutsche", "deutschland", "german", "germany", "europe", "europa", "international", "group", "gruppe", "holding", "company", "services", "service", "solutions", "systems", "technik", "the", "und", "and"]
+
+[product_reference]
+# Satz beschreibt ein PRODUKT (Eignung, Eigenschaften, Sortiment) – keine Tätigkeit.
+# Live: „…PPF engineered for daily commuters…“, „…engineered to bring high-volume installation
+# versatility…“, „…more exciting, impactful and easy to install.“ (Avery Dennison).
+patterns = [
+  '\bgeeignet\b', '\beignet sich\b', '\bideal (für|for)\b', '\bentwickelt für\b', '\bkonzipiert für\b',
+  '\berhältlich\b', '\bsortiment\b', '\bproduktpalette\b', '\bportfolio\b', '\bproduktlinie\b',
+  '\bengineered\b', '\bdesigned (to|for)\b', '\bsuitable for\b', '\bavailable\b', '\bproduct line\b',
+  '\blaunch(ed|es)?\b', '\bintroduc(es|ed)\b', '\beasy to (install|apply)\b', '\beinfach zu (verarbeiten|montieren|verkleben)\b',
+]
+
+[target_group]
+# Satz richtet sich an Verarbeiter, schult oder vermittelt sie – das belegt NICHT, dass das
+# Unternehmen selbst verarbeitet. Live: „Our elite network of specially trained Certified Wrap
+# Installers are ready to provide … installation services“, „…training and certification
+# program for Architectural Window Film installation.“ (Avery Dennison).
+# audience: Verarbeiter werden ausdrücklich genannt → nie eigener Verarbeitungsbeleg, Hinweis.
+# context:  Schulung/Netzwerk/„mit unseren Produkten“ → kein eigener Verarbeitungsbeleg; Hinweis
+#           nur, wenn im selben Satz ein Verarbeitungsbegriff steht (Live: „training companies“
+#           bei ORAFOL meint Berufsausbildung, „network of banking experts“ bei db.com).
+audience = [
+  '\binstallers?\b', '\binstallateur\w*', '\bverarbeiter(n|innen)?\b', '\bfolierer(n|innen)?\b',
+  'partnerbetrieb\w*', 'fachbetrieb\w*',
+]
+context = [
+  '\bnetwork of\b', 'netzwerk\w*', '\btraining\b', 'schulung\w*', 'zertifizier\w*',
+  '\bcertif(ied|ication)\b', '\bworkshops?\b',
+  '(realisiert|umgesetzt) mit (\w+ ){0,3}produkten', 'with our products',
+]
+
+# Rollen: Muster für den Rollenbeleg (Satz + Selbstbezug oder Leistungsangabe am Satzanfang)
+# und Ausschlüsse (dieselbe Wortfamilie in anderer Bedeutung).
+
+[roles.verarbeiter]
+# Bewusst NICHT: „realisieren“, „Umsetzung“, „Aufbereitung“ – zu allgemein (Live umdasch.com:
+# „Erfolgreiche Stores zu realisieren.“ beschreibt kein Verarbeiten/Montieren).
+label = "Verarbeiter/Installationsbetrieb"
+patterns = [
+  'montage', 'montier\w*', '\binstallation\b', 'installier\w*', '\binstall(s|ed|ing)?\b',
+  'verlege\w*', 'verlegung', 'folier(en|t|te|ten|ung|ungen)\b', 'beklebe\w*', 'beklebung',
+  'beschrift(en|et|ete|ung|ungen)\b', 'applizier\w*', 'verarbeite(n|t|ten)\b', 'verarbeitung',
+  '\bconverting\b',
+  '\bwe (install|apply|wrap|fit|mount)\w*', '\b(installation|wrapping|fitting) services?\b',
+]
+exclude = []
+
+[roles.hersteller]
+label = "Hersteller"
+patterns = [
+  '\w*hersteller\b', 'herstell(en|t|te|ung)\b', 'produzier\w*', '\w*produktion\w*',
+  '\bfertig(t|en|te|ung)\w*', '\w+fertigung\w*', '\bmanufactur\w*', '\bproduc(e|es|ed|ing)\b',
+  '\bproduction\b',
+]
+# Live: „…hardly any waste is produced…“ (ORAFOL) beschreibt Abfall, keine Herstellung.
+exclude = [
+  'herstellerangabe\w*', 'herstellerunabhängig', 'hersteller-?(garantie|vorgabe\w*|freigabe\w*)',
+  'namhaft\w* \w*hersteller', 'aller (gängigen )?\w*hersteller', 'verschiedene\w* \w*hersteller',
+  'von (führenden )?\w*herstellern', "manufacturer'?s? (warranty|recommendation|guideline\\w*)",
+  'waste is produced', '\babfall\w*',
+]
+
+[roles.haendler]
+label = "Händler/Distributor"
+patterns = [
+  'großhand\w*', 'großhändler\w*', 'grosshandel\w*', '\bdistribut(or|ors|eur|eure|es)\b',
+  'distribuier\w*', '\bwholesal\w*', '\breseller\b', '\bhändler (für|von)\b', '\bfachhändler (für|von)\b',
+  '\bauthori[sz]ed dealer\b', '\bautorisierte\w* händler\b',
+]
+# Wer über den Handel verkauft oder Händler sucht, ist deshalb kein Händler.
+exclude = [
+  '(über|via) den (groß|gross|fach)?handel', 'via (our )?(dealers|distributors|retailers)', 'händlernetz\w*',
+  'händlersuche', 'händler finden', 'find a (dealer|distributor)', 'dealer locator',
+]

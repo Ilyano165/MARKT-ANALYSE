@@ -182,6 +182,29 @@ Er ist keine Verkaufsprognose. Bedarf, eingesetzte Werkzeuge, Lieferanten und Ka
 werden nie behauptet; die Hypothese ist ein Satz aus Belegen und Herstellerangaben mit
 ausdrücklicher Einschränkung. KI-Texte fließen nicht in Hypothese oder Bewertung ein.
 
+### 6a. Belegstatus und Rollen (Modell v3, Phase 6)
+
+Die Formel aus §6 bleibt; geändert ist, **was als Beleg zählt** (Regeln: `data/roles.toml`,
+Details: `docs/PRODUCT_MATRIX.md` §4):
+
+| Belegstatus | Bedingung | Deckel Produktrelevanz | Segment |
+|---|---|---|---|
+| belegt | Tätigkeitssatz + belegte eigene Verarbeitung/Installation | – | Produkt-Fit-Segmente |
+| hinweis | Tätigkeitssatz ohne Verarbeitungsbeleg | 59 | Manuelle Prüfung |
+| widersprüchlich | Tätigkeitssatz + Gegenbeleg | 59 | Manuelle Prüfung |
+| unklar | nur Produktnennung, Menüpunkt, Zielgruppen-/Fremdsatz, Drittquelle | 34 | Manuelle Prüfung |
+| kein Beleg | eigene Angaben ohne passende Tätigkeit | 0 | Kein belegter Produkt-Fit |
+| keine Daten | keine eigenen Angaben (Website gesperrt/unbekannt) | 0 | Keine Daten – Eignung unbekannt |
+
+Tätigkeit, Prozess und Quellenqualität zählen nur aus Tätigkeitssätzen; nur Produktnennungen
+ergeben 0,2 (Firma bleibt sichtbar). Kein Wort zählt doppelt (Prozessbegriff ≠ Tätigkeitswort;
+„X (Y)“ ist ein Name; gleicher Satz auf mehreren Seiten einmal). Die Deckel liegen je einen Punkt
+unter den Segmentschwellen 35/60 und werden beim Laden des Modells geprüft. Jede Bewertung
+nennt zusätzlich Rollen mit Satzbelegen, Firmenzuordnung, Datenlage, Gründe für manuelle
+Prüfung und den Verifikationsstand der Produktmatrix. Als aktuell gilt je Firma nur die
+jüngste Bewertungsrunde. Grenzen: Regel-, keine Sprachanalyse; Gewichte sind nicht
+empirisch kalibriert (keine Abschlussdaten).
+
 ## 7. Nicht-funktionale Anforderungen
 
 | ID | Anforderung |

@@ -21,7 +21,10 @@ FIELDS = (
     "application_status",
     "is_customer",
     "rejected",
+    "fit_status",
+    "data_status",
 )
+FIT_STATUSES = ("belegt", "hinweis", "widerspruechlich", "unklar", "kein_beleg", "keine_daten")
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +117,37 @@ def check(raw: dict[str, Any]) -> list[str]:
         for condition in segment.get("conditions", []):
             if len(condition) != 3 or condition[0] not in FIELDS or condition[1] not in OPERATORS:
                 problems.append(f"Segment {key}: ungültige Bedingung {condition}")
+    caps = raw["product_relevance"].get("evidence_caps", {})
+    missing = [k for k in FIT_STATUSES if k not in caps]
+    if missing:
+        problems.append(f"product_relevance.evidence_caps: fehlt {', '.join(missing)}")
+    elif any(not 0 <= int(v) <= 100 for v in caps.values()):
+        problems.append("product_relevance.evidence_caps: Werte müssen zwischen 0 und 100 liegen")
+    else:
+        # Deckel und Segmentschwellen müssen zusammenpassen: Ohne Satzbeleg darf kein Segment
+        # mit Mindest-Fit erreichbar sein, ohne Verarbeitungsbeleg nicht das höchste.
+        thresholds = sorted(
+            {
+                float(c[2])
+                for s in segments
+                for c in s.get("conditions", [])
+                if len(c) == 3 and c[0] == "product_relevance" and c[1] == ">=" and c[2] > 1
+            }
+        )
+        if thresholds:
+            if int(caps["unklar"]) >= thresholds[0]:
+                problems.append(
+                    f"evidence_caps.unklar ({caps['unklar']}) muss unter der kleinsten "
+                    f"Fit-Schwelle ({thresholds[0]:g}) liegen"
+                )
+            for key in ("hinweis", "widerspruechlich"):
+                if int(caps[key]) >= thresholds[-1]:
+                    problems.append(
+                        f"evidence_caps.{key} ({caps[key]}) muss unter der höchsten "
+                        f"Fit-Schwelle ({thresholds[-1]:g}) liegen"
+                    )
+        if int(caps["kein_beleg"]) or int(caps["keine_daten"]):
+            problems.append("evidence_caps: kein_beleg und keine_daten müssen 0 sein")
     if segments and segments[-1].get("conditions"):
         problems.append("Das letzte Segment muss ohne Bedingungen sein (Auffangsegment)")
     return problems

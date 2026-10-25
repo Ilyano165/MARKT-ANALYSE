@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -58,11 +59,13 @@ class Hit:
     quote: str
     document: Document
     negated: bool = False
+    is_sentence: bool = True  # ganzer Satz (False: Menüpunkt, Titel, Produktname)
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "term": self.term,
             "quote": self.quote,
+            "is_sentence": self.is_sentence,
             "document_id": self.document.document_id,
             "url": self.document.url,
             "source_key": self.document.source_key,
@@ -167,11 +170,35 @@ def negated(sentence: str, start: int, end: int) -> bool:
     return bool(_NEG_BEFORE.search(window) or _NEG_AFTER.search(after))
 
 
+@dataclass(frozen=True, slots=True)
+class StatementRule:
+    """Wann ein Zitat ein ganzer Satz ist (direkter Beleg) und kein Fragment (Menü, Titel)."""
+
+    min_words: int = 6
+    end_marks: str = ".!?…"
+
+    def __call__(self, quote: str) -> bool:
+        text = quote.strip().rstrip("\"'“”„»«)]").rstrip()
+        return len(text.split()) >= self.min_words and bool(text) and text[-1] in self.end_marks
+
+
 def find_hits(
-    texts: list[tuple[Document, str]], terms: tuple[str, ...], per_document: int = 3
+    texts: list[tuple[Document, str]],
+    terms: tuple[str, ...],
+    per_document: int = 3,
+    statement: StatementRule | None = None,
+    prefer: Callable[[Hit], bool] | None = None,
 ) -> list[Hit]:
-    """Treffer je Begriff und Dokument: erster nicht verneinter Satz; sind alle Vorkommen
-    verneint, wird ein verneinter Treffer geliefert (zählt nie als Beleg)."""
+    """Treffer je Begriff und Dokument: erster nicht verneinter ganzer Satz, sonst erstes
+    nicht verneintes Fragment; sind alle Vorkommen verneint, wird ein verneinter Treffer
+    geliefert (zählt nie als Beleg).
+
+    Ganze Sätze gehen vor, weil das erste Vorkommen auf einer Seite meist der Menüpunkt ist
+    (Live 2026-10-23, umdasch.com: „Ladenbau“ im Menü vor „Das Ladenbau-Team der Store
+    Makers übernahm erneut die Umsetzung …“). Mit ``prefer`` geht unter den Sätzen der erste
+    bevorzugte vor (z. B. „das Unternehmen spricht über sich selbst“).
+    """
+    is_statement = statement or StatementRule()
     hits = []
     for document, text in texts:
         if legal_page(document.url):
@@ -180,18 +207,36 @@ def find_hits(
         for term in terms:
             pattern = re.compile(r"(?<![\wäöüß])" + re.escape(term), re.IGNORECASE)
             first_negated: Hit | None = None
+            first_fragment: Hit | None = None
+            first_sentence: Hit | None = None
             accepted = False
             for sentence in sentences(text):
                 match = pattern.search(sentence)
                 if match is None:
                     continue
-                quote = " ".join(sentence.split())[:400]
+                full = " ".join(sentence.split())
+                quote = full[:400]
                 if negated(sentence, match.start(), match.end()):
-                    first_negated = first_negated or Hit(term, quote, document, True)
+                    first_negated = first_negated or Hit(
+                        term, quote, document, True, is_statement(full)
+                    )
                     continue
-                hits.append(Hit(term, quote, document))
+                if not is_statement(full):  # am ungekürzten Satz prüfen
+                    first_fragment = first_fragment or Hit(term, quote, document, is_sentence=False)
+                    continue
+                hit = Hit(term, quote, document)
+                if prefer is not None and not prefer(hit):
+                    first_sentence = first_sentence or hit
+                    continue
+                hits.append(hit)
                 accepted = True
                 break
+            if not accepted and first_sentence is not None:
+                hits.append(first_sentence)
+                accepted = True
+            if not accepted and first_fragment is not None:
+                hits.append(first_fragment)
+                accepted = True
             if not accepted and first_negated is not None:
                 hits.append(first_negated)
             found += accepted
@@ -203,16 +248,29 @@ def find_hits(
 class EvidenceIndex:
     """Lädt die Dokumenttexte eines Unternehmens einmal und durchsucht sie."""
 
-    def __init__(self, engine: Engine, company_id: int) -> None:
+    statement: StatementRule = StatementRule()
+    prefer: Callable[[Hit], bool] | None = None
+
+    def __init__(
+        self, engine: Engine, company_id: int, statement: StatementRule | None = None
+    ) -> None:
         self.documents = company_documents(engine, company_id)
         self.texts = _texts(engine, self.documents)
+        if statement is not None:
+            self.statement = statement
 
     def all_hits(self, terms: tuple[str, ...]) -> list[Hit]:
         """Treffer; ein wörtlich gleicher Satz auf mehreren Seiten (Navigation, Fußzeile)
         zählt nur einmal – sonst wirkt ein Menüeintrag wie viele unabhängige Belege."""
         seen: set[tuple[str, str, bool]] = set()
         out = []
-        for hit in find_hits(self.texts, terms, per_document=len(terms) or 1):
+        for hit in find_hits(
+            self.texts,
+            terms,
+            per_document=len(terms) or 1,
+            statement=self.statement,
+            prefer=self.prefer,
+        ):
             key = (hit.term.lower(), hit.quote.lower(), hit.negated)
             if key not in seen:
                 seen.add(key)

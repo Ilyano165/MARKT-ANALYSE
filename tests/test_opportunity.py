@@ -110,8 +110,12 @@ def test_model_rules_product_fit_outweighs_size() -> None:
 def test_hypotheses_across_industries_are_backed_by_real_quotes(
     world: dict[str, Any], engine: Engine
 ) -> None:
+    # Phase 6: Folienprofi führte bisher mit „Fahrzeugfolierung“, weil dieselben Wörter
+    # (Vollfolierung, Teilfolierung) als Tätigkeit UND als Prozess zählten. Ohne diese
+    # Doppelzählung liegt Lackschutz knapp vorn (eigener Satz „montieren wir Lackschutzfolie“
+    # plus zusätzliche Prozessbelege); Fahrzeugfolierung bleibt belegt (siehe unten).
     expected = {
-        "folierer": "fahrzeugfolierung",
+        "folierer": "lackschutz_aufbereitung",
         "messebau": "ladenbau_messebau",
         "remarketing": "entfolierung_fuhrpark",
         "glas": "glasfolien",
@@ -128,6 +132,16 @@ def test_hypotheses_across_industries_are_backed_by_real_quotes(
         assert "nicht belegt" in hyp["statement"]  # keine Behauptung über Bedarf/Kaufbereitschaft
         assert hyp["products"] and all(p["sources"] for p in hyp["products"])
         assert best["scores"]["product_relevance"] >= 35
+        assert best["assessment"]["fit_status"] == "belegt", key
+    wrap = next(
+        r
+        for r in assess_all_applications(
+            engine, world["ids"]["folierer"], world["cases"], world["catalog"], world["model"]
+        )
+        if r["use_case"] == "fahrzeugfolierung"
+    )
+    assert wrap["assessment"]["fit_status"] == "belegt"
+    assert wrap["scores"]["product_relevance"] >= 60
 
 
 def test_derived_industry_is_marked_as_new_and_unconfirmed(world: dict[str, Any]) -> None:
