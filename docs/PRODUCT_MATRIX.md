@@ -68,7 +68,7 @@ Dokumenten steht.
 mi products list                      # Übersicht
 mi products show rakel_ppf            # eine Gruppe vollständig
 mi products validate                  # Pflichtfelder, URLs, Querverweise Produkt ↔ Anwendungsfall
-mi products export-csv produkte.csv   # Vorlage für Excel/LibreOffice (Listen mit ";")
+mi products export-csv produkte.csv   # Vorlage für Excel/LibreOffice (je Listenwert eine Zeile in der Zelle)
 mi products import-csv produkte.csv --out meine_produkte.toml   # Zeilen ersetzen/ergänzen, prüfen
 # in market_intel.toml: products_file = "meine_produkte.toml"
 #                       use_cases_file = "meine_anwendungsfaelle.toml"   (Kopie von use_cases.toml)
@@ -87,9 +87,12 @@ verwerfen“ – verworfene bleiben mit `rejected` dokumentiert und werden nicht
 (2) Produktmanagement prüft Grenzen und alternative Anwender je Produktgruppe; (3) Artikelstamm
 (Artikelnummern) als zusätzliche Spalte ergänzen, sobald verfügbar.
 
-Bekannte Einschränkung der CSV-Pflege: Listeneinträge, die selbst ein „;“ enthalten (z. B. bei
-`limitations`), werden beim Re-Import in zwei Einträge geteilt („;“ ist das Listentrennzeichen).
-Solche Einträge vor dem Export umformulieren oder direkt im TOML pflegen.
+Mehrere Werte in einer CSV-Zelle (Materialien, Grenzen, Quellen …) stehen **je in einer eigenen
+Zeile der Zelle** (Excel: Alt+Enter, LibreOffice: Strg+Enter); die Zelle steht in
+Anführungszeichen (RFC 4180). Ein Wert darf daher auch „;“ enthalten. Dateien im früheren Format
+(Werte mit „;“ getrennt, keine Zeilenumbrüche in Listenzellen) werden weiter gelesen; der Import
+meldet dann „Altes CSV-Format erkannt“. In diesem Altformat lässt sich ein Wert mit „;“ nicht
+von zwei Werten unterscheiden – daher beim Bearbeiten das neue Format verwenden.
 
 ## 4. Rollen und Belegstatus (Phase 6)
 

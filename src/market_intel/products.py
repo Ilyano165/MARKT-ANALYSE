@@ -259,23 +259,38 @@ CSV_COLUMNS = (
     "confirmed_by",
     "confirmed_at",
 )
-LIST_SEPARATOR = ";"
+# Mehrere Werte in einer CSV-Zelle: je Wert eine Zeile (in Excel/LibreOffice Alt+Enter bzw.
+# Strg+Enter); die Zelle steht in Anführungszeichen (RFC 4180). So darf ein Wert auch „;“
+# enthalten. Dateien im alten Format (Werte mit „;“ getrennt, keine Zeilenumbrüche in
+# Listenzellen) werden weiter gelesen.
+LIST_SEPARATOR = "\n"
+LEGACY_LIST_SEPARATOR = ";"
 
 
 def export_csv(catalog: Catalog) -> str:
-    """Matrix als CSV (Listen mit „;“ getrennt) – Vorlage zum Bearbeiten in Excel/LibreOffice."""
+    """Matrix als CSV (je Listenwert eine Zeile in der Zelle) – für Excel/LibreOffice."""
     out = io.StringIO()
     writer = csv.writer(out, delimiter=",", quoting=csv.QUOTE_ALL)
     writer.writerow(CSV_COLUMNS)
     for group in catalog.products.values():
         data = group.as_dict()
         writer.writerow(
-            [
-                f"{LIST_SEPARATOR} ".join(data[c]) if c in LIST_FIELDS else data[c]
-                for c in CSV_COLUMNS
-            ]
+            [LIST_SEPARATOR.join(data[c]) if c in LIST_FIELDS else data[c] for c in CSV_COLUMNS]
         )
     return out.getvalue()
+
+
+def write_csv_file(path: Path, catalog: Catalog) -> None:
+    """CSV-Datei schreiben – mit ``newline=""`` (üblich für CSV): Ohne das macht Windows aus dem
+    Zeilenende „\r\n“ des CSV-Moduls „\r\r\n“ und verändert Zeilenumbrüche in Zellen."""
+    with path.open("w", newline="", encoding="utf-8-sig") as handle:
+        handle.write(export_csv(catalog))
+
+
+def read_csv_file(path: Path) -> str:
+    """CSV-Datei unverändert lesen (``newline=""``: Zeilenumbrüche in Zellen bleiben erhalten)."""
+    with path.open(newline="", encoding="utf-8-sig") as handle:
+        return handle.read()
 
 
 def import_csv(text: str, base: Catalog) -> tuple[Catalog, list[str]]:
@@ -286,15 +301,28 @@ def import_csv(text: str, base: Catalog) -> tuple[Catalog, list[str]]:
         return base, [f"Spalte fehlt: {', '.join(missing)}"]
     products = dict(base.products)
     notes = []
-    for number, row in enumerate(reader, start=2):
+    rows = list(reader)
+    separator = (
+        LIST_SEPARATOR
+        if any("\n" in (row.get(name) or "") for row in rows for name in LIST_FIELDS)
+        else LEGACY_LIST_SEPARATOR
+    )
+    if separator == LEGACY_LIST_SEPARATOR and any(
+        LEGACY_LIST_SEPARATOR in (row.get(name) or "") for row in rows for name in LIST_FIELDS
+    ):
+        notes.append("Altes CSV-Format erkannt: Listenwerte werden an „;“ getrennt")
+    for number, row in enumerate(rows, start=1):  # Datensatz, nicht Dateizeile (mehrzeilige Zellen)
         if not (row.get("key") or "").strip():
-            notes.append(f"Zeile {number}: ohne key übersprungen")
+            notes.append(f"Datensatz {number}: ohne key übersprungen")
             continue
         item: dict[str, Any] = {k: (v or "").strip() for k, v in row.items() if k}
         for name in LIST_FIELDS:
-            item[name] = [x.strip() for x in item.get(name, "").split(LIST_SEPARATOR) if x.strip()]
+            cell = row.get(name) or ""  # Excel-„\r\n“ in Zellen: „\r“ entfernt strip()
+            item[name] = [x.strip() for x in cell.split(separator) if x.strip()]
         group = _group(item)
-        notes.append(f"Zeile {number}: {group.key} {'ersetzt' if group.key in products else 'neu'}")
+        notes.append(
+            f"Datensatz {number}: {group.key} {'ersetzt' if group.key in products else 'neu'}"
+        )
         products[group.key] = group
     return (
         Catalog(base.meta, products, base.own_brand_terms, base.other_tool_terms, "csv-import"),

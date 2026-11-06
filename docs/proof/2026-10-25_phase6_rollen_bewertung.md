@@ -177,7 +177,7 @@ Beispielprodukten wörtlich gefunden“.
 4. **Seiten ohne extrahierbare Angabe** werden einer Firma nicht zugeordnet (Zuordnung läuft
    über Extraktionsbefunde). Live trat das nicht auf (alle Seiten enthielten die Navigation);
    in den Tests wird die Live-Zuordnung deshalb ausdrücklich nachgebildet. Nicht geändert.
-5. **Älterer Fehler in der CSV-Pflege der Produktmatrix gefunden, nicht behoben**: Listeneinträge
+5. **Älterer Fehler in der CSV-Pflege der Produktmatrix gefunden** – *Nachtrag 2026-11-06: behoben* (je Listenwert eine Zeile in der Zelle, RFC-4180-Anführungszeichen, Altformat wird erkannt; CSV-Dateien mit `newline=""`, sonst unter Windows „\r\r\n“; Tests `tests/test_products_csv.py`, 3 von 4 Gegenproben schlagen erwartungsgemäß fehl, die vierte zeigte überflüssigen Code, der entfernt wurde). Ursprünglicher Befund: Listeneinträge
    mit „;“ (z. B. Grenzen „…ausgelegt; Nutzen … nicht belegt“) zerfallen beim CSV-Re-Import in
    zwei Einträge, weil „;“ auch das Listentrennzeichen ist. Liegt außerhalb dieser Phase.
 6. Hersteller wie ORAFOL/Avery: Ob ein Werkzeugbedarf besteht (Anwendungstechnik, Musterbau,

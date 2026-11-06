@@ -21,7 +21,9 @@ Protokoll: `docs/proof/2026-10-25_phase6_rollen_bewertung.md`.
 - Produktmatrix mit yellotools.com abgeglichen (38/44 Beispielnamen belegt), weiter
   „NICHT verifiziert“ (keine Bestätigung durch Yellotools).
 - Tests: 225, davon 223 bestanden, 2 übersprungen; 16 Gegenproben ausgeführt, alle bestanden.
-- Offen: CSV-Pflege teilt Listeneinträge mit „;“; Seiten ohne extrahierbare Angabe werden nicht
+- Nachtrag 2026-11-06: CSV-Pflege behoben (Listenwerte je Zeile in der Zelle, Altformat lesbar,
+  Windows-sichere Dateibehandlung).
+- Offen: Seiten ohne extrahierbare Angabe werden nicht
   zugeordnet; Rollen firmenweit statt je Anwendungsfall; Gewichte nicht kalibriert.
 
 ## 0d. Phase 5 – Live-Test (2026-10-23): mit echten Daten durchgeführt, Teilerfolg

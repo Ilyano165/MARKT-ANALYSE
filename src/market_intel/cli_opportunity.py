@@ -15,13 +15,14 @@ from .opportunity.report import opportunity_report, to_markdown
 from .opportunity.run import all_company_ids, assess_and_store
 from .opportunity.watch import STATUS_LABELS, STATUSES, current_entries, set_status
 from .products import (
-    export_csv,
     import_csv,
     load_products,
     matrix_status,
+    read_csv_file,
     register_products,
     to_toml,
     validate,
+    write_csv_file,
 )
 
 
@@ -74,14 +75,17 @@ def cmd_products(args: argparse.Namespace) -> int:
         print(json.dumps(shown.as_dict(), ensure_ascii=False, indent=1))
         return 0
     if args.action == "export-csv":
-        Path(args.file or "produkte.csv").write_text(export_csv(catalog), "utf-8-sig")
-        print(f"CSV-Vorlage: {args.file or 'produkte.csv'} (Listen mit ';' getrennt)")
+        write_csv_file(Path(args.file or "produkte.csv"), catalog)
+        print(
+            f"CSV-Vorlage: {args.file or 'produkte.csv'} (mehrere Werte je Zelle: ein Wert pro "
+            "Zeile, in Excel Alt+Enter)"
+        )
         return 0
     if args.action == "import-csv":
         if not args.file or not args.out:
             print("Aufruf: mi products import-csv tabelle.csv --out products.toml")
             return 2
-        updated, notes = import_csv(Path(args.file).read_text("utf-8-sig"), catalog)
+        updated, notes = import_csv(read_csv_file(Path(args.file)), catalog)
         for note in notes:
             print(f"- {note}")
         problems = validate(updated, cases)
