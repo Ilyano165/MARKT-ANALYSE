@@ -46,6 +46,8 @@ Linux/macOS: `python3 -m venv .venv && . .venv/bin/activate && pip install -e .`
 | `mi opportunities` / `mi opportunity --company "…" --md lead.md` | Kandidaten bewerten / Ergebnis je Firma (Produkte, Belege, Score, Lücken, nächste Recherche) |
 | `mi watch --company "…" --status vorgemerkt --author "Vertrieb"` · `mi leads --out leads/` | Watchlist und Lead-Export (CSV/XLSX/JSON); `--status verworfen` schließt dauerhaft aus |
 | `mi import-companies kunden.csv --list-name Bestandskunden` | Bestandskunden markieren (erscheinen nicht als neue Leads) |
+| `mi outcome --company "…" --status gewonnen --date 2026-11-06 --value 4800 --currency EUR --author "Vertrieb"` | Vertriebsergebnis erfassen (Kontakt, Angebot, gewonnen, verloren); „gewonnen“ = Kunde, kein neuer Lead |
+| `mi outcomes-report --md auswertung.md` | Bewertung vor dem ersten Kontakt ↔ tatsächliches Ergebnis; nur gezählte Daten, Anteile erst ab 10 Fällen je Gruppe |
 | `mi products validate` / `mi products export-csv` / `mi products import-csv` | Produktmatrix prüfen und pflegen (`docs/PRODUCT_MATRIX.md`) |
 | `mi add-figure --company … --metric headcount_total --value 350 --period-end 2023-12-31 --segment country:DE --file … --quote "…"` | Kennzahl mit Beleg (auch je Land/Standort, Schätzung nur mit `--methodology`) |
 
@@ -89,7 +91,7 @@ Welche Anbieter mit welchen Funktionen angebunden sind: [docs/PROVIDERS.md](docs
 
 ```bash
 pip install -e ".[dev]"
-pytest            # 225 Tests mit Mock-Daten und echten Live-Zitaten (keine Abrufe; 2 Live-Tests nur mit MI_LIVE=1)
+pytest            # 235 Tests mit Mock-Daten und echten Live-Zitaten (keine Abrufe; 2 Live-Tests nur mit MI_LIVE=1)
 pytest tests/manual -m live -s   # manueller Live-Test, siehe docs/MANUAL_INTEGRATION_TEST.md
 ruff check src tests && mypy
 ```

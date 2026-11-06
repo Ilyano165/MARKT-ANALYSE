@@ -32,7 +32,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.types import TypeDecorator
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 class DecimalText(TypeDecorator[Decimal]):
@@ -674,6 +674,24 @@ watchlist_entry = Table(  # jede Statusänderung ist eine neue Zeile (Historie)
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
+sales_outcome = Table(  # Vertriebsergebnisse – append-only; Korrektur = neuer Eintrag
+    "sales_outcome",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("company_id", Integer, ForeignKey("company.id"), nullable=False),
+    # kontakt | angebot | gewonnen | verloren
+    Column("outcome", String(20), nullable=False),
+    Column("occurred_on", Date, nullable=False),
+    Column("value", String(40)),  # Dezimal-Text (exakt), nur wenn genannt
+    Column("currency", String(3)),
+    Column("use_case_key", String(60)),
+    Column("reason", Text, nullable=False, default=""),
+    Column("author", Text, nullable=False),
+    # Bewertung, die beim Eintrag galt (für die spätere Auswertung Bewertung ↔ Ergebnis)
+    Column("assessment_id", Integer, ForeignKey("opportunity_score.id")),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
 schema_info = Table(
     "schema_info",
     metadata,
@@ -704,6 +722,12 @@ def _sqlite_triggers() -> list[str]:
         "CREATE TRIGGER IF NOT EXISTS evidence_immutable BEFORE UPDATE ON evidence BEGIN "
         "SELECT RAISE(ABORT, 'Belege sind unveränderlich'); END"
     )
+    for action in ("UPDATE", "DELETE"):
+        statements.append(
+            f"CREATE TRIGGER IF NOT EXISTS sales_outcome_no_{action.lower()} BEFORE {action} "
+            "ON sales_outcome BEGIN SELECT RAISE(ABORT, 'Vertriebsergebnisse sind "
+            "unveränderlich – Korrektur als neuer Eintrag'); END"
+        )
     return statements
 
 
@@ -719,6 +743,11 @@ def _postgres_triggers() -> list[str]:
             f"CREATE TRIGGER {name}_immutable BEFORE UPDATE OF {_IMMUTABLE_OBS_COLUMNS} "
             f"OR DELETE ON {name} FOR EACH ROW EXECUTE FUNCTION mi_reject_change()"
         )
+    statements.append("DROP TRIGGER IF EXISTS sales_outcome_immutable ON sales_outcome")
+    statements.append(
+        "CREATE TRIGGER sales_outcome_immutable BEFORE UPDATE OR DELETE ON sales_outcome "
+        "FOR EACH ROW EXECUTE FUNCTION mi_reject_change()"
+    )
     return statements
 
 

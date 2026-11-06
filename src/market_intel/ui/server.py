@@ -29,6 +29,7 @@ from ..intel.manual import ManualEntryError, document_plain_text
 from ..intel.profile import build_profile, observation_detail
 from ..opportunity.leads import LEAD_COLUMNS, lead_rows
 from ..opportunity.model import Model, load_model
+from ..opportunity.outcomes import record_outcome
 from ..opportunity.report import opportunity_report
 from ..opportunity.watch import STATUSES, set_status
 from ..products import Catalog, load_products
@@ -399,6 +400,25 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                     self._error(HTTPStatus.BAD_REQUEST, str(exc))
                     return
                 self._redirect(f"/company/{company_id}/opportunity")
+                return
+            match = re.fullmatch(r"/company/(\d+)/outcome", path)
+            if match:
+                company_id = int(match.group(1))
+                try:
+                    record_outcome(
+                        app.engine,
+                        company_id,
+                        form.get("outcome", [""])[0],
+                        occurred_on=date.fromisoformat(form.get("occurred_on", [""])[0]),
+                        author=form.get("author", [""])[0],
+                        value=form.get("value", [""])[0] or None,
+                        currency=form.get("currency", [""])[0] or None,
+                        reason=form.get("reason", [""])[0],
+                    )
+                except ValueError as exc:  # OutcomeError und ungültiges Datum
+                    self._error(HTTPStatus.BAD_REQUEST, str(exc))
+                    return
+                self._redirect(f"/company/{company_id}/opportunity#outcome")
                 return
             match = re.fullmatch(r"/company/(\d+)/competitors/store", path)
             if match:

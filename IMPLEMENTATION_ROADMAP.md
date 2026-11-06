@@ -6,6 +6,15 @@ Grundsätze: kleine, abnehmbare Meilensteine; jeder endet mit grünen Tests. **G
 gilt für jeden Meilenstein: keine neue Abhängigkeit, Quelle oder Infrastruktur mit
 verpflichtenden Kosten** – Prüfung über `docs/DEPENDENCIES_AND_COSTS.md`.
 
+## 0f. Nachträge 2026-11-06
+
+- CSV-Pflege der Produktmatrix verlustfrei (Listenwerte je Zeile in der Zelle, Altformat lesbar,
+  Windows-sichere Dateibehandlung).
+- Vertriebsergebnisse erfassen und auswerten (Schema 5, `mi outcome`, `mi outcomes-report`,
+  Oberfläche): Grundlage, um Gewichte später an Daten statt Schätzungen zu prüfen. Gewichte
+  bleiben bis dahin unverändert.
+- Tests: 235, davon 233 bestanden, 2 übersprungen; Gegenproben CSV 3/3, Ergebnisse 7/7.
+
 ## 0e. Phase 6 – Rollenklassifikation und belastbare Lead-Bewertung (2026-10-25)
 
 Protokoll: `docs/proof/2026-10-25_phase6_rollen_bewertung.md`.

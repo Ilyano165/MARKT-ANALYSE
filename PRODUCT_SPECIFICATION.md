@@ -205,6 +205,21 @@ Prüfung und den Verifikationsstand der Produktmatrix. Als aktuell gilt je Firma
 jüngste Bewertungsrunde. Grenzen: Regel-, keine Sprachanalyse; Gewichte sind nicht
 empirisch kalibriert (keine Abschlussdaten).
 
+### 6b. Vertriebsergebnisse und Auswertung (Schema 5)
+
+Gewichte werden **nicht geschätzt**. Damit die Bewertung an echten Ergebnissen geprüft werden
+kann, erfasst der Vertrieb je Unternehmen Kontakt, Angebot, gewonnen oder verloren – mit Datum,
+Autor, Grund und optional Wert mit Währung (CLI `mi outcome`, Oberfläche „Vertriebsergebnis“).
+Einträge sind unveränderlich (Korrektur = neuer Eintrag); jeder Eintrag verknüpft die zu diesem
+Zeitpunkt gültige Bewertung. „gewonnen“ macht das Unternehmen zum Kunden (Segment
+Bestandskunde, kein neuer Lead, keine erneute Auswahl); „verloren“ bleibt sichtbar.
+
+`mi outcomes-report` vergleicht die Bewertung **vor dem ersten Kontakt** mit dem tatsächlichen
+Ergebnis, gruppiert nach Segment, Belegstatus, Prioritätsband und Modellversion. Es werden nur
+Anzahlen gezählt; Anteile erst ab einer Mindestzahl abgeschlossener Fälle je Gruppe
+(Standard 10). Die Auswertung leitet keine Gewichte ab und ist keine Prognose; jeder Fall ist
+mit seiner Bezugsbewertung nachprüfbar.
+
 ## 7. Nicht-funktionale Anforderungen
 
 | ID | Anforderung |

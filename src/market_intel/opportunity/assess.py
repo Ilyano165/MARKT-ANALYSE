@@ -27,6 +27,7 @@ from ..usecases import UseCase
 from .evidence import EvidenceIndex, Hit
 from .growth import GrowthView, assess_growth
 from .model import Model, assign_segment
+from .outcomes import current_outcome, outcome_text
 from .roles import (
     HIT_CLASSES,
     RoleProfile,
@@ -431,8 +432,10 @@ def assess_company(
         engine, company_id, list(model.section("crm").get("customer_lists", []))
     )
     watch_status = status_of(engine, company_id)
+    outcome = current_outcome(engine, company_id)
+    won = bool(outcome and outcome["outcome"] == "gewonnen")
     facts = {
-        "is_customer": bool(customer_lists),
+        "is_customer": bool(customer_lists) or won,
         "rejected": bool(watch_status and watch_status["status"] == "verworfen"),
         "product_relevance": relevance,
         "business_potential": potential,
@@ -470,6 +473,8 @@ def assess_company(
     gaps = [name for name, known in key_fields.items() if not known]
     if customer_lists:
         next_steps_prefix = [f"Bestandskunde (Liste {', '.join(customer_lists)}): Bestandspflege"]
+    elif won:
+        next_steps_prefix = [f"Kunde ({outcome_text(outcome)}): Bestandspflege"]
     elif facts["rejected"]:
         next_steps_prefix = ["Vom Vertrieb verworfen – nur bei neuen Belegen erneut prüfen"]
     else:
@@ -554,6 +559,7 @@ def assess_company(
             "reasons": segment_reasons,
         },
         "facts": facts,
+        "sales_outcome": outcome_text(outcome),
         "key_figures": {"revenue": revenue, "headcount": heads},
         "growth": {
             "status": growth.status,

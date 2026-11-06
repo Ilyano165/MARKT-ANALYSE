@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import Engine, insert, select
 
 from .. import db
+from .outcomes import current_outcome
 
 STATUSES = ("vorgemerkt", "in_pruefung", "qualifiziert", "verworfen", "entfernt")
 STATUS_LABELS = {
@@ -127,6 +128,9 @@ def excluded_reason(engine: Engine, company_id: int, lists: list[str]) -> str | 
     customer = customer_lists_of(engine, company_id, lists)
     if customer:
         return f"Bestandskunde (Liste {', '.join(customer)})"
+    outcome = current_outcome(engine, company_id)
+    if outcome and outcome["outcome"] == "gewonnen":
+        return f"Kunde (gewonnen am {outcome['occurred_on']:%Y-%m-%d})"
     status = status_of(engine, company_id)
     if status and status["status"] == "verworfen":
         return (

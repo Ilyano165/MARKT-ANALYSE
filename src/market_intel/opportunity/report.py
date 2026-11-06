@@ -11,6 +11,7 @@ from ..intel.profile import build_profile
 from ..products import Catalog
 from ..usecases import UseCase
 from .model import Model
+from .outcomes import outcome_history
 from .run import assess_all_applications, no_fit_summary
 from .watch import STATUS_LABELS, history_of
 
@@ -99,6 +100,7 @@ def opportunity_report(
         },
         "sources": {"profile": profile["sources"], "evidence": list(evidence_sources.values())},
         "watch_history": history_of(engine, company_id),
+        "outcome_history": outcome_history(engine, company_id),
         "generated_at": profile["generated_at"],
     }
 

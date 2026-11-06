@@ -1005,7 +1005,40 @@ def opportunity_page(
         '<label for="reason">Begründung</label><input id="reason" name="reason" maxlength="2000">'
         '<label for="author">Autor</label><input id="author" name="author" maxlength="120" required>'
         '<label for="comment">Kommentar (intern)</label><textarea id="comment" name="comment" rows="3" maxlength="10000"></textarea>'
-        "<button>Speichern</button></form>"
+        "<button>Speichern</button></form>" + _outcome_block(report, csrf)
+    )
+
+
+def _outcome_block(report: dict[str, Any], csrf: str) -> str:
+    """Vertriebsergebnisse (Historie) und Formular – Grundlage für spätere Auswertungen."""
+    from ..opportunity.outcomes import OUTCOMES, outcome_text
+
+    cid = report["company_id"]
+    history = _list(
+        [
+            f"{e(outcome_text(o))} – {e(o['reason'])} "
+            f'<span class="muted">({e(o["author"])}, erfasst {e(str(o["created_at"])[:16])})</span>'
+            for o in report.get("outcome_history", [])
+        ],
+        "noch kein Ergebnis erfasst",
+    )
+    options = "".join(f'<option value="{k}">{e(v)}</option>' for k, v in OUTCOMES.items())
+    return (
+        '<h2 id="outcome">Vertriebsergebnis</h2>'
+        '<p class="muted">Echte Ergebnisse statt Schätzungen: Sie werden mit der Bewertung '
+        "verknüpft, die beim Eintragen galt, und in <code>mi outcomes-report</code> ausgewertet. "
+        "Einträge sind unveränderlich – Korrektur als neuer Eintrag. „gewonnen“ macht das "
+        "Unternehmen zum Kunden (kein neuer Lead mehr).</p>"
+        f"{history}"
+        f'<form class="noteform" method="post" action="/company/{cid}/outcome">'
+        f'<input type="hidden" name="csrf" value="{e(csrf)}">'
+        f'<label for="outcome-status">Ergebnis</label><select id="outcome-status" name="outcome">{options}</select>'
+        '<label for="outcome-date">Datum</label><input id="outcome-date" name="occurred_on" type="date" required>'
+        '<label for="outcome-value">Wert (nur wenn bekannt)</label><input id="outcome-value" name="value" inputmode="decimal" maxlength="40">'
+        '<label for="outcome-currency">Währung</label><input id="outcome-currency" name="currency" maxlength="3" placeholder="EUR">'
+        '<label for="outcome-reason">Grund / Notiz</label><input id="outcome-reason" name="reason" maxlength="2000">'
+        '<label for="outcome-author">Autor</label><input id="outcome-author" name="author" maxlength="120" required>'
+        "<button>Ergebnis speichern</button></form>"
     )
 
 

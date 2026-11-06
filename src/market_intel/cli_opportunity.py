@@ -207,6 +207,54 @@ def cmd_leads(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_outcome(args: argparse.Namespace) -> int:
+    from datetime import date
+
+    from .opportunity.outcomes import (
+        OUTCOMES,
+        OutcomeError,
+        outcome_history,
+        outcome_text,
+        record_outcome,
+    )
+
+    _, engine, _, _, _ = _context(args)
+    company_id = resolve_company(engine, args.company, args.company_id)
+    if args.status:
+        try:
+            record_outcome(
+                engine,
+                company_id,
+                args.status,
+                occurred_on=date.fromisoformat(args.date) if args.date else date.today(),
+                author=args.author or "",
+                value=args.value,
+                currency=args.currency,
+                use_case_key=args.use_case,
+                reason=args.reason or "",
+            )
+        except (OutcomeError, ValueError) as exc:
+            print(f"Nicht gespeichert: {exc}")
+            return 2
+        print(f"Gespeichert: {OUTCOMES[args.status]}")
+    for entry in outcome_history(engine, company_id):
+        print(f"{outcome_text(entry)} · {entry['author']} · {entry['reason']}")
+    return 0
+
+
+def cmd_outcomes_report(args: argparse.Namespace) -> int:
+    from .opportunity.outcomes import evaluate, evaluation_markdown
+
+    _, engine, _, _, _ = _context(args)
+    text = evaluation_markdown(evaluate(engine, args.min_cases))
+    if args.md:
+        Path(args.md).write_text(text, "utf-8")
+        print(f"Auswertung: {args.md}")
+    else:
+        print(text)
+    return 0
+
+
 def add_commands(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Phase-4-Kommandos registrieren."""
     p = sub.add_parser("products", help="Yellotools-Produktmatrix anzeigen, prüfen, pflegen")
@@ -240,6 +288,26 @@ def add_commands(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> No
     w.add_argument("--comment", help="interne Notiz zum Unternehmen")
     w.add_argument("--all-lists", action="store_true")
     w.set_defaults(func=cmd_watch)
+
+    out = sub.add_parser(
+        "outcome", help="Vertriebsergebnis eintragen (Kontakt, Angebot, gewonnen, verloren)"
+    )
+    _company_args(out)
+    out.add_argument("--status", choices=["kontakt", "angebot", "gewonnen", "verloren"])
+    out.add_argument("--date", help="Datum JJJJ-MM-TT (Standard: heute)")
+    out.add_argument("--value", help="Auftrags-/Angebotswert, nur wenn bekannt")
+    out.add_argument("--currency", help="Währung zum Wert, z. B. EUR")
+    out.add_argument("--use-case", help="Anwendungsfall-Schlüssel, falls bekannt")
+    out.add_argument("--reason", help="Grund, z. B. warum verloren")
+    out.add_argument("--author")
+    out.set_defaults(func=cmd_outcome)
+
+    rep = sub.add_parser(
+        "outcomes-report", help="Auswertung Bewertung ↔ Ergebnis (nur erfasste Daten)"
+    )
+    rep.add_argument("--md", help="Markdown-Datei schreiben")
+    rep.add_argument("--min-cases", type=int, default=10, help="Anteile erst ab n Fällen")
+    rep.set_defaults(func=cmd_outcomes_report)
 
     lead = sub.add_parser("leads", help="Lead-Liste anzeigen oder exportieren (CSV/XLSX/JSON)")
     lead.add_argument("--out", help="Ordner für leads.csv/.xlsx/.json")

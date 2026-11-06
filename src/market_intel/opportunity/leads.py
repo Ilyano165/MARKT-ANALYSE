@@ -12,6 +12,7 @@ from sqlalchemy import Engine, select
 from .. import db, repo
 from ..export import _write_csv, safe_cell
 from .assess import latest_assessments
+from .outcomes import current_outcome, outcome_text
 from .run import NO_FIT_KEY
 from .watch import STATUS_LABELS, status_of
 
@@ -39,6 +40,7 @@ LEAD_COLUMNS = (
     "manuelle_pruefung",
     "produktmatrix",
     "bewertungsstatus",
+    "vertriebsergebnis",
     "quellenlinks",
     "letzte_recherche",
     "bewertet_am",
@@ -141,6 +143,7 @@ def lead_rows(
                 "bewertungsstatus": STATUS_LABELS[status["status"]]
                 if status
                 else "automatisch bewertet, nicht geprüft",
+                "vertriebsergebnis": outcome_text(current_outcome(engine, company_id)),
                 "quellenlinks": " ".join(links),
                 "letzte_recherche": last_run.isoformat() if last_run else "",
                 "bewertet_am": row["assessed_at"].isoformat(),

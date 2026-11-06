@@ -441,6 +441,12 @@ Hinweise, Firmenzuordnung, Datenlage, Gründe für manuelle Prüfung, Matrixstan
 ältere Zeilen bleiben als Historie. Die Produktmatrix-Datei hat je Gruppe zusätzlich
 `source_checked_at`, `examples_on_manufacturer_site`, `examples_not_found`.
 
+### 3.28 Vertriebsergebnisse (Schema-Version 5)
+
+| Tabelle | Inhalt | Regeln |
+|---|---|---|
+| `sales_outcome` | Unternehmen, Ergebnis (`kontakt`/`angebot`/`gewonnen`/`verloren`), Datum, Wert (Dezimal-Text) mit Währung (nur wenn bekannt), Anwendungsfall, Grund, Autor, `assessment_id` (beim Eintrag gültige Bewertung), Erfassungszeit | append-only (Trigger gegen UPDATE/DELETE in SQLite und PostgreSQL); jüngster Eintrag = aktueller Stand; Datum nicht in der Zukunft; Wert nur mit ISO-Währung |
+
 ## 4. Beziehungen (Übersicht)
 
 ```mermaid
