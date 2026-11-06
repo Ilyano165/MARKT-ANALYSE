@@ -5,9 +5,28 @@ mehrjährige Beobachtung von Unternehmen. **100 % kostenloser Betrieb:** keine B
 keine Abos, keine Cloud, keine KI-Dienste. Jede Zahl ist auf eine Quelle zurückführbar;
 fehlende Daten bleiben sichtbar unbekannt.
 
-Stand: Version 0.4.0 – Research Engine, Unternehmensanalyse und Customer Discovery (Produktmatrix, belegte Bedarfshypothesen, transparente Bewertung, Watchlist, Lead-Export) mit lokaler Oberfläche.
+Stand: Version 0.5.0 – Research Engine, Unternehmensanalyse und Customer Discovery (Produktmatrix, belegte Bedarfshypothesen, transparente Bewertung, Watchlist, Lead-Export) mit lokaler Oberfläche.
 
-## Schnellstart (Windows)
+## Installation unter Windows (Setup)
+
+1. `MarketIntel-Setup-<Version>.exe` ausführen – keine Administratorrechte nötig, kein Python nötig.
+   Die Datei ist **nicht signiert** (Code-Signing-Zertifikate kosten Geld): Windows SmartScreen
+   zeigt beim ersten Start „Der Computer wurde durch Windows geschützt“ → „Weitere Informationen“
+   → „Trotzdem ausführen“.
+2. Startmenü → **Yellotools Market Intelligence**: Die Oberfläche öffnet sich im Browser
+   (nur auf diesem PC erreichbar, 127.0.0.1). Das Konsolenfenster zeigt Adresse und Datenordner;
+   Schließen des Fensters beendet die Anwendung.
+3. Kommandozeile: Startmenü → **Market Intelligence – Eingabeaufforderung**, dann z. B.
+   `mi sources`, `mi research …`, `mi leads --out leads`.
+
+Daten (Datenbank, Einstellungen `market_intel.toml`, Exporte) liegen in
+`%LOCALAPPDATA%\YellotoolsMarketIntel` und bleiben bei Update und Deinstallation erhalten.
+Dort einmal `contact_email` (Funktionsadresse der Firma) eintragen. Update: neues Setup
+darüber installieren. Bezug des Setups: GitHub → Actions → „Windows-Build und Installer“ →
+Artefakt `MarketIntel-Setup` (wird bei jedem Push auf einem Windows-Rechner gebaut und durch
+Installieren, Starten und Deinstallieren geprüft).
+
+## Schnellstart für Entwickler (Windows, aus dem Quellcode)
 
 Voraussetzung: Python 3.12 oder neuer (kostenlos, python.org) und Internetzugang zu den Quellen.
 

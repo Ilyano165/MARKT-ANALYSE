@@ -1,5 +1,5 @@
 # Baut und prüft die Windows-Anwendung auf einem echten Windows-Rechner (GitHub Actions):
-# Tests → PyInstaller-Paket → Rauchtest → Inno-Setup-Installer → Installieren/Testen/Deinstallieren.
+# Tests → PyInstaller-Paket → Rauchtest → NSIS-Installer → Installieren/Testen/Deinstallieren.
 # Ergebnis: Artefakt „MarketIntel-Setup“ (unsignierte Setup.exe).
 name: Windows-Build und Installer
 
@@ -35,19 +35,20 @@ jobs:
         shell: pwsh
         run: ./installer/smoke-test.ps1 -Exe dist/MarketIntel/MarketIntel.exe
 
-      - name: Inno Setup bereitstellen
+      - name: NSIS bereitstellen (zlib-Lizenz, kostenlos auch kommerziell)
         shell: pwsh
         run: |
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y }
-          if (-not (Test-Path $iscc)) { throw "ISCC.exe nicht gefunden" }
+          $makensis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          if (-not (Test-Path $makensis)) { choco install nsis --no-progress -y }
+          if (-not (Test-Path $makensis)) { throw "makensis.exe nicht gefunden" }
 
-      - name: Installer bauen (Inno Setup)
+      - name: Installer bauen (NSIS)
         shell: pwsh
         run: |
           $version = python -c "import market_intel; print(market_intel.__version__)"
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" installer/MarketIntel.iss
-          if ($LASTEXITCODE -ne 0) { throw "ISCC fehlgeschlagen" }
+          New-Item -ItemType Directory -Force dist-installer | Out-Null
+          & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" "/DVERSION=$version" installer/MarketIntel.nsi
+          if ($LASTEXITCODE -ne 0) { throw "makensis fehlgeschlagen" }
 
       - name: Installieren, testen, deinstallieren
         shell: pwsh

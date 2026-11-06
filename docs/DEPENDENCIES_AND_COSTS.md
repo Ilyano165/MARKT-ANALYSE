@@ -51,6 +51,17 @@ Dienst mit Nutzungsbedingungen, Datenabfluss der angesehenen Region), Geokodieru
 (Nominatim u. a.) – Koordinaten kommen nur aus den Quellen selbst (schema.org, Wikidata) oder
 aus manueller Erfassung mit Herkunftsangabe.
 
+### 1b. Windows-Installer (Build-Werkzeuge, Stand 2026-11-06)
+
+| Werkzeug | Version | Lizenz | Zweck | Kosten | Hinweis |
+|---|---|---|---|---|---|
+| PyInstaller | 6.16.0 | GPL-2.0 mit Bootloader-Ausnahme (Bündeln eigener, auch nicht-freier Programme erlaubt) | Python-Anwendung als Windows-Programm ohne Python-Installation | 0 € | nur beim Bauen |
+| NSIS | 3.x (Chocolatey auf dem Build-Rechner) | zlib/libpng; Kompression zlib (LZMA-Modul mit CPL bewusst nicht genutzt) | Setup.exe, Startmenü, Deinstallation | 0 €, auch kommerziell | nur beim Bauen |
+| GitHub Actions (windows-latest) | – | Dienst | Bauen und Prüfen auf echtem Windows | 0 € im Freikontingent (Windows-Minuten zählen doppelt; je Lauf ca. 5 Minuten) | nur beim Bauen; App selbst nutzt keinen Dienst |
+| ~~Inno Setup~~ | 6.7.1 | seit 6.5 werden kommerzielle Nutzer um eine kostenpflichtige Lizenz gebeten (Compiler meldet „Non-commercial use only“) | – | – | **nicht verwendet** (Konflikt mit „100 % kostenlos“) |
+| ~~WiX Toolset~~ | ab 6 | „Open Source Maintenance Fee“ für Nutzer mit Umsatz | – | – | **nicht verwendet** |
+| Code-Signing-Zertifikat | – | kommerziell | Entfernt SmartScreen-Warnung | kostenpflichtig | **nicht verwendet** – Setup ist unsigniert |
+
 ## 2. Datenquellen
 
 | Name | Lizenz | Kostenloser Umfang | Einschränkungen | Registrierung | Zugangsdaten | Optionale Kosten | Externer Dienst | Standard |

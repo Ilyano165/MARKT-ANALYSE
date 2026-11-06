@@ -13,7 +13,12 @@ verpflichtenden Kosten** – Prüfung über `docs/DEPENDENCIES_AND_COSTS.md`.
 - Vertriebsergebnisse erfassen und auswerten (Schema 5, `mi outcome`, `mi outcomes-report`,
   Oberfläche): Grundlage, um Gewichte später an Daten statt Schätzungen zu prüfen. Gewichte
   bleiben bis dahin unverändert.
-- Tests: 235, davon 233 bestanden, 2 übersprungen; Gegenproben CSV 3/3, Ergebnisse 7/7.
+- Windows-Anwendung und Setup (M16): PyInstaller + NSIS, Daten je Benutzer in
+  %LOCALAPPDATA%\YellotoolsMarketIntel; jeder Push baut und prüft auf echtem Windows
+  (Tests, Rauchtest, stille Installation, Test der installierten App, Deinstallation).
+  Inno Setup verworfen (Lizenzbitte an kommerzielle Nutzer). Setup unsigniert (SmartScreen).
+- Tests: 240 (unter Linux 237 bestanden, 3 übersprungen; unter Windows 238 bestanden,
+  2 übersprungen); Gegenproben CSV 3/3, Ergebnisse 7/7.
 
 ## 0e. Phase 6 – Rollenklassifikation und belastbare Lead-Bewertung (2026-10-25)
 
@@ -252,7 +257,7 @@ Status: ✅ im Prototyp erledigt · 🟡 teilweise · ⬜ offen. Aufwand in Pers
 | M13 | Analytics & Export: Vergleich, CAGR nur bei Vergleichbarkeit, CSV/XLSX/JSON/HTML ✅; Aufbewahrungsregel Rohdokumente, Zitat-Bereinigung ⬜ | 🟡 3 PT | Export je Zahl mit Quelle/Zeitraum/Status ✅; Formel-Injektion ✅ | Export-Tests |
 | M14 | Watchlists, Änderungserkennung, Benachrichtigung in der App | ⬜ 5 PT | genau ein Änderungsereignis bei geänderter Kennzahl | Fixture-Tests |
 | M15 | Teambetrieb selbst gehostet: PostgreSQL, Web-UI im LAN/VPN, OIDC (vorhandenes Entra ID oder Keycloak), Rollen, Backup/Restore | ⬜ 8 PT | Rollenmatrix grün; Wiederherstellung getestet | Rollen-/Restore-Tests |
-| M16 | Verteilung: Windows-Start ohne Installation (venv-Skript) bzw. PyInstaller-Paket; Update-Anleitung | ⬜ 4 PT | Neuinstallation und Update auf sauberem Windows dokumentiert | Installationsprotokoll |
+| M16 | Verteilung: Windows-Start ohne Installation (venv-Skript) bzw. PyInstaller-Paket; Update-Anleitung | ✅ umgesetzt (PyInstaller + NSIS; Build, Rauchtest, Installation und Deinstallation per GitHub Actions auf Windows; unsigniert) | Neuinstallation und Update auf sauberem Windows dokumentiert | Installationsprotokoll |
 
 Summe offen: ca. 73 PT (ohne Puffer; nach A0 neu schätzen).
 
