@@ -1,0 +1,60 @@
+# Baut und prüft die Windows-Anwendung auf einem echten Windows-Rechner (GitHub Actions):
+# Tests → PyInstaller-Paket → Rauchtest → Inno-Setup-Installer → Installieren/Testen/Deinstallieren.
+# Ergebnis: Artefakt „MarketIntel-Setup“ (unsignierte Setup.exe).
+name: Windows-Build und Installer
+
+on:
+  push:
+    branches: ["main", "claude/confident-faraday-0tsww5"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Abhängigkeiten installieren
+        run: python -m pip install -e ".[dev]" "pyinstaller==6.16.0"
+
+      - name: Tests unter Windows
+        run: python -m pytest
+
+      - name: Anwendung paketieren (PyInstaller)
+        run: python -m PyInstaller installer/MarketIntel.spec --noconfirm
+
+      - name: Rauchtest des Pakets
+        shell: pwsh
+        run: ./installer/smoke-test.ps1 -Exe dist/MarketIntel/MarketIntel.exe
+
+      - name: Inno Setup bereitstellen
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y }
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe nicht gefunden" }
+
+      - name: Installer bauen (Inno Setup)
+        shell: pwsh
+        run: |
+          $version = python -c "import market_intel; print(market_intel.__version__)"
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" installer/MarketIntel.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC fehlgeschlagen" }
+
+      - name: Installieren, testen, deinstallieren
+        shell: pwsh
+        run: ./installer/install-test.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MarketIntel-Setup
+          path: dist-installer/*.exe
+          retention-days: 30
