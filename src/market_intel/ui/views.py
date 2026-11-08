@@ -198,8 +198,12 @@ def job_page(
     )
     result_rows = "".join(
         f'<tr><td><a href="/company/{r["id"]}/opportunity">{e(r["name"])}</a><br>'
-        f'<span class="muted">{e(r["website"] or "keine Website bekannt")} · {e(r["country"] or "")}</span></td>'
-        f"<td>{e(r['reason'])}</td>"
+        + (
+            f'<span class="muted">{e(r["website"])} · {e(r["country"] or "")}</span></td>'
+            if r["website"]
+            else f'<span class="muted">keine Website bekannt – <a href="/company/{r["id"]}#edit">eintragen</a> · {e(r["country"] or "")}</span></td>'
+        )
+        + f"<td>{e(r['reason'])}</td>"
         f'<td class="num">{e(r["fit"] if r["fit"] is not None else "–")}</td>'
         f"<td>{e(r['fit_status'] or '–')}</td><td>{e(r['segment'] or '–')}</td></tr>"
         for r in results
@@ -209,7 +213,7 @@ def job_page(
         '<p><a href="/jobs">← Rechercheaufträge</a></p>'
         f'<div class="pagehead"><h1>{e(job["title"] or f"Auftrag {jid}")}</h1><div class="actions">{actions}</div></div>'
         f'<section id="job-progress" class="card" data-url="/jobs/{jid}.json" data-live="{1 if live else 0}">'
-        f'<p class="phase">{status_badge(status)} <span data-field="phase">{e(prog["phase"])}</span></p>'
+        f'<p class="phase">{status_badge(status)} <span data-field="phase">{e(prog["phase"]) if prog["phase"] != prog["status_label"] else ""}</span></p>'
         f'<div class="tiles">{tiles}</div>'
         + (f'<p class="errorbox">{e(prog["error"])}</p>' if prog.get("error") else "")
         + (

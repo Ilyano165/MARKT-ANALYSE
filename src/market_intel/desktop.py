@@ -73,6 +73,8 @@ def free_port(preferred: int) -> int:
     """Bevorzugten Port nehmen, wenn frei; sonst einen freien Port vom System."""
     for port in (preferred, 0):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            if os.name != "nt":  # wie der Server: TIME_WAIT nach Neustart blockiert nicht
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 probe.bind(("127.0.0.1", port))
             except OSError:

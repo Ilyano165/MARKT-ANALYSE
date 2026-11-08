@@ -5,6 +5,7 @@ param([Parameter(Mandatory = $true)][string]$Exe)
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)  # App gibt UTF-8 aus (utf8_mode)
 $env:MI_HOME = Join-Path $env:RUNNER_TEMP ("mihome-" + [guid]::NewGuid())
+$env:MI_NO_DIALOG = "1"  # Fehler nie als modalen Dialog (niemand könnte ihn schließen)
 $mi = Join-Path (Split-Path $Exe) "mi.exe"
 if (-not (Test-Path $mi)) { throw "mi.exe fehlt neben $Exe" }
 

@@ -153,3 +153,14 @@ def test_log_file_rotates(home: Path) -> None:
     files = log_files(home)
     assert path in files and len(files) > 1 and len(files) <= applog.BACKUPS + 1
     handler.maxBytes = applog.MAX_BYTES  # type: ignore[attr-defined]
+
+
+def test_error_dialog_never_blocks_outside_installed_app(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression Windows-CI: MessageBox blockierte den Testlauf (niemand klickt „OK“)."""
+    calls: list[str] = []
+    monkeypatch.setattr(shell.os, "name", "nt")
+    monkeypatch.setattr(shell, "_message_box", calls.append, raising=False)
+    shell.show_error("Testfehler")
+    assert "Testfehler" in capsys.readouterr().err and calls == []

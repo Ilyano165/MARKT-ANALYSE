@@ -757,9 +757,9 @@ def _progress_line(
 def _write_summary(ctx: Ctx, status: str, seconds_total: float | None = None) -> None:
     previous = _summary(ctx.engine, ctx.run_id or 0)
     summary = {
-        "notes": (previous.get("notes", []) + ctx.notes)[-300:]
-        if status != "running"
-        else previous.get("notes", []) + ctx.notes,
+        # dict.fromkeys: Hinweise, die schon bei einem Zwischenstand gespeichert wurden, nicht
+        # doppelt übernehmen (E2E 2026-11-08: jeder Hinweis stand zweimal im Protokoll)
+        "notes": list(dict.fromkeys(previous.get("notes", []) + ctx.notes))[-300:],
         "requests": ctx.gateway.stats.requests + int(previous.get("requests_total", 0)),
         "requests_total": int(previous.get("requests_total", 0))
         + (ctx.gateway.stats.requests if status != "running" else 0),

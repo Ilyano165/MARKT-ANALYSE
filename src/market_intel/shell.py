@@ -118,7 +118,10 @@ def notify_running(home: Path, timeout: float = 5.0) -> bool:
 def show_error(message: str) -> None:
     """Verständliche Fehlermeldung als Dialog (Windows) bzw. auf der Fehlerausgabe."""
     log.error("Fehlermeldung an den Nutzer: %s", message)
-    if os.name == "nt":
+    # Modaler Dialog nur im installierten Programm – nie in Tests/Automatisierung, wo niemand
+    # „OK“ klicken kann (Windows-CI hing an genau diesem Dialog). MI_NO_DIALOG=1 schaltet ab.
+    interactive = getattr(sys, "frozen", False) and os.environ.get("MI_NO_DIALOG") != "1"
+    if os.name == "nt" and interactive:
         try:
             import ctypes
 
