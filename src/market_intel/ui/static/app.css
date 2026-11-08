@@ -194,3 +194,7 @@ ul.log li.lv-error { background: #fbe0d6; color: #8a2a0a; }
 .checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: .2rem .8rem; }
 label.check { display: flex; gap: .4rem; align-items: baseline; margin: 0; }
 .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .6rem; }
+.rowform { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .3rem 0; }
+.rowform input { min-width: 8rem; flex: 1 1 8rem; }
+.okbox { background: #d8f0dc; color: #1d5b2a; border-radius: 6px; padding: .6rem .8rem; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .okbox { background: #183d22; color: #b9e6c3; } }

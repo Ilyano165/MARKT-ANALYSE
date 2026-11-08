@@ -49,6 +49,7 @@ STATIC = {
     "app.css": "text/css; charset=utf-8",
 }
 MAX_BODY = 64 * 1024
+MAX_UPLOAD = 10 * 1024 * 1024  # CSV-Import
 REFERRER_POLICY = "same-origin"
 SAME_ORIGIN_FETCH = frozenset({"same-origin", "none"})
 
@@ -161,9 +162,16 @@ class App:
             data = build_profile(
                 conn, company_id, years=years, include_estimates=estimates, as_of=date.today()
             )
+        from ..maintenance import edits_of
+
+        with self.engine.connect() as conn:
+            company = repo.company_row(conn, company_id)
+        edit = views.company_edit_block(company, edits_of(self.engine, company_id), self.csrf)
         html = render.page(
             data["overview"]["display_name"],
-            render.profile_page(data, csrf=self.csrf),
+            render.profile_page(
+                data, csrf=self.csrf, extra=(("edit", "Stammdaten pflegen", edit),)
+            ),
             data=data,
         )
         return html, data
@@ -289,6 +297,26 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                     render.page(
                         "Rechercheaufträge",
                         views.jobs_page(items, prog, app.worker is not None and app.worker.alive()),
+                    )
+                )
+                return
+            if path == "/imports":
+                self._html(render.page("Importe", imports_view(app)))
+                return
+            if path == "/maintenance":
+                from ..maintenance import duplicate_groups, missing_websites
+
+                q = query.get("q", [""])[0][:100]
+                self._html(
+                    render.page(
+                        "Datenpflege",
+                        views.maintenance_page(
+                            missing_websites(app.engine, q),
+                            duplicate_groups(app.engine),
+                            app.csrf,
+                            q,
+                            query.get("ok", [""])[0][:300],
+                        ),
                     )
                 )
                 return
@@ -440,11 +468,19 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
             ):
                 self._error(HTTPStatus.FORBIDDEN, "Fremde Herkunft")
                 return
-            length = _int(self.headers.get("Content-Length", "0"), 0, 0, MAX_BODY + 1)
-            if length > MAX_BODY:
+            ctype = self.headers.get("Content-Type", "")
+            multipart = ctype.startswith("multipart/form-data")
+            limit = MAX_UPLOAD if multipart else MAX_BODY
+            length = _int(self.headers.get("Content-Length", "0"), 0, 0, limit + 1)
+            if length > limit:
                 self._error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "Anfrage zu groß")
                 return
-            form = parse_qs(self.rfile.read(length).decode("utf-8", errors="replace"))
+            raw = self.rfile.read(length)
+            files: dict[str, tuple[str, bytes]] = {}
+            if multipart:
+                form, files = parse_multipart(raw, ctype)
+            else:
+                form = parse_qs(raw.decode("utf-8", errors="replace"))
             if not secrets.compare_digest(form.get("csrf", [""])[0], app.csrf):
                 self._error(HTTPStatus.FORBIDDEN, "Sicherheitstoken fehlt oder ist abgelaufen")
                 return
@@ -536,6 +572,77 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                     return
                 self._redirect(f"/company/{company_id}/opportunity#outcome")
                 return
+            if path == "/imports":
+                try:
+                    imported = import_from_form(app, form, files)
+                except ValueError as exc:
+                    self._html(
+                        render.page("Importe", imports_view(app, error=str(exc))),
+                        HTTPStatus.BAD_REQUEST,
+                    )
+                    return
+                self._html(render.page("Importe", imports_view(app, result=imported)))
+                return
+            if path == "/imports/research":
+                list_name = form.get("list_name", [""])[0].strip()
+                try:
+                    job_id = research_list(app, list_name)
+                except (jobs.JobError, ValueError) as exc:
+                    self._html(
+                        render.page("Importe", imports_view(app, error=str(exc))),
+                        HTTPStatus.BAD_REQUEST,
+                    )
+                    return
+                self._redirect(f"/jobs/{job_id}")
+                return
+            match = re.fullmatch(r"/company/(\d+)/edit", path)
+            if match:
+                from ..maintenance import MaintenanceError, set_field, set_website
+
+                company_id = int(match.group(1))
+                field = form.get("field", [""])[0]
+                value = form.get("value", [""])[0]
+                author = form.get("author", [""])[0]
+                reason = form.get("reason", [""])[0]
+                back = _safe_back(form.get("back", [f"/company/{company_id}#edit"])[0])
+                try:
+                    if field == "website_domain":
+                        set_website(app.engine, company_id, value, author, reason)
+                    else:
+                        set_field(app.engine, company_id, field, value, author, reason)
+                except MaintenanceError as exc:
+                    self._error(HTTPStatus.BAD_REQUEST, str(exc))
+                    return
+                self._redirect(back)
+                return
+            if path in ("/maintenance/merge", "/maintenance/distinct"):
+                from ..maintenance import MaintenanceError, mark_distinct, merge
+
+                ids = [int(i) for i in form.get("ids", [""])[0].split(",") if i.isdigit()]
+                author = form.get("author", [""])[0]
+                try:
+                    if path.endswith("merge"):
+                        keep = int(form.get("keep", ["0"])[0] or 0)
+                        if keep not in ids:
+                            raise MaintenanceError("Bitte die zu behaltende Firma wählen.")
+                        for other in ids:
+                            if other != keep:
+                                merge(app.engine, keep, other, author, form.get("reason", [""])[0])
+                        done = (
+                            f"{len(ids) - 1} Datensatz/Datensätze in Firma {keep} zusammengeführt"
+                        )
+                    else:
+                        for i, a in enumerate(ids):
+                            for b in ids[i + 1 :]:
+                                mark_distinct(app.engine, a, b, author)
+                        done = "Als verschiedene Firmen markiert"
+                except MaintenanceError as exc:
+                    self._error(HTTPStatus.BAD_REQUEST, str(exc))
+                    return
+                from urllib.parse import quote
+
+                self._redirect("/maintenance?ok=" + quote(done))
+                return
             if path == "/jobs":
                 try:
                     job_id = create_job_from_form(app, form)
@@ -591,6 +698,134 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
             self._error(404, "nicht gefunden")
 
     return Handler
+
+
+def parse_multipart(
+    body: bytes, content_type: str
+) -> tuple[dict[str, list[str]], dict[str, tuple[str, bytes]]]:
+    """multipart/form-data (Datei-Upload) mit der Standardbibliothek auswerten."""
+    from email import policy
+    from email.parser import BytesParser
+
+    message = BytesParser(policy=policy.HTTP).parsebytes(
+        b"MIME-Version: 1.0\r\nContent-Type: " + content_type.encode("latin-1") + b"\r\n\r\n" + body
+    )
+    fields: dict[str, list[str]] = {}
+    files: dict[str, tuple[str, bytes]] = {}
+    if not message.is_multipart():
+        return fields, files
+    for part in message.iter_parts():
+        name = part.get_param("name", header="content-disposition")
+        if not isinstance(name, str):
+            continue
+        payload = part.get_payload(decode=True)
+        data = payload if isinstance(payload, bytes) else b""
+        filename = part.get_filename()
+        if filename is not None:
+            files[name] = (filename, data)
+        else:
+            fields.setdefault(name, []).append(data.decode("utf-8", errors="replace"))
+    return fields, files
+
+
+def _safe_back(back: str) -> str:
+    """Nur eigene relative Pfade als Rücksprung (kein offener Redirect)."""
+    return back if back.startswith("/") and not back.startswith("//") else "/"
+
+
+def _list_overview(engine: Engine) -> list[dict[str, Any]]:
+    with engine.connect() as conn:
+        return [
+            {"list_name": n, "members": int(c), "imported_at": t}
+            for n, c, t in conn.execute(
+                select(
+                    db.list_membership.c.list_name,
+                    func.count(func.distinct(db.list_membership.c.company_id)),
+                    func.max(db.list_membership.c.imported_at),
+                )
+                .group_by(db.list_membership.c.list_name)
+                .order_by(db.list_membership.c.list_name)
+            )
+        ]
+
+
+def _customer_lists(app: App) -> list[str]:
+    return [str(x) for x in app.model.section("crm").get("customer_lists", [])]
+
+
+def imports_view(app: App, result: Any = None, error: str = "") -> str:
+    shown = None
+    if result is not None:
+        shown = {
+            "list_name": result[0],
+            "rows": [
+                {
+                    "line": r.line,
+                    "name": r.name,
+                    "status": r.status,
+                    "detail": r.detail,
+                    "company_id": r.company_id,
+                }
+                for r in result[1].rows
+            ],
+            "counts": {
+                k: result[1].count(k) for k in ("neu", "zugeordnet", "doppelt", "übersprungen")
+            },
+        }
+    return views.imports_page(
+        _list_overview(app.engine), _customer_lists(app), app.cases, app.csrf, shown, error
+    )
+
+
+def import_from_form(
+    app: App, form: dict[str, list[str]], files: dict[str, tuple[str, bytes]]
+) -> tuple[str, Any]:
+    from ..sources.user_data import import_company_bytes
+
+    upload = files.get("file")
+    if upload is None or not upload[1].strip():
+        raise ValueError("Bitte eine CSV-Datei auswählen.")
+    filename, content = upload
+    if form.get("kind", ["list"])[0] == "customers":
+        lists = _customer_lists(app)
+        list_name = form.get("customer_list", [lists[0] if lists else ""])[0]
+        if list_name not in lists:
+            raise ValueError("Keine Bestandskundenliste konfiguriert (opportunity.toml [crm]).")
+    else:
+        list_name = form.get("list_name", [""])[0].strip()[:120]
+        if list_name in _customer_lists(app):
+            raise ValueError(
+                "Dieser Name ist für Bestandskunden reserviert – Art „Bestandskunden“."
+            )
+    result = import_company_bytes(
+        app.engine,
+        content,
+        filename=filename[:200] or "upload.csv",
+        list_name=list_name,
+        source_url=form.get("source_url", [""])[0].strip()[:500],
+        publisher=form.get("publisher", [""])[0].strip()[:200] or None,
+    )
+    return list_name, result
+
+
+def research_list(app: App, list_name: str) -> int:
+    """Rechercheauftrag für alle Firmen einer importierten Liste."""
+    members = {r["list_name"]: r["members"] for r in _list_overview(app.engine)}
+    if list_name not in members:
+        raise ValueError(f"Liste „{list_name}“ existiert nicht.")
+    if list_name in _customer_lists(app):
+        raise ValueError("Bestandskunden werden nicht als neue Leads recherchiert.")
+    count = min(int(members[list_name]), 200)
+    request = ResearchRequest(task=f"Firmenliste „{list_name}“ prüfen", lists=[list_name],
+                              max_candidates=count)  # fmt: skip
+    stamp = db.utcnow().strftime("%Y%m%d-%H%M%S")
+    return jobs.create_research_job(
+        app.engine,
+        request,
+        Budget(max_candidates=count, max_requests=max(300, count * 25)),
+        app.out_dir / f"liste-{stamp}",
+        title=f"Liste prüfen: {list_name}",
+    )
 
 
 def _list(form: dict[str, list[str]], name: str, sep: str = ",") -> list[str]:

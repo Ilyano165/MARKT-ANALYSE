@@ -103,6 +103,13 @@ def lead_rows(
 
             context = (load_use_cases(), load_products(), load_model())
         fresh = freshness(engine, *context)
+    with engine.connect() as conn:
+        buyers = {
+            int(i)
+            for i in conn.execute(
+                select(db.company.c.id).where(db.company.c.entity_kind == "public_buyer")
+            ).scalars()
+        }
     best: dict[int, dict[str, Any]] = {}
     for row in latest_assessments(engine):
         if row["company_id"] not in best:
@@ -114,6 +121,8 @@ def lead_rows(
             continue
         if row["segment"] in EXCLUDED_SEGMENTS and not include_excluded:
             continue
+        if company_id in buyers and not include_excluded:
+            continue  # öffentliche Auftraggeber: Bedarfssignal, kein Verarbeiter
         if (row["priority_score"] or 0) < min_priority:
             continue
         if segments and row["segment"] not in segments:

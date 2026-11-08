@@ -724,6 +724,19 @@ job_event = Table(  # Protokoll je Auftrag (nur anhängen)
     Column("message", Text, nullable=False),
 )
 
+company_edit = Table(  # manuelle Datenpflege (Website, Name, Land, Zusammenführung) – nur anhängen
+    "company_edit",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("company_id", Integer, ForeignKey("company.id"), nullable=False),
+    Column("field", String(40), nullable=False),
+    Column("old_value", Text),
+    Column("new_value", Text),
+    Column("author", Text, nullable=False),
+    Column("reason", Text, nullable=False, default=""),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
 schema_info = Table(
     "schema_info",
     metadata,
@@ -756,6 +769,11 @@ def _sqlite_triggers() -> list[str]:
     )
     for action in ("UPDATE", "DELETE"):
         statements.append(
+            f"CREATE TRIGGER IF NOT EXISTS company_edit_no_{action.lower()} BEFORE {action} "
+            "ON company_edit BEGIN SELECT RAISE(ABORT, 'Änderungsprotokoll ist "
+            "unveränderlich'); END"
+        )
+        statements.append(
             f"CREATE TRIGGER IF NOT EXISTS sales_outcome_no_{action.lower()} BEFORE {action} "
             "ON sales_outcome BEGIN SELECT RAISE(ABORT, 'Vertriebsergebnisse sind "
             "unveränderlich – Korrektur als neuer Eintrag'); END"
@@ -775,6 +793,11 @@ def _postgres_triggers() -> list[str]:
             f"CREATE TRIGGER {name}_immutable BEFORE UPDATE OF {_IMMUTABLE_OBS_COLUMNS} "
             f"OR DELETE ON {name} FOR EACH ROW EXECUTE FUNCTION mi_reject_change()"
         )
+    statements.append("DROP TRIGGER IF EXISTS company_edit_immutable ON company_edit")
+    statements.append(
+        "CREATE TRIGGER company_edit_immutable BEFORE UPDATE OR DELETE ON company_edit "
+        "FOR EACH ROW EXECUTE FUNCTION mi_reject_change()"
+    )
     statements.append("DROP TRIGGER IF EXISTS sales_outcome_immutable ON sales_outcome")
     statements.append(
         "CREATE TRIGGER sales_outcome_immutable BEFORE UPDATE OR DELETE ON sales_outcome "

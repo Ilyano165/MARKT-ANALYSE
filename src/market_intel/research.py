@@ -282,8 +282,22 @@ def _select(ctx: Ctx, params: dict[str, Any], cases: dict[str, UseCase]) -> Task
     )
     lists = list(load_model(ctx.settings.opportunity_file).section("crm").get("customer_lists", []))
     excluded = {}
+    with ctx.engine.connect() as conn:
+        buyers = {
+            int(i)
+            for i in conn.execute(
+                select(db.company.c.id).where(
+                    db.company.c.id.in_(others), db.company.c.entity_kind == "public_buyer"
+                )
+            ).scalars()
+        }
     for cid in others:
-        reason = excluded_reason(ctx.engine, cid, lists)
+        # Öffentliche Auftraggeber kaufen die Leistung ein – keine Verarbeiter (Audit P1-2)
+        reason = (
+            "öffentlicher Auftraggeber (kauft ein, verarbeitet nicht)"
+            if cid in buyers
+            else excluded_reason(ctx.engine, cid, lists)
+        )
         if reason:
             excluded[cid] = reason
     others = [cid for cid in others if cid not in excluded]

@@ -1,9 +1,19 @@
-"""TED Search API v3: EU-Ausschreibungen als Bedarfssignale.
+"""TED Search API v3: EU-Ausschreibungen.
 
-Öffentliche Auftraggeber, die passende Leistungen ausschreiben (z. B. Fahrzeugfolierung),
-sind potenzielle Kunden. Gespeichert werden nur Metadaten und der Titel als Beleg.
-Feldnamen laut Dokumentation/Wiederverwender-Beispielen; ein fehlender Gewinner ist keine
-Fehlerursache.
+Zwei Rollen werden streng getrennt (Audit P1-2: 4 von 5 ausgewählten „Kandidaten“ waren
+Behörden, die Folierung *einkaufen*):
+
+* **Auftraggeber** (``buyer-name``) kaufen die Leistung ein – sie sind keine Verarbeiter und
+  werden nur als Firma der Art ``public_buyer`` mit einem Bedarfssignal gespeichert, nie als
+  Kandidat ausgewählt.
+* **Zuschlagsempfänger** (``winner-name``, nur in Zuschlagsbekanntmachungen ``can-*``) führen
+  die Leistung aus – sie sind mögliche Verarbeiter. Weil Bekanntmachungen mehrere Lose haben
+  (Live-Abruf 2026-11-08: „Lieferung Führungskraftwagen“ mit Losen für Fahrzeug, Ausbau und
+  Beschriftung; Gewinner u. a. MAN Truck & Bus), wird ein Gewinner nur übernommen, wenn der
+  **Titel** der Bekanntmachung den Suchbegriff enthält. Die USt-IdNr. (``winner-identifier``)
+  dient als Kennung.
+
+Gespeichert werden nur Metadaten und der Titel als Beleg.
 """
 
 from __future__ import annotations
@@ -29,6 +39,9 @@ FIELDS = [
     "publication-date",
     "classification-cpv",
     "notice-type",
+    "winner-name",
+    "winner-country",
+    "winner-identifier",
 ]
 VERSION = "ted-0.1.0"
 ISO3_TO_ISO2 = {
@@ -73,6 +86,16 @@ class Notice:
     buyers: tuple[str, ...]
     country_iso3: str | None
     published: date | None
+    notice_type: str = ""
+    winners: tuple[tuple[str, str | None, str | None], ...] = ()  # (Name, Land ISO3, USt-IdNr.)
+
+    @property
+    def is_award(self) -> bool:
+        """Zuschlagsbekanntmachung (eForms ``can-*``) – nur dort stehen Auftragnehmer."""
+        return self.notice_type.startswith("can")
+
+    def title_mentions(self, term: str) -> bool:
+        return term.casefold() in self.title.casefold()
 
 
 def _first_text(value: Any, prefer: tuple[str, ...] = ("deu", "eng")) -> str:
@@ -115,7 +138,34 @@ def parse_notice(item: dict[str, Any]) -> Notice | None:
     buyers = tuple(
         dict.fromkeys(b.strip() for b in _all_texts(item.get("buyer-name")) if b.strip())
     )
-    return Notice(number, title.strip(), buyers, country, published)
+    notice_type = _first_text(item.get("notice-type"))
+    names = [w.strip() for w in _all_texts(item.get("winner-name"))]
+    raw_countries = item.get("winner-country")
+    raw_ids = item.get("winner-identifier")
+    countries: list[Any] = raw_countries if isinstance(raw_countries, list) else []
+    ids: list[Any] = raw_ids if isinstance(raw_ids, list) else []
+    winners: dict[str, tuple[str, str | None, str | None]] = {}
+    # Die Listen sind NICHT positionsgleich (Live-Abruf 532438-2024: Reihenfolge von
+    # winner-name und winner-identifier weicht ab). Kennung und Land daher nur bei genau einem
+    # Gewinner zuordnen – sonst bliebe einer Firma womöglich die USt-IdNr. einer anderen.
+    single = len(names) == 1 and len(ids) == 1 and len(countries) == 1
+    for name in names:
+        if not name or name in winners:
+            continue
+        winners[name] = (
+            name,
+            str(countries[0]) if single else None,
+            vat_id(str(ids[0])) if single else None,
+        )
+    return Notice(
+        number, title.strip(), buyers, country, published, notice_type, tuple(winners.values())
+    )
+
+
+def vat_id(raw: str) -> str | None:
+    """USt-IdNr. normalisieren („DE 811 125 281“ → „DE811125281“); sonst None."""
+    value = "".join(raw.split()).upper()
+    return value if 4 <= len(value) <= 16 and value[:2].isalpha() else None
 
 
 def search(
@@ -147,10 +197,59 @@ def search(
     return notices, result.document_id, result.text
 
 
+def ingest_winners(
+    ctx: Ctx, notices: list[Notice], document_id: int, use_case_key: str, term: str
+) -> list[tuple[int, Notice]]:
+    """Zuschlagsempfänger als mögliche Verarbeiter speichern (nur Zuschläge, deren Titel den
+    Suchbegriff enthält – Lose anderer Leistungen werden nicht zugeordnet)."""
+    out: list[tuple[int, Notice]] = []
+    for notice in notices:
+        if not (notice.is_award and notice.title_mentions(term)):
+            continue
+        url = f"https://ted.europa.eu/en/notice/-/detail/{notice.number}"
+        with ctx.engine.begin() as conn:
+            for name, country3, vat in notice.winners[:5]:
+                # Land nur, wenn gemeldet – nicht aus dem Land des Auftraggebers ableiten
+                country = ISO3_TO_ISO2.get(country3 or "")
+                key = f"{country3 or '?'}:{normalize_name(name)}"
+                company_id = (
+                    repo.find_company_by_identifier(conn, "vat", vat) if vat else None
+                ) or repo.find_company_by_identifier(conn, "ted_winner", key)
+                if company_id is None:
+                    company_id = repo.create_company(conn, name, country_code=country)
+                    repo.add_identifier(conn, company_id, "ted_winner", key, document_id)
+                    if vat:
+                        repo.add_identifier(conn, company_id, "vat", vat, document_id)
+                    repo.add_alias(conn, company_id, name, "ted_winner_name", document_id)
+                repo.add_signal(
+                    conn,
+                    company_id=company_id,
+                    signal_type="tender_awarded",
+                    event_date=notice.published,
+                    summary=f"Zuschlag erhalten: {notice.title}",
+                    country_code=country,
+                    use_case_key=use_case_key,
+                    evidence=EvidenceDraft(
+                        document_id,
+                        f"notices[publication-number={notice.number}].winner-name",
+                        name[:300],
+                        "api_field",
+                        VERSION,
+                        True,
+                    ),
+                    url=url,
+                    provenance=ProvenanceClass.OFFICIAL,
+                    confidence="medium",
+                    run_id=ctx.run_id,
+                )
+                out.append((company_id, notice))
+    return out
+
+
 def ingest_notices(
     ctx: Ctx, notices: list[Notice], document_id: int, use_case_key: str
 ) -> list[tuple[int, Notice]]:
-    """Auftraggeber als Firmen (öffentliche Auftraggeber) und Signale speichern."""
+    """Auftraggeber als ``public_buyer`` mit Bedarfssignal speichern (nie Kandidaten)."""
     company_ids: list[tuple[int, Notice]] = []
     for notice in notices:
         quote = notice.title[:300]  # Feldwert aus dem gespeicherten JSON-Dokument

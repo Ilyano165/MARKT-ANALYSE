@@ -13,6 +13,7 @@ import io
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import Engine, insert, select
 
@@ -24,12 +25,27 @@ MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
+class RowOutcome:
+    """Ergebnis je CSV-Zeile (für die Prüfung in der Oberfläche)."""
+
+    line: int  # Zeilennummer in der Datei (Kopfzeile = 1)
+    name: str
+    status: str  # neu | zugeordnet | doppelt | übersprungen
+    detail: str
+    company_id: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class ImportResult:
     """Ergebnis eines Imports."""
 
     document_id: int
     companies: tuple[int, ...]
     skipped_rows: int
+    rows: tuple[RowOutcome, ...] = ()
+
+    def count(self, status: str) -> int:
+        return sum(1 for r in self.rows if r.status == status)
 
 
 def store_document(
@@ -82,39 +98,97 @@ def store_document(
 def import_company_list(
     engine: Engine, path: Path, *, list_name: str, source_url: str, publisher: str | None
 ) -> ImportResult:
+    """CSV-Datei importieren (siehe ``import_company_bytes``)."""
+    return import_company_bytes(
+        engine,
+        path.read_bytes(),
+        filename=path.name,
+        list_name=list_name,
+        source_url=source_url,
+        publisher=publisher,
+    )
+
+
+def import_company_bytes(
+    engine: Engine,
+    content: bytes,
+    *,
+    filename: str,
+    list_name: str,
+    source_url: str,
+    publisher: str | None,
+) -> ImportResult:
     """CSV mit Spalten ``name`` (Pflicht), optional ``country``, ``website``, ``lei``, ``city``.
 
-    Zuordnung zu bestehenden Firmen nur über LEI oder Website-Domain (stark); sonst neue Firma.
+    Zuordnung zu bestehenden Firmen nur über LEI, Website-Domain (stark) oder dieselbe Zeile
+    derselben Liste (erneuter Import); sonst neue Firma. Innerhalb der Datei werden Dubletten
+    (gleiche Domain oder gleicher normierter Name im selben Land) derselben Firma zugeordnet.
+    Jede Zeile erhält ein nachvollziehbares Ergebnis (``rows``).
     """
-    content = path.read_bytes()
+    list_name = list_name.strip()
+    if not list_name:
+        raise ValueError("Bitte einen Listennamen angeben.")
     document_id = store_document(
         engine,
         "user_list",
         content,
-        url=source_url or path.name,
+        url=source_url or filename,
         title=list_name,
         publisher=publisher,
         published=None,
         content_type="text/csv",
     )
     text = content.decode("utf-8-sig", errors="replace")
-    dialect = csv.Sniffer().sniff(text[:4096], delimiters=";,\t") if text.strip() else csv.excel
-    rows = list(csv.DictReader(io.StringIO(text), dialect=dialect))
+    try:
+        dialect: Any = (
+            csv.Sniffer().sniff(text[:4096], delimiters=";,\t") if text.strip() else csv.excel
+        )
+    except csv.Error:
+        dialect = csv.excel
+    reader = csv.DictReader(io.StringIO(text), dialect=dialect)
+    header = {(h or "").strip().lower() for h in (reader.fieldnames or [])}
+    if not header & {"name", "firma", "company"}:
+        raise ValueError(
+            "Die Datei braucht eine Spalte „name“ (oder „firma“). Gefunden: "
+            + (", ".join(sorted(h for h in header if h)) or "keine Kopfzeile")
+        )
     ids: list[int] = []
-    skipped = 0
+    outcomes: list[RowOutcome] = []
+    seen_domain: dict[str, tuple[int, int]] = {}
+    seen_name: dict[tuple[str, str | None], tuple[int, int]] = {}
     with engine.begin() as conn:
-        for row in rows:
-            lowered = {(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
-            name = lowered.get("name") or lowered.get("firma") or lowered.get("company")
+        for index, row in enumerate(reader):
+            line = index + 2
+            lowered = {(k or "").strip().lower(): (v or "").strip() for k, v in row.items() if k}
+            name = lowered.get("name") or lowered.get("firma") or lowered.get("company") or ""
             if not name or not normalize_name(name):
-                skipped += 1
+                outcomes.append(RowOutcome(line, name, "übersprungen", "kein Firmenname", None))
                 continue
-            country = (lowered.get("country") or lowered.get("land") or "").upper()[:2] or None
+            notes: list[str] = []
+            raw_country = (lowered.get("country") or lowered.get("land") or "").strip().upper()
+            country = raw_country if len(raw_country) == 2 and raw_country.isalpha() else None
+            if raw_country and country is None:
+                notes.append(f"Land „{raw_country}“ ungültig (ISO-Code erwartet), ignoriert")
             website = lowered.get("website") or lowered.get("web") or ""
+            domain = normalize_domain(website) if website else None
+            if website and not domain:
+                notes.append(f"Website „{website}“ ungültig, ignoriert")
+                website = ""
+            key = (normalize_name(name), country)
+            earlier = (seen_domain.get(domain) if domain else None) or seen_name.get(key)
+            if earlier is not None:
+                outcomes.append(
+                    RowOutcome(
+                        line, name, "doppelt", f"wie Zeile {earlier[1]} – derselben Firma "
+                        "zugeordnet", earlier[0],
+                    )
+                )  # fmt: skip
+                continue
             identifiers: list[tuple[str, str]] = []
             if lowered.get("lei"):
                 identifiers.append(("lei", lowered["lei"].upper()))
-            domain = normalize_domain(website) if website else None
+            found: int | None = None
+            how = ""
             if domain:
                 identifiers.append(("domain", domain))
                 found = repo.find_company_by_identifier(conn, "domain", domain)
@@ -132,10 +206,19 @@ def import_company_list(
                     if len(same) == 1:
                         found = int(same[0])
                         repo.add_identifier(conn, found, "domain", domain, document_id)
-            else:
-                found = None
+                how = f"über Website {domain}" if found else ""
+            if found is None:  # erneuter Import derselben Liste: gleiche Zeile = gleiche Firma
+                again = conn.execute(
+                    select(db.list_membership.c.company_id).where(
+                        db.list_membership.c.list_name == list_name,
+                        db.list_membership.c.row_text == name[:300],
+                    )
+                ).scalar()
+                if again is not None:
+                    found, how = int(again), "aus früherem Import dieser Liste"
+            created = False
             if found is None:
-                found, _ = repo.resolve_or_create(
+                found, created = repo.resolve_or_create(
                     conn,
                     name,
                     identifiers,
@@ -144,6 +227,7 @@ def import_company_list(
                     website=website or None,
                     city=lowered.get("city") or lowered.get("ort"),
                 )
+                how = "" if created else "über LEI"
             repo.add_alias(conn, found, name, f"list:{list_name}"[:30], document_id)
             exists = conn.execute(
                 select(db.list_membership.c.id).where(
@@ -161,5 +245,13 @@ def import_company_list(
                         imported_at=db.utcnow(),
                     )
                 )
+            if domain:
+                seen_domain[domain] = (found, line)
+            seen_name[key] = (found, line)
+            detail = "; ".join(([how] if how else []) + notes)
+            outcomes.append(
+                RowOutcome(line, name, "neu" if created else "zugeordnet", detail, found)
+            )
             ids.append(found)
-    return ImportResult(document_id, tuple(dict.fromkeys(ids)), skipped)
+    skipped = sum(1 for o in outcomes if o.status == "übersprungen")
+    return ImportResult(document_id, tuple(dict.fromkeys(ids)), skipped, tuple(outcomes))

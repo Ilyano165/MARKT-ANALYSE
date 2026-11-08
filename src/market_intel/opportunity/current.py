@@ -77,8 +77,13 @@ def rules_digest(cases: dict[str, UseCase], catalog: Catalog, model: Model) -> s
 
 def data_states(engine: Engine, company_ids: list[int] | None = None) -> dict[int, dict[str, Any]]:
     """Stand der Firmendaten je Unternehmen: {Tabelle: [Anzahl, jüngste ID]} plus Stammdaten."""
+    from ..maintenance import company_group
+
     states: dict[int, dict[str, Any]] = {}
+    requested = None if company_ids is None else set(company_ids)
     with engine.connect() as conn:
+        if company_ids is not None:  # zusammengeführte Datensätze mitlesen
+            company_ids = sorted({m for c in company_ids for m in company_group(conn, c)})
         companies = select(
             db.company.c.id,
             db.company.c.display_name,
@@ -106,6 +111,19 @@ def data_states(engine: Engine, company_ids: list[int] | None = None) -> dict[in
             for cid, count, newest in conn.execute(query):
                 if cid in states:
                     states[int(cid)][table.name] = [int(count), int(newest or 0)]
+        # Zusammengeführte Datensätze gehören zum Datenstand der Zielfirma
+        merged = conn.execute(
+            select(db.company.c.id, db.company.c.merged_into_id).where(
+                db.company.c.merged_into_id.is_not(None)
+            )
+        ).all()
+    for child, parent in merged:
+        if parent in states and child in states:
+            states[int(parent)][f"merged:{child}"] = {
+                k: v for k, v in states[int(child)].items() if k != "company"
+            }
+    if requested is not None:
+        states = {k: v for k, v in states.items() if k in requested}
     return states
 
 

@@ -147,7 +147,8 @@ def page(title: str, body: str, *, static: bool = False, data: Any = None) -> st
             ""
             if static
             else '<a href="/jobs">Rechercheaufträge</a><a href="/">Unternehmen</a>'
-            '<a href="/leads">Leads</a>'
+            '<a href="/leads">Leads</a><a href="/imports">Importe</a>'
+            '<a href="/maintenance">Datenpflege</a>'
         )
         + '<span class="muted">lokal · kostenlos · jede Zahl mit Quelle</span></header>'
         f"<main>{body}</main>{data_json}{map_json}{js}</body></html>"
@@ -183,13 +184,19 @@ def company_list(rows: list[dict[str, Any]], query: str) -> str:
 
 
 def profile_page(
-    profile: dict[str, Any], *, static: bool = False, csrf: str = "", base: str = ""
+    profile: dict[str, Any],
+    *,
+    static: bool = False,
+    csrf: str = "",
+    base: str = "",
+    extra: tuple[tuple[str, str, str], ...] = (),
 ) -> str:
+    """``extra``: zusätzliche Abschnitte (Schlüssel, Titel, HTML), z. B. Stammdatenpflege."""
     o = profile["overview"]
     nav = "".join(
         f'<a href="#{s["key"]}" data-tab="{s["key"]}">{e(s["label"])}</a>'
         for s in profile["sections"]
-    )
+    ) + "".join(f'<a href="#{k}" data-tab="{k}">{e(t)}</a>' for k, t, _ in extra)
     controls = ""
     if not static:
         cid = profile["company_id"]
@@ -218,8 +225,9 @@ def profile_page(
         ("history", _history(profile, base, static)),
         ("sources", _sources(profile, base, static)),
         ("notes", _notes(profile, static, csrf)),
+        *((k, h) for k, _, h in extra),
     ]
-    labels = dict((s["key"], s["label"]) for s in profile["sections"])
+    labels = dict((s["key"], s["label"]) for s in profile["sections"]) | {k: t for k, t, _ in extra}
     body = "".join(
         f'<section id="{key}" class="section" data-section="{key}"><h2>{e(labels[key])}</h2>'
         f"{html}</section>"

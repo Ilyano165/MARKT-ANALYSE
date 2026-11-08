@@ -238,3 +238,212 @@ def job_page(
         + (f"<p>Bericht: <code>{e(report_path)}</code></p>" if report_path else "")
         + f'<h2>Protokoll</h2><ul class="log">{log_rows or "<li>–</li>"}</ul>'
     )
+
+
+# ---------------------------------------------------------------------- Importe (Phase D)
+
+IMPORT_STATUS_CLASS = {
+    "neu": "st-ok",
+    "zugeordnet": "st-run",
+    "doppelt": "st-warn",
+    "übersprungen": "st-err",
+}
+
+
+def imports_page(
+    lists: list[dict[str, Any]],
+    customer_lists: list[str],
+    cases: dict[str, Any],
+    csrf: str,
+    result: dict[str, Any] | None = None,
+    error: str = "",
+) -> str:
+    """Upload, Ergebnis je Zeile, vorhandene Listen mit „Recherche starten“."""
+    customer_options = "".join(f'<option value="{e(n)}">{e(n)}</option>' for n in customer_lists)
+    report = ""
+    if result:
+        rows = "".join(
+            f'<tr><td class="num">{r["line"]}</td><td>'
+            + (
+                f'<a href="/company/{r["company_id"]}">{e(r["name"])}</a>'
+                if r["company_id"]
+                else e(r["name"] or "–")
+            )
+            + f'</td><td><span class="status {IMPORT_STATUS_CLASS.get(r["status"], "")}">{e(r["status"])}</span></td>'
+            f"<td>{e(r['detail'])}</td></tr>"
+            for r in result["rows"]
+        )
+        counts = result["counts"]
+        report = (
+            f'<section class="card" id="import-result"><h2>Ergebnis: {e(result["list_name"])}</h2>'
+            f'<div class="tiles">'
+            + "".join(
+                f'<div class="tile"><span class="v">{counts.get(k, 0)}</span><span class="l">{e(label)}</span></div>'
+                for k, label in (
+                    ("neu", "neu angelegt"),
+                    ("zugeordnet", "vorhandenen Firmen zugeordnet"),
+                    ("doppelt", "Dubletten in der Datei"),
+                    ("übersprungen", "fehlerhafte Zeilen"),
+                )
+            )
+            + "</div>"
+            '<div class="tablewrap"><table><thead><tr><th class="num">Zeile</th><th>Firma</th><th>Ergebnis</th>'
+            f"<th>Hinweis</th></tr></thead><tbody>{rows}</tbody></table></div></section>"
+        )
+    list_rows = "".join(
+        f"<tr><td>{e(item['list_name'])}"
+        + (
+            ' <span class="badge">Bestandskunden</span>'
+            if item["list_name"] in customer_lists
+            else ""
+        )
+        + f'</td><td class="num">{item["members"]}</td><td>{e(str(item["imported_at"])[:16])}</td>'
+        "<td>"
+        + (
+            ""
+            if item["list_name"] in customer_lists
+            else f'<form method="post" action="/imports/research" class="inline">'
+            f'<input type="hidden" name="csrf" value="{e(csrf)}">'
+            f'<input type="hidden" name="list_name" value="{e(item["list_name"])}">'
+            f"<button>Recherche für diese Liste starten</button></form>"
+        )
+        + "</td></tr>"
+        for item in lists
+    )
+    return (
+        "<h1>Importe</h1>"
+        + (f'<div class="errorbox" role="alert">{e(error)}</div>' if error else "")
+        + report
+        + '<section class="card"><h2>Firmenliste hochladen (CSV)</h2>'
+        '<p class="muted">Spalten: <code>name</code> (Pflicht), optional <code>website</code>, '
+        "<code>country</code> (ISO-Code), <code>lei</code>, <code>city</code>. Trennzeichen Komma, "
+        "Semikolon oder Tab. Zuordnung zu vorhandenen Firmen nur über LEI, Website oder einen früheren "
+        "Import derselben Liste – nie über einen bloßen Namensvergleich.</p>"
+        '<form class="jobform" method="post" action="/imports" enctype="multipart/form-data">'
+        f'<input type="hidden" name="csrf" value="{e(csrf)}">'
+        '<label for="file">Datei</label><input id="file" name="file" type="file" accept=".csv,text/csv" required>'
+        '<label for="kind">Art der Liste</label><select id="kind" name="kind">'
+        '<option value="list">Firmenliste (z. B. Messe, Verband)</option>'
+        f'<option value="customers">Bestandskunden ({e(", ".join(customer_lists) or "keine Liste konfiguriert")})</option></select>'
+        '<label for="list_name">Listenname (bei Firmenliste)</label><input id="list_name" name="list_name" maxlength="120" placeholder="z. B. FESPA 2026 Aussteller">'
+        + (
+            f'<label for="customer_list">Bestandskundenliste</label><select id="customer_list" name="customer_list">{customer_options}</select>'
+            if customer_lists
+            else ""
+        )
+        + '<label for="source_url">Herkunft (URL, nur wenn bekannt)</label><input id="source_url" name="source_url" maxlength="500">'
+        '<label for="publisher">Herausgeber (nur wenn bekannt)</label><input id="publisher" name="publisher" maxlength="200">'
+        '<button class="primary">Importieren</button></form></section>'
+        "<h2>Vorhandene Listen</h2>"
+        '<div class="tablewrap"><table><thead><tr><th>Liste</th><th class="num">Firmen</th><th>zuletzt importiert</th><th></th></tr></thead>'
+        f"<tbody>{list_rows or '<tr><td colspan=4>Noch keine Listen importiert.</td></tr>'}</tbody></table></div>"
+    )
+
+
+# ---------------------------------------------------------------------- Datenpflege (Phase D)
+
+
+def maintenance_page(
+    missing: list[dict[str, Any]],
+    groups: list[dict[str, Any]],
+    csrf: str,
+    query: str = "",
+    message: str = "",
+    error: str = "",
+) -> str:
+    def website_form(c: dict[str, Any]) -> str:
+        return (
+            f'<form method="post" action="/company/{c["id"]}/edit" class="rowform">'
+            f'<input type="hidden" name="csrf" value="{e(csrf)}"><input type="hidden" name="back" value="/maintenance">'
+            '<input type="hidden" name="field" value="website_domain">'
+            f'<input name="value" aria-label="Website für {e(c["display_name"])}" placeholder="firma.de" maxlength="300" required>'
+            '<input name="author" aria-label="Autor" placeholder="Autor" maxlength="120" required>'
+            "<button>Speichern</button></form>"
+        )
+
+    missing_rows = "".join(
+        f'<tr><td><a href="/company/{c["id"]}">{e(c["display_name"])}</a><br><span class="muted">{e(c["country_code"] or "Land unbekannt")}</span></td>'
+        f"<td>{website_form(c)}</td></tr>"
+        for c in missing
+    )
+
+    def group_block(g: dict[str, Any]) -> str:
+        members = g["companies"]
+        rows = "".join(
+            f'<tr><td><a href="/company/{c["id"]}">{e(c["display_name"])}</a> <span class="muted">#{c["id"]}</span>'
+            + (
+                ' <span class="badge">öffentlicher Auftraggeber</span>'
+                if c["entity_kind"] == "public_buyer"
+                else ""
+            )
+            + f'</td><td>{e(c["website_domain"] or "–")}</td><td>{e(c["country_code"] or "–")}</td><td class="num">{c["signals"]}</td></tr>'
+            for c in members
+        )
+        options = "".join(
+            f'<option value="{c["id"]}">{e(c["display_name"])} (#{c["id"]})</option>'
+            for c in members
+        )
+        ids = ",".join(str(c["id"]) for c in members)
+        return (
+            f'<div class="card"><p><strong>{e(g["reason"])}</strong>: {e(g["key"])}</p>'
+            '<div class="tablewrap"><table><thead><tr><th>Datensatz</th><th>Website</th><th>Land</th><th class="num">Signale</th></tr></thead>'
+            f"<tbody>{rows}</tbody></table></div>"
+            '<form method="post" action="/maintenance/merge" class="rowform">'
+            f'<input type="hidden" name="csrf" value="{e(csrf)}"><input type="hidden" name="ids" value="{ids}">'
+            f'<label>Behalten <select name="keep">{options}</select></label>'
+            '<input name="reason" placeholder="Begründung (Pflicht)" maxlength="500" required>'
+            '<input name="author" placeholder="Autor" maxlength="120" required>'
+            "<button>Zu einer Firma zusammenführen</button></form>"
+            '<form method="post" action="/maintenance/distinct" class="rowform">'
+            f'<input type="hidden" name="csrf" value="{e(csrf)}"><input type="hidden" name="ids" value="{ids}">'
+            '<input name="author" placeholder="Autor" maxlength="120" required>'
+            "<button>Sind verschiedene Firmen</button></form></div>"
+        )
+
+    return (
+        "<h1>Datenpflege</h1>"
+        + (f'<p class="okbox" role="status">{e(message)}</p>' if message else "")
+        + (f'<div class="errorbox" role="alert">{e(error)}</div>' if error else "")
+        + '<p class="muted">Fehlende Websites werden nie geraten. Eine eingetragene Website wird bei der '
+        "nächsten Recherche oder Neubewertung genutzt; jede Änderung steht mit Autor und Grund im "
+        "Änderungsprotokoll der Firma.</p>"
+        f"<h2>Mögliche Dubletten ({len(groups)})</h2>"
+        + ("".join(group_block(g) for g in groups) or "<p>Keine offenen Dubletten-Hinweise.</p>")
+        + f"<h2>Firmen ohne Website ({len(missing)}{'+' if len(missing) >= 200 else ''})</h2>"
+        '<form class="search" method="get" action="/maintenance"><label for="mq">Filter</label>'
+        f'<input id="mq" name="q" value="{e(query)}" placeholder="Name"><button>Filtern</button></form>'
+        '<div class="tablewrap"><table><thead><tr><th>Firma</th><th>Website eintragen</th></tr></thead>'
+        f"<tbody>{missing_rows or '<tr><td colspan=2>Keine Firma ohne Website.</td></tr>'}</tbody></table></div>"
+    )
+
+
+def company_edit_block(company: dict[str, Any], edits: list[dict[str, Any]], csrf: str) -> str:
+    """Stammdaten bearbeiten (auf der Profilseite) mit Änderungsprotokoll."""
+    cid = company["id"]
+
+    def form(field: str, label: str, value: str, placeholder: str) -> str:
+        return (
+            f'<form method="post" action="/company/{cid}/edit" class="rowform">'
+            f'<input type="hidden" name="csrf" value="{e(csrf)}"><input type="hidden" name="field" value="{field}">'
+            f'<input type="hidden" name="back" value="/company/{cid}#edit">'
+            f'<label>{e(label)} <input name="value" value="{e(value)}" placeholder="{e(placeholder)}" maxlength="300"></label>'
+            '<input name="reason" placeholder="Grund" maxlength="500">'
+            '<input name="author" placeholder="Autor" maxlength="120" required>'
+            "<button>Speichern</button></form>"
+        )
+
+    log = "".join(
+        f"<li>{_ts(ed['created_at'])} · {e(ed['author'])}: {e(ed['field'])} "
+        f"„{e(ed['old_value'] or '–')}“ → „{e(ed['new_value'] or '–')}“"
+        + (f" ({e(ed['reason'])})" if ed["reason"] else "")
+        + "</li>"
+        for ed in edits
+    )
+    return (
+        '<p class="muted">Leere Website = Website entfernen (z. B. falsche Zuordnung). '
+        "Es wird nichts geraten.</p>"
+        + form("website_domain", "Website", company.get("website_domain") or "", "firma.de")
+        + form("display_name", "Name", company.get("display_name") or "", "")
+        + form("country_code", "Land (ISO)", company.get("country_code") or "", "DE")
+        + f'<h3>Änderungsprotokoll</h3><ul class="log">{log or "<li>Keine manuellen Änderungen.</li>"}</ul>'
+    )

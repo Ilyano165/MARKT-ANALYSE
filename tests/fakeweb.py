@@ -468,9 +468,35 @@ class FakeWeb:
                         "buyer-name": {"deu": ["Stadtwerke Teststadt"]},
                         "buyer-country": ["DEU"],
                         "publication-date": "2026-06-01+02:00",
-                    }
+                        "notice-type": "cn-standard",
+                    },
+                    # Zuschlag, Suchbegriff im Titel, ein Gewinner (Struktur wie TED v3 live)
+                    {
+                        "publication-number": "000002-2026",
+                        "notice-title": {"deu": "Fahrzeugbeschriftung Rettungsdienst Teststadt"},
+                        "buyer-name": {"deu": ["Landkreis Testkreis"]},
+                        "buyer-country": ["DEU"],
+                        "publication-date": "2026-07-01+02:00",
+                        "notice-type": "can-standard",
+                        "winner-name": {"deu": ["Folien Zuschlag GmbH"]},
+                        "winner-country": ["DEU"],
+                        "winner-identifier": ["DE 987 654 321"],
+                    },
+                    # Zuschlag mit mehreren Losen, Begriff nur im Volltext – Gewinner nicht
+                    # zuordenbar (wie 532438-2024: Fahrzeuge, Ausbau, Beschriftung)
+                    {
+                        "publication-number": "000003-2026",
+                        "notice-title": {"deu": "Lieferung Führungskraftwagen"},
+                        "buyer-name": {"deu": ["Stadtverwaltung Testort"]},
+                        "buyer-country": ["DEU"],
+                        "publication-date": "2026-08-01+02:00",
+                        "notice-type": "can-standard",
+                        "winner-name": {"deu": ["Fahrzeugbau Groß AG", "Folien Los3 GmbH"]},
+                        "winner-country": ["DEU", "DEU"],
+                        "winner-identifier": ["DE111111111", "DE 222 222 222"],
+                    },
                 ],
-                "totalNoticeCount": 1,
+                "totalNoticeCount": 3,
             },
         )
 

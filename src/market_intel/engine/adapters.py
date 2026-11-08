@@ -325,6 +325,9 @@ class WebsiteAdapter(BaseAdapter):
 
 
 class TedAdapter(BaseAdapter):
+    """Zuschlagsempfänger passender Ausschreibungen als Kandidaten; Auftraggeber nur als
+    Bedarfssignal (sie kaufen die Leistung ein und sind keine Verarbeiter)."""
+
     key = "ted"
     source_keys = ("ted",)
     kinds = frozenset({Kind.NEWS})
@@ -342,10 +345,11 @@ class TedAdapter(BaseAdapter):
                     )
                     if doc_id is None:
                         continue
-                    for company_id, notice in ted.ingest_notices(ctx, notices, doc_id, key):
+                    ted.ingest_notices(ctx, notices, doc_id, key)  # Bedarfssignale
+                    for company_id, notice in ted.ingest_winners(ctx, notices, doc_id, key, term):
                         evidence = EvidenceDraft(
                             doc_id,
-                            f"notices[publication-number={notice.number}]",
+                            f"notices[publication-number={notice.number}].notice-title",
                             notice.title[:300],
                             "api_field",
                             RULES_VERSION,
@@ -356,12 +360,14 @@ class TedAdapter(BaseAdapter):
                             company_id,
                             key,
                             "weak",
-                            f"Öffentlicher Auftraggeber schreibt aus („{term}“); Kunde von "
-                            "Yellotools ist eher der ausführende Betrieb",
+                            f"Zuschlag in öffentlicher Ausschreibung („{term}“ im Titel); ob "
+                            "der Betrieb selbst verarbeitet oder weitervergibt, ist nicht belegt",
                             [evidence],
                             RULES_VERSION,
                         )
-                        out.append(Candidate(company_id, f"Ausschreibung „{term}“", evidence))
+                        out.append(
+                            Candidate(company_id, f"Zuschlag Ausschreibung „{term}“", evidence)
+                        )
         return out
 
 

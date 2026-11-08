@@ -76,16 +76,20 @@ class Hit:
 
 
 def company_documents(engine: Engine, company_id: int) -> list[Document]:
-    """Alle Dokumente, die über gespeicherte Belege mit dem Unternehmen verbunden sind."""
+    """Alle Dokumente, die über gespeicherte Belege mit dem Unternehmen verbunden sind –
+    einschließlich der in diese Firma zusammengeführten Datensätze (Datenpflege)."""
+    from ..maintenance import company_group
+
     ids: set[int] = set()
     with engine.connect() as conn:
+        group = company_group(conn, company_id)
         for name in _LINKED_TABLES:
             table = db.metadata.tables[name]
             ids.update(
                 int(r)
                 for r in conn.execute(
                     select(table.c.source_document_id).where(
-                        table.c.company_id == company_id,
+                        table.c.company_id.in_(group),
                         table.c.source_document_id.is_not(None),
                     )
                 ).scalars()
@@ -93,7 +97,7 @@ def company_documents(engine: Engine, company_id: int) -> list[Document]:
         fit_evidence: list[int] = []
         for raw in conn.execute(
             select(db.company_product_fit.c.evidence_ids).where(
-                db.company_product_fit.c.company_id == company_id
+                db.company_product_fit.c.company_id.in_(group)
             )
         ).scalars():
             fit_evidence.extend(int(i) for i in json.loads(raw or "[]"))
