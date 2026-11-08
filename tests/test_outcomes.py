@@ -202,4 +202,4 @@ def test_ui_records_outcome(world: dict[str, Any], engine: Engine) -> None:
     finally:
         server.shutdown()
         server.server_close()
-    assert db.SCHEMA_VERSION == 5
+    assert db.SCHEMA_VERSION >= 5  # Schema 5: sales_outcome

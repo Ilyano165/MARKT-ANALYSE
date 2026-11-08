@@ -46,6 +46,9 @@ IGNORED_TABLES = frozenset(
         "investigation_log",
         "validation_issue",
         "data_gap",
+        # Kennzahl-Änderungen für den Bericht; entstehen nach der Bewertung (Schritt 8) und
+        # gehen nicht in sie ein. profile_change dagegen fließt ins Wachstum ein.
+        "change_event",
     }
 )
 FRESHNESS_LABELS = {

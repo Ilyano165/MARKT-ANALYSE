@@ -18,12 +18,15 @@ from datetime import date
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from sqlalchemy import Engine, func, or_, select
 
-from .. import db, repo
+from .. import db, jobs, repo
+from ..engine.budget import Budget
+from ..engine.strategy import ResearchRequest
 from ..intel.competitors import analyze_competitors
 from ..intel.manual import ManualEntryError, document_plain_text
 from ..intel.profile import build_profile, observation_detail
@@ -35,7 +38,7 @@ from ..opportunity.report import opportunity_report
 from ..opportunity.watch import STATUSES, set_status
 from ..products import Catalog, load_products
 from ..usecases import UseCase, load_use_cases
-from . import render
+from . import render, views
 
 CSP = (
     "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
@@ -96,8 +99,15 @@ class App:
         host: str,
         port: int,
         discovery: Discovery | None = None,
+        *,
+        worker: Any = None,
+        out_dir: Path | None = None,
+        llm_available: bool = False,
     ) -> None:
         self.engine = engine
+        self.worker = worker  # jobs.Worker oder None (Aufträge warten dann)
+        self.out_dir = out_dir or Path("out")
+        self.llm_available = llm_available
         if discovery is None:
             discovery = (load_use_cases(), load_products(), load_model())
         self.cases: dict[str, UseCase] = discovery[0]
@@ -271,6 +281,56 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                             ),
                         )
                     )
+                return
+            if path == "/jobs":
+                items = jobs.list_jobs(app.engine)
+                prog = {j["id"]: jobs.progress(app.engine, j) for j in items}
+                self._html(
+                    render.page(
+                        "Rechercheaufträge",
+                        views.jobs_page(items, prog, app.worker is not None and app.worker.alive()),
+                    )
+                )
+                return
+            if path == "/jobs/new":
+                self._html(
+                    render.page(
+                        "Neuer Rechercheauftrag",
+                        views.new_job_page(app.cases, app.csrf, app.llm_available),
+                    )
+                )
+                return
+            match = re.fullmatch(r"/jobs/(\d+)(\.json)?", path)
+            if match:
+                job = jobs.get_job(app.engine, int(match.group(1)))
+                if job is None:
+                    self._error(404, "Auftrag nicht gefunden")
+                    return
+                prog = jobs.progress(app.engine, job)
+                if match.group(2):
+                    payload = json.dumps(prog, ensure_ascii=False, default=str)
+                    self._send(200, payload.encode("utf-8"), "application/json; charset=utf-8")
+                    return
+                report_path = None
+                if job["research_run_id"]:
+                    from ..research import run_parameters
+
+                    out = run_parameters(app.engine, job["research_run_id"]).get("out_dir")
+                    candidate = Path(out) / "bericht.md" if out else None
+                    report_path = str(candidate) if candidate and candidate.exists() else None
+                self._html(
+                    render.page(
+                        job["title"] or "Auftrag",
+                        views.job_page(
+                            job,
+                            prog,
+                            jobs.events_of(app.engine, job["id"]),
+                            job_results(app.engine, job.get("research_run_id")),
+                            app.csrf,
+                            report_path,
+                        ),
+                    )
+                )
                 return
             match = re.fullmatch(r"/company/(\d+)/opportunity", path)
             if match:
@@ -476,6 +536,41 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                     return
                 self._redirect(f"/company/{company_id}/opportunity#outcome")
                 return
+            if path == "/jobs":
+                try:
+                    job_id = create_job_from_form(app, form)
+                except (jobs.JobError, ValueError) as exc:
+                    self._html(
+                        render.page(
+                            "Neuer Rechercheauftrag",
+                            views.new_job_page(
+                                app.cases, app.csrf, app.llm_available, str(exc), form
+                            ),
+                        ),
+                        HTTPStatus.BAD_REQUEST,
+                    )
+                    return
+                self._redirect(f"/jobs/{job_id}")
+                return
+            match = re.fullmatch(r"/jobs/(\d+)/(pause|cancel|resume)", path)
+            if match:
+                job_id = int(match.group(1))
+                action: Any = {
+                    "pause": jobs.request_pause,
+                    "cancel": jobs.request_cancel,
+                    "resume": jobs.resume_job,
+                }[match.group(2)]
+                try:
+                    action(app.engine, job_id)
+                except jobs.JobError as exc:
+                    self._error(HTTPStatus.CONFLICT, str(exc))
+                    return
+                self._redirect(f"/jobs/{job_id}")
+                return
+            if path == "/assessments/refresh" and app.worker is not None:
+                job_id = jobs.create_reassess_job(app.engine)
+                self._redirect(f"/jobs/{job_id}")
+                return
             if path == "/assessments/refresh":
                 result = refresh(
                     app.engine, app.cases, app.catalog, app.model, trigger="lead-liste"
@@ -496,6 +591,97 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
             self._error(404, "nicht gefunden")
 
     return Handler
+
+
+def _list(form: dict[str, list[str]], name: str, sep: str = ",") -> list[str]:
+    values: list[str] = []
+    for raw in form.get(name, []):
+        values.extend(v.strip() for v in raw.replace("\r", "").split(sep) if v.strip())
+    return list(dict.fromkeys(values))
+
+
+def _bounded(form: dict[str, list[str]], name: str, default: int, low: int, high: int) -> int:
+    raw = form.get(name, [""])[0].strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"„{name}“ muss eine ganze Zahl sein") from exc
+    if not low <= value <= high:
+        raise ValueError(f"„{name}“ muss zwischen {low} und {high} liegen")
+    return value
+
+
+def create_job_from_form(app: App, form: dict[str, list[str]]) -> int:
+    """Formular → Rechercheauftrag (geprüft; ungültige Eingaben werden gemeldet)."""
+    use_cases = [u for u in form.get("use_case", []) if u]
+    unknown = [u for u in use_cases if u not in app.cases]
+    if unknown:
+        raise ValueError(f"Unbekannte Anwendungsfälle: {', '.join(unknown)}")
+    countries = [c.upper() for c in form.get("country", []) if re.fullmatch(r"[A-Za-z]{2}", c)]
+    request = ResearchRequest(
+        task=form.get("task", [""])[0].strip()[:2000],
+        countries=countries,
+        industries=_list(form, "industry"),
+        companies=_list(form, "companies", "\n"),
+        use_cases=use_cases,
+        keywords=_list(form, "keywords"),
+        max_candidates=_bounded(form, "max_candidates", 10, 1, 200),
+    )
+    budget = Budget(
+        max_requests=_bounded(form, "max_requests", 300, 10, 5000),
+        max_candidates=request.max_candidates,
+        max_seconds=_bounded(form, "max_minutes", 30, 1, 600) * 60,
+    )
+    stamp = db.utcnow().strftime("%Y%m%d-%H%M%S")
+    return jobs.create_research_job(
+        app.engine,
+        request,
+        budget,
+        app.out_dir / f"auftrag-{stamp}",
+        title=form.get("title", [""])[0],
+        no_llm=not (app.llm_available and form.get("use_llm", [""])[0] == "1"),
+    )
+
+
+def job_results(engine: Engine, run_id: int | None) -> list[dict[str, Any]]:
+    """Ausgewählte Unternehmen eines Auftrags mit ihrer gespeicherten Bewertung."""
+    if not run_id:
+        return []
+    from ..opportunity.assess import latest_assessments
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(
+                db.run_candidate.c.company_id,
+                db.run_candidate.c.reason,
+                db.company.c.display_name,
+                db.company.c.website_domain,
+                db.company.c.country_code,
+            )
+            .join(db.company, db.company.c.id == db.run_candidate.c.company_id)
+            .where(db.run_candidate.c.run_id == run_id, db.run_candidate.c.selected.is_(True))
+            .order_by(db.run_candidate.c.id)
+        ).all()
+    out: dict[int, dict[str, Any]] = {}
+    for r in rows:
+        if r.company_id in out:
+            continue
+        latest = latest_assessments(engine, r.company_id)
+        best = latest[0] if latest else None
+        details = json.loads(best["details"]) if best else {}
+        out[r.company_id] = {
+            "id": r.company_id,
+            "name": r.display_name,
+            "website": r.website_domain,
+            "country": r.country_code,
+            "reason": r.reason,
+            "fit": best["product_relevance"] if best else None,
+            "fit_status": (details.get("assessment") or {}).get("fit_status"),
+            "segment": (details.get("segment") or {}).get("name"),
+        }
+    return sorted(out.values(), key=lambda x: -(x["fit"] or -1))
 
 
 def _csv(rows: list[dict[str, Any]]) -> str:
@@ -524,15 +710,22 @@ def make_server(
     host: str = "127.0.0.1",
     port: int = 8765,
     discovery: Discovery | None = None,
+    **options: Any,
 ) -> ThreadingHTTPServer:
     """Server erzeugen (Port 0 = frei wählen, für Tests).
 
     ``discovery`` = (Anwendungsfälle, Produktmatrix, Bewertungsmodell); Standard: mitgeliefert.
+    ``options``: ``worker`` (Hintergrund-Worker), ``out_dir``, ``llm_available``.
     """
-    server = ThreadingHTTPServer((host, port), make_handler(App(engine, host, port, discovery)))
+    server = ThreadingHTTPServer(
+        (host, port), make_handler(App(engine, host, port, discovery, **options))
+    )
     if port == 0:
         actual = server.server_address[1]
-        server.RequestHandlerClass = make_handler(App(engine, host, int(actual), discovery))
+        server.RequestHandlerClass = make_handler(
+            App(engine, host, int(actual), discovery, **options)
+        )
+    server.daemon_threads = True
     return server
 
 

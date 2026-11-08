@@ -143,7 +143,12 @@ def page(title: str, body: str, *, static: bool = False, data: Any = None) -> st
         f"<title>{e(title)}</title>{css}</head><body>"
         f'<header class="top"><a class="brand" href="{"#" if static else "/"}">'
         "Market Intelligence</a>"
-        + ("" if static else '<a href="/">Unternehmen</a><a href="/leads">Leads</a>')
+        + (
+            ""
+            if static
+            else '<a href="/jobs">Rechercheaufträge</a><a href="/">Unternehmen</a>'
+            '<a href="/leads">Leads</a>'
+        )
         + '<span class="muted">lokal · kostenlos · jede Zahl mit Quelle</span></header>'
         f"<main>{body}</main>{data_json}{map_json}{js}</body></html>"
     )

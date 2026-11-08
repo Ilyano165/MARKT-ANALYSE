@@ -159,10 +159,96 @@ def cmd_research(args: argparse.Namespace) -> int:
         years=args.years,
         max_candidates=args.max_candidates or 25,
         refresh=args.refresh,
+        keywords=args.keyword,
     )
+    if args.background:
+        from .jobs import create_research_job
+
+        job_id = create_research_job(
+            engine, request, _budget(args), Path(args.out), no_llm=args.no_llm
+        )
+        print(
+            f"Auftrag {job_id} eingereiht. Verarbeitung durch die Anwendung oder `mi worker`; "
+            f"Stand: `mi jobs show {job_id}`."
+        )
+        return 0
     run_id = create_research(engine, request, _budget(args), Path(args.out))
     print(f"Auftrag {run_id} angelegt. Strg+C pausiert; fortsetzen mit `mi resume {run_id}`.")
     return _run_and_report(settings, engine, cases, run_id, no_llm=args.no_llm)
+
+
+def cmd_worker(args: argparse.Namespace) -> int:
+    from .jobs import Worker, load_runtime
+
+    settings, engine, cases = _setup(args)
+    worker = Worker(engine, load_runtime(settings, cases))
+    if args.once:
+        from .jobs import recover_stale
+
+        recover_stale(engine)
+        done = worker.run_once()
+        print(f"Auftrag {done} verarbeitet" if done else "Kein wartender Auftrag")
+        return 0
+    worker.start()
+    print("Worker läuft (Beenden: Strg+C – ein laufender Auftrag wird angehalten).")
+    try:
+        while worker.alive():
+            worker._stop.wait(1.0)
+    except KeyboardInterrupt:
+        print("Worker wird beendet …")
+    finally:
+        worker.stop(timeout=60)
+    return 0
+
+
+def cmd_jobs(args: argparse.Namespace) -> int:
+    from .jobs import (
+        STATUS_LABELS,
+        JobError,
+        events_of,
+        get_job,
+        list_jobs,
+        progress,
+        request_cancel,
+        request_pause,
+        resume_job,
+    )
+
+    _, engine, _ = _setup(args)
+    if args.action == "list":
+        for item in list_jobs(engine):
+            print(
+                f"{item['id']:>4}  {STATUS_LABELS.get(item['status'], item['status']):<30} "
+                f"{item['kind']:<9} {item['title'][:60]}"
+            )
+        return 0
+    if args.job_id is None:
+        print("Bitte die Auftragsnummer angeben")
+        return 2
+    try:
+        if args.action == "pause":
+            print(request_pause(engine, args.job_id))
+        elif args.action == "cancel":
+            print(request_cancel(engine, args.job_id))
+        elif args.action == "resume":
+            resume_job(
+                engine, args.job_id, max_requests=args.max_requests, max_seconds=args.max_seconds
+            )
+            print("wieder eingereiht")
+    except JobError as exc:
+        print(exc)
+        return 2
+    job = get_job(engine, args.job_id)
+    if job is None:
+        print(f"Auftrag {args.job_id} existiert nicht")
+        return 2
+    prog = progress(engine, job)
+    print(f"Auftrag {job['id']}: {prog['status_label']} – {prog['phase']}")
+    for key, value in prog["counts"].items():
+        print(f"  {key}: {value}")
+    for ev in events_of(engine, job["id"])[-15:]:
+        print(f"  {str(ev['at'])[:19]} [{ev['level']}] {ev['message']}")
+    return 0
 
 
 def cmd_prove(args: argparse.Namespace) -> int:
@@ -393,6 +479,10 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--use-cases", help="eigene Anwendungsfall-Datei (TOML)")
     r.add_argument("--out", default="out", help="Ausgabeordner")
     r.add_argument("--no-llm", action="store_true")
+    r.add_argument("--keyword", nargs="*", default=[], help="zusätzliche Suchbegriffe")
+    r.add_argument(
+        "--background", action="store_true", help="als Hintergrundauftrag einreihen (Worker)"
+    )
     _budget_args(r)
     r.set_defaults(func=cmd_research)
 
@@ -437,6 +527,18 @@ def build_parser() -> argparse.ArgumentParser:
     idoc.add_argument("--publisher")
     idoc.add_argument("--title")
     idoc.set_defaults(func=cmd_import_document)
+
+    wk = sub.add_parser("worker", help="Hintergrundaufträge verarbeiten (ohne Oberfläche)")
+    wk.add_argument("--once", action="store_true", help="nur einen Auftrag verarbeiten")
+    wk.set_defaults(func=cmd_worker)
+
+    jb = sub.add_parser("jobs", help="Hintergrundaufträge anzeigen und steuern")
+    jb.add_argument("action", nargs="?", default="list",
+                    choices=["list", "show", "pause", "cancel", "resume"])  # fmt: skip
+    jb.add_argument("job_id", nargs="?", type=int)
+    jb.add_argument("--max-requests", type=int, help="beim Fortsetzen: höheres Abruflimit")
+    jb.add_argument("--max-seconds", type=int, help="beim Fortsetzen: höheres Zeitlimit")
+    jb.set_defaults(func=cmd_jobs)
 
     sub.add_parser("sources", help="Quellen mit Lizenz, Kosten, Status").set_defaults(
         func=cmd_sources

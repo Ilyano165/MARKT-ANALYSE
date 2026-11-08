@@ -32,7 +32,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.types import TypeDecorator
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 class DecimalText(TypeDecorator[Decimal]):
@@ -690,6 +690,38 @@ sales_outcome = Table(  # Vertriebsergebnisse – append-only; Korrektur = neuer
     # Bewertung, die beim Eintrag galt (für die spätere Auswertung Bewertung ↔ Ergebnis)
     Column("assessment_id", Integer, ForeignKey("opportunity_score.id")),
     Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+job = Table(  # Hintergrundaufträge (Recherche, Neubewertung, Import) – Schema 6
+    "job",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("kind", String(20), nullable=False),  # research | reassess
+    Column("title", Text, nullable=False, default=""),
+    # queued | running | paused | cancelled | completed | completed_with_gaps |
+    # budget_exhausted | failed
+    Column("status", String(30), nullable=False),
+    Column("params", Text, nullable=False, default="{}"),
+    Column("research_run_id", Integer, ForeignKey("research_run.id")),
+    Column("control", String(10), nullable=False, default=""),  # '' | pause | cancel
+    Column("worker_id", String(80)),
+    Column("attempts", Integer, nullable=False, default=0),
+    Column("heartbeat_at", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("started_at", DateTime(timezone=True)),
+    Column("finished_at", DateTime(timezone=True)),
+    Column("error", Text),
+    Column("result", Text, nullable=False, default="{}"),
+)
+
+job_event = Table(  # Protokoll je Auftrag (nur anhängen)
+    "job_event",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("job_id", Integer, ForeignKey("job.id"), nullable=False),
+    Column("at", DateTime(timezone=True), nullable=False),
+    Column("level", String(10), nullable=False),  # info | warn | error
+    Column("message", Text, nullable=False),
 )
 
 schema_info = Table(

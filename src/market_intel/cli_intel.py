@@ -181,7 +181,21 @@ def cmd_ui(args: argparse.Namespace) -> int:
             "Die Oberfläche hat keine Anmeldung. Andere Adressen als 127.0.0.1 nur mit "
             "--allow-lan in vertrauenswürdigen Netzen."
         )
-    server = make_server(engine, args.host, args.port, discovery)
+    worker = None
+    if not args.no_worker:
+        from .jobs import Runtime, Worker
+
+        worker = Worker(engine, Runtime(settings, cases, discovery[1], discovery[2]))
+        worker.start()
+    server = make_server(
+        engine,
+        args.host,
+        args.port,
+        discovery,
+        worker=worker,
+        out_dir=settings.output_dir,
+        llm_available=bool(settings.llm.enabled),
+    )
     print(f"Oberfläche: http://{args.host}:{server.server_address[1]}/  (Beenden: Strg+C)")
     try:
         server.serve_forever()
@@ -189,6 +203,8 @@ def cmd_ui(args: argparse.Namespace) -> int:
         print("beendet")
     finally:
         server.server_close()
+        if worker is not None:
+            worker.stop(timeout=30)
     return 0
 
 
@@ -391,6 +407,9 @@ def add_commands(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> No
     u.add_argument("--host", default="127.0.0.1")
     u.add_argument("--port", type=int, default=8765)
     u.add_argument("--allow-lan", action="store_true", help="andere Adressen erlauben (ohne Login)")
+    u.add_argument(
+        "--no-worker", action="store_true", help="keine Hintergrundaufträge in diesem Prozess"
+    )
     u.set_defaults(func=cmd_ui)
 
     c = sub.add_parser("competitors", help="Wettbewerbsanalyse (ohne Marktanteile)")

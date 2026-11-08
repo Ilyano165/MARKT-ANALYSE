@@ -109,6 +109,7 @@ class ResearchRequest:
     years: int | None = None
     max_candidates: int = 25
     refresh: bool = False
+    keywords: list[str] = field(default_factory=list)  # zusätzliche Suchbegriffe (Name, Website)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -192,6 +193,8 @@ def build_strategy(
     concepts: list[str] = []
     _add(industry_terms, request.industries, origin, "filter")
     _add(name_terms, request.industries, origin, "filter")
+    _add(name_terms, request.keywords, origin, "filter")
+    _add(web_terms, request.keywords, origin, "filter")
     for concept in load_lexicon():
         if any(re.search(t, text) for t in concept.get("triggers", [])):
             concepts.append(str(concept["key"]))

@@ -280,3 +280,43 @@
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
+
+/* Rechercheauftrag: Fortschritt aus /jobs/<id>.json (gespeicherte Zahlen, keine Schätzung).
+ * Läuft nur, solange der Auftrag wartet oder läuft; bei Statuswechsel wird die Seite neu
+ * geladen (Ergebnisse, Protokoll, Knöpfe). */
+(function () {
+  "use strict";
+  var box = document.getElementById("job-progress");
+  if (!box || box.getAttribute("data-live") !== "1" || !window.fetch) return;
+  var url = box.getAttribute("data-url");
+  var start = null;
+  function tick() {
+    fetch(url, { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (p) {
+        if (start === null) start = p.status + "|" + p.control;
+        var phase = box.querySelector('[data-field="phase"]');
+        if (phase) phase.textContent = p.phase;
+        Object.keys(p.counts || {}).forEach(function (k) {
+          var n = box.querySelector('[data-count="' + k + '"]');
+          if (n) n.textContent = String(p.counts[k]);
+        });
+        var rows = box.querySelectorAll("table.steps tbody tr");
+        (p.steps || []).forEach(function (s, i) {
+          var cells = rows[i] ? rows[i].querySelectorAll("td") : [];
+          if (cells.length === 6) {
+            cells[2].textContent = s.ok; cells[3].textContent = s.failed;
+            cells[4].textContent = s.skipped; cells[5].textContent = s.open;
+          }
+        });
+        if (p.status + "|" + p.control !== start) { location.reload(); return; }
+        setTimeout(tick, 2000);
+      })
+      .catch(function () {
+        var phase = box.querySelector('[data-field="phase"]');
+        if (phase) phase.textContent = "Verbindung zur Anwendung unterbrochen – neuer Versuch …";
+        setTimeout(tick, 4000);
+      });
+  }
+  setTimeout(tick, 1000);
+})();

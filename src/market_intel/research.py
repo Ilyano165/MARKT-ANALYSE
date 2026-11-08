@@ -615,10 +615,19 @@ def _budget_problem(ctx: Ctx, run_id: int, started: float, previous_seconds: flo
 
 
 def execute(
-    ctx: Ctx, run_id: int, cases: dict[str, UseCase], progress: Callable[[str], None] = print
+    ctx: Ctx,
+    run_id: int,
+    cases: dict[str, UseCase],
+    progress: Callable[[str], None] = print,
+    control: Callable[[], str] | None = None,
 ) -> str:
     """Offene Aufgaben ausführen. Endstatus: completed, completed_with_gaps, paused,
-    budget_exhausted."""
+    budget_exhausted, cancelled.
+
+    ``control`` (Hintergrund-Worker) wird vor jeder Aufgabe gefragt: ``"pause"`` hält den
+    Auftrag an (fortsetzbar), ``"cancel"`` bricht ab; offene Aufgaben bleiben als „pending“
+    nachvollziehbar gespeichert. Eine laufende Aufgabe wird nie mittendrin abgebrochen.
+    """
     ctx.run_id = run_id
     ctx.gateway.run_id = run_id
     summary = _summary(ctx.engine, run_id)
@@ -635,6 +644,13 @@ def execute(
             task = _next_task(ctx.engine, run_id)
             if task is None:
                 break
+            requested = control() if control is not None else ""
+            if requested == "pause":
+                ctx.note("Auftrag auf Wunsch angehalten – fortsetzbar")
+                return _finish(ctx, run_id, "paused", started, previous_seconds)
+            if requested == "cancel":
+                ctx.note("Auftrag auf Wunsch abgebrochen")
+                return _finish(ctx, run_id, "cancelled", started, previous_seconds)
             params = json.loads(task["params"])
             _set_task(
                 ctx.engine,
