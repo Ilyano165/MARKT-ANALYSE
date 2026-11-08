@@ -1041,6 +1041,7 @@ def _with_source(table: Any, company_id: int, *extra: Any) -> Any:
             db.source_document.c.url.label("source_url"),
             db.source_document.c.source_key,
             db.source_document.c.retrieved_at,
+            db.source_document.c.published_at,
         )
         .outerjoin(db.evidence, db.evidence.c.id == table.c.evidence_id)
         .join(db.source_document, db.source_document.c.id == table.c.source_document_id)

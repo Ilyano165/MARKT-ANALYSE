@@ -447,3 +447,202 @@ def company_edit_block(company: dict[str, Any], edits: list[dict[str, Any]], csr
         + form("country_code", "Land (ISO)", company.get("country_code") or "", "DE")
         + f'<h3>Änderungsprotokoll</h3><ul class="log">{log or "<li>Keine manuellen Änderungen.</li>"}</ul>'
     )
+
+
+# ---------------------------------------------------------------------- Übersicht und Stammseiten
+
+
+def _tile(value: Any, label: str, href: str = "") -> str:
+    inner = f'<span class="v">{e(value)}</span><span class="l">{e(label)}</span>'
+    return (
+        f'<a class="tile link" href="{e(href)}">{inner}</a>'
+        if href
+        else f'<div class="tile">{inner}</div>'
+    )
+
+
+def dashboard_page(
+    stats: dict[str, Any], recent_jobs: list[dict[str, Any]], top_leads: list[dict[str, Any]]
+) -> str:
+    """Startseite: echter Stand aus der Datenbank, schnelle Wege zu den Arbeitsabläufen."""
+    jobs_rows = "".join(
+        f'<tr><td><a href="/jobs/{j["id"]}">{e(j["title"] or f"Auftrag {j['id']}")}</a></td>'
+        f"<td>{status_badge(j['status'])}</td><td>{_ts(j['created_at'])}</td></tr>"
+        for j in recent_jobs
+    )
+    lead_rows = "".join(
+        f'<tr><td><a href="/company/{r["firma_id"]}/opportunity">{e(r["firma"])}</a></td>'
+        f'<td class="num">{e(r["prioritaet"])}</td><td>{e(r["belegstatus"].split(":")[0])}</td>'
+        f"<td>{e(r['anwendungsfall'])}</td></tr>"
+        for r in top_leads
+    )
+    hints = []
+    if stats["stale"]:
+        hints.append(
+            f'<li><a href="/leads">{stats["stale"]} veraltete Bewertungen</a> – neu bewerten</li>'
+        )
+    if stats.get("unassessed"):
+        hints.append(
+            f'<li><a href="/leads">{stats["unassessed"]} Unternehmen noch nicht bewertet</a></li>'
+        )
+    if stats["missing_websites"]:
+        hints.append(
+            f'<li><a href="/maintenance">{stats["missing_websites"]} Firmen ohne Website</a> – ohne Website keine eigenen Belege</li>'
+        )
+    if stats["duplicates"]:
+        hints.append(
+            f'<li><a href="/maintenance">{stats["duplicates"]} mögliche Dubletten</a> prüfen</li>'
+        )
+    if not stats["backup"]:
+        hints.append('<li><a href="/settings">Noch keine Datensicherung</a></li>')
+    if not stats["contact_email"]:
+        hints.append(
+            '<li><a href="/settings">Kontaktadresse fehlt</a> – SEC und Wikimedia verlangen sie im User-Agent</li>'
+        )
+    return (
+        '<div class="pagehead"><h1>Übersicht</h1>'
+        '<a class="button primary" href="/jobs/new">Neuer Rechercheauftrag</a></div>'
+        '<div class="tiles">'
+        + _tile(stats["companies"], "Unternehmen", "/companies")
+        + _tile(stats["leads"], "Leads mit Produkt-Fit", "/leads")
+        + _tile(stats["running"], "Aufträge laufen/warten", "/jobs")
+        + _tile(stats["customers"], "Bestandskunden", "/customers")
+        + _tile(stats["sources_ok"], "erfolgreiche Abrufe (30 Tage)", "/sources")
+        + "</div>"
+        + (
+            f'<section class="card"><h2>Zu erledigen</h2><ul>{"".join(hints)}</ul></section>'
+            if hints
+            else ""
+        )
+        + '<div class="cols"><section class="card"><h2>Letzte Aufträge</h2>'
+        + (
+            f"<table><tbody>{jobs_rows}</tbody></table>"
+            if jobs_rows
+            else '<p>Noch keine Aufträge. <a href="/jobs/new">Ersten Rechercheauftrag anlegen</a> oder <a href="/imports">Firmenliste importieren</a>.</p>'
+        )
+        + '</section><section class="card"><h2>Beste aktuelle Leads</h2>'
+        + (
+            f'<table><thead><tr><th>Firma</th><th class="num">Priorität</th><th>Belegstatus</th><th>Anwendungsfall</th></tr></thead><tbody>{lead_rows}</tbody></table>'
+            if lead_rows
+            else "<p>Noch keine bewerteten Leads.</p>"
+        )
+        + '<p class="muted">Priorität = interessant für weitere Prüfung, keine Verkaufsprognose.</p></section></div>'
+    )
+
+
+def companies_page(
+    rows: list[dict[str, Any]], query: str, page: int, total: int, per_page: int
+) -> str:
+    pages = max(1, -(-total // per_page))
+    items = "".join(
+        f'<tr><td><a href="/company/{r["id"]}">{e(r["display_name"])}</a>'
+        + (
+            ' <span class="badge">öffentl. Auftraggeber</span>'
+            if r["entity_kind"] == "public_buyer"
+            else ""
+        )
+        + f"</td><td>{e(r['country_code'] or '–')}</td><td>{e(r['website_domain'] or '–')}</td>"
+        f'<td class="num">{r["observations"]}</td><td class="num">{r["locations"]}</td>'
+        f"<td>{e(str(r['updated_at'])[:10])}</td></tr>"
+        for r in rows
+    )
+    q = f"&q={e(query)}" if query else ""
+    nav = (
+        '<nav class="pager" aria-label="Seiten">'
+        + (f'<a href="/companies?page={page - 1}{q}">← zurück</a>' if page > 1 else "")
+        + f"<span>Seite {page} von {pages} · {total} Unternehmen</span>"
+        + (f'<a href="/companies?page={page + 1}{q}">weiter →</a>' if page < pages else "")
+        + "</nav>"
+    )
+    return (
+        '<div class="pagehead"><h1>Unternehmen</h1><a class="button" href="/imports">Liste importieren</a></div>'
+        '<form class="search" method="get" action="/companies"><label for="q">Suche</label>'
+        f'<input id="q" name="q" value="{e(query)}" placeholder="Name oder Domain">'
+        "<button>Suchen</button></form>"
+        '<div class="tablewrap"><table><thead><tr><th>Name</th><th>Land</th><th>Webseite</th>'
+        '<th class="num">Kennzahlen</th><th class="num">Standorte</th><th>aktualisiert</th>'
+        f"</tr></thead><tbody>{items or '<tr><td colspan=6>Keine Treffer</td></tr>'}</tbody></table></div>"
+        f"{nav}"
+    )
+
+
+def customers_page(rows: list[dict[str, Any]], lists: list[str]) -> str:
+    items = "".join(
+        f'<tr><td><a href="/company/{r["id"]}">{e(r["name"])}</a></td><td>{e(r["website"] or "–")}</td>'
+        f"<td>{e(r['basis'])}</td></tr>"
+        for r in rows
+    )
+    return (
+        '<div class="pagehead"><h1>Bestandskunden</h1><a class="button" href="/imports">Bestandskunden importieren</a></div>'
+        f'<p class="muted">Quelle: Listen {e(", ".join(lists) or "(keine konfiguriert)")} und als „gewonnen“ '
+        "erfasste Vertriebsergebnisse. Bestandskunden erscheinen nicht als neue Leads und werden in "
+        "Recherchen nicht erneut ausgewählt.</p>"
+        '<div class="tablewrap"><table><thead><tr><th>Unternehmen</th><th>Website</th><th>Grundlage</th></tr></thead>'
+        f"<tbody>{items or '<tr><td colspan=3>Noch keine Bestandskunden erfasst.</td></tr>'}</tbody></table></div>"
+    )
+
+
+def products_page(catalog: Any, matrix: dict[str, Any], cases: dict[str, Any]) -> str:
+    rows = "".join(
+        f'<tr><td><strong>{e(g.name)}</strong><br><span class="muted">{e(g.description)}</span></td>'
+        f"<td>{e(', '.join(g.processes) or '–')}</td>"
+        f"<td>{e(', '.join(cases[a].name for a in g.applications if a in cases) or '–')}</td>"
+        f"<td>{e('; '.join(g.limitations) or '–')}</td>"
+        f'<td><span class="badge warn">{e(g.status)}</span></td></tr>'
+        for g in catalog.products.values()
+    )
+    return (
+        "<h1>Produkt-Fit: Yellotools-Produktmatrix</h1>"
+        f'<p class="gapnote">{e(matrix["label"])}</p>'
+        '<p class="muted">Grundlage jeder Bewertung. Pflege über <code>mi products export-csv</code> / '
+        "<code>import-csv</code>; eine Änderung macht alle Bewertungen „veraltet“ (Neubewertung über die Lead-Liste).</p>"
+        '<div class="tablewrap"><table><thead><tr><th>Produktgruppe</th><th>Prozesse</th><th>Anwendungsfälle</th>'
+        f"<th>Grenzen</th><th>Status</th></tr></thead><tbody>{rows}</tbody></table></div>"
+    )
+
+
+def sources_page(sources: list[Any], stats: dict[str, dict[str, int]]) -> str:
+    rows = "".join(
+        f'<tr><td><strong>{e(s.name)}</strong><br><span class="muted">{e(s.publisher)}</span></td>'
+        f"<td>{e(s.license)}</td><td>{e(s.free_scope)}</td>"
+        f"<td>{'abrufbar' if s.fetchable else e(s.legal_status)}</td>"
+        f'<td class="num">{stats.get(s.key, {}).get("ok", 0)}</td>'
+        f'<td class="num">{stats.get(s.key, {}).get("failed", 0)}</td></tr>'
+        for s in sources
+    )
+    return (
+        "<h1>Quellen und Belege</h1>"
+        '<p class="muted">Nur frei zugängliche Quellen; robots.txt, Abrufpausen und Sperren werden '
+        "beachtet, nicht umgangen. Jede Zahl im Profil verweist auf Dokument, Zitat und Abrufzeit.</p>"
+        '<div class="tablewrap"><table><thead><tr><th>Quelle</th><th>Lizenz</th><th>Kostenloser Umfang</th>'
+        '<th>Status</th><th class="num">Abrufe ok (30 Tage)</th><th class="num">gescheitert</th></tr></thead>'
+        f"<tbody>{rows}</tbody></table></div>"
+    )
+
+
+def settings_page(
+    info: dict[str, Any], backups: list[Any], csrf: str, message: str = "", error: str = ""
+) -> str:
+    rows = "".join(f'<tr><th scope="row">{e(k)}</th><td>{e(v)}</td></tr>' for k, v in info.items())
+    backup_rows = "".join(
+        f'<tr><td>{e(b.created.strftime("%Y-%m-%d %H:%M"))} UTC</td><td class="num">{b.size / 1e6:.1f} MB</td>'
+        f"<td><code>{e(str(b.path))}</code></td></tr>"
+        for b in backups
+    )
+    return (
+        "<h1>Einstellungen</h1>"
+        + (f'<p class="okbox" role="status">{e(message)}</p>' if message else "")
+        + (f'<div class="errorbox" role="alert">{e(error)}</div>' if error else "")
+        + f'<section class="card"><h2>Anwendung</h2><table><tbody>{rows}</tbody></table>'
+        '<p class="muted">Einstellungen ändern: Datei <code>market_intel.toml</code> im Datenordner '
+        "(z. B. <code>contact_email</code>); wirksam nach Neustart. Zugangsdaten gehören nicht in die Datei.</p></section>"
+        '<section class="card"><h2>Datensicherung</h2>'
+        '<p class="muted">Geprüfte Sicherung der Datenbank (auch während Aufträge laufen); die letzten 10 '
+        "bleiben erhalten, beim Start wird täglich automatisch gesichert.</p>"
+        '<form method="post" action="/settings/backup">'
+        f'<input type="hidden" name="csrf" value="{e(csrf)}"><button class="primary">Sicherung jetzt erstellen</button></form>'
+        '<div class="tablewrap"><table><thead><tr><th>Zeitpunkt</th><th class="num">Größe</th><th>Datei</th></tr></thead>'
+        f"<tbody>{backup_rows or '<tr><td colspan=3>Noch keine Sicherung.</td></tr>'}</tbody></table></div>"
+        "<p><strong>Wiederherstellen:</strong> Anwendung beenden, dann in der Eingabeaufforderung "
+        "<code>mi backup restore &lt;Datei&gt;</code>. Der aktuelle Stand wird vorher automatisch gesichert.</p></section>"
+    )

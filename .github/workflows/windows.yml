@@ -29,7 +29,9 @@ jobs:
         run: python -m playwright install chromium
 
       - name: Tests unter Windows
-        run: python -m pytest -rs
+        timeout-minutes: 20
+        # faulthandler: hängt ein Test > 5 min, werden alle Thread-Stapel ausgegeben
+        run: python -m pytest -rs -o faulthandler_timeout=300 --durations=15
 
       - name: Anwendung paketieren (PyInstaller)
         run: python -m PyInstaller installer/MarketIntel.spec --noconfirm

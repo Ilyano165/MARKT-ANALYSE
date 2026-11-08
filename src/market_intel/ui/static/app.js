@@ -347,3 +347,18 @@
   }
   setTimeout(ping, 15000);
 })();
+
+/* Navigation: aktive Seite markieren (längster passender Pfad). */
+(function () {
+  "use strict";
+  var best = null;
+  document.querySelectorAll(".mainnav a[data-nav]").forEach(function (a) {
+    var p = a.getAttribute("data-nav");
+    var hit = p === "/" ? location.pathname === "/" : location.pathname.indexOf(p) === 0;
+    if (hit && (!best || p.length > best.getAttribute("data-nav").length)) best = a;
+  });
+  if (location.pathname.indexOf("/company/") === 0) {
+    best = document.querySelector('.mainnav a[data-nav="' + (location.pathname.indexOf("/opportunity") > 0 ? "/leads" : "/companies") + '"]');
+  }
+  if (best) { best.classList.add("active"); best.setAttribute("aria-current", "page"); }
+})();

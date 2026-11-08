@@ -27,7 +27,11 @@ PROVENANCE_LABELS = {
     "derived": "abgeleitet (berechnet)",
     "estimate": "Schätzung",
 }
-SCOPE_LABELS = {"group": "Konzern", "single_entity": "Einzelgesellschaft", "unknown": "unbekannt"}
+SCOPE_LABELS = {
+    "group": "Konzern",
+    "single_entity": "Einzelgesellschaft",
+    "unknown": "Konzern/Einzelgesellschaft unbekannt",
+}
 SECTIONS = (
     ("overview", "Überblick"),
     ("finance", "Finanzen"),
@@ -228,26 +232,42 @@ def build_profile(
                 "method": e["method"],
                 "quote": e["quote"],
                 "learned_at": e["captured_at"].isoformat(),
+                "reported": _reported(e["published_at"], e["retrieved_at"]),
                 "source_ref": sources.ref(e["source_url"], e["source_key"]),
+                "_key": (e["source_document_id"], (e["summary"] or "").strip()),
             }
         )
-    signals = []
+    # Audit P2-3: Pressemeldungen standen als Signal UND als Ereignis da; dieselbe TED-Meldung
+    # stand je Anwendungsfall einmal da. Anzeige: je Meldung eine Zeile (Daten bleiben gespeichert).
+    shown_events = {ev.pop("_key") for ev in events}
+    signals: list[dict[str, Any]] = []
+    by_key: dict[tuple[Any, ...], dict[str, Any]] = {}
     for s in repo.signals_for(conn, company_id):
-        doc_url = conn.execute(
-            select(db.source_document.c.url).where(
-                db.source_document.c.id == s["source_document_id"]
-            )
-        ).scalar()
-        signals.append(
-            {
-                "type": s["signal_type"],
-                "event_date": s["event_date"].isoformat() if s["event_date"] else None,
-                "summary": s["summary"],
-                "quote": s["quote"],
-                "learned_at": s["captured_at"].isoformat(),
-                "source_ref": sources.ref(s["url"] or doc_url),
-            }
-        )
+        doc = conn.execute(
+            select(db.source_document.c.url, db.source_document.c.published_at,
+                   db.source_document.c.retrieved_at)
+            .where(db.source_document.c.id == s["source_document_id"])
+        ).first()  # fmt: skip
+        summary = (s["summary"] or "").strip()
+        if (s["source_document_id"], summary) in shown_events:
+            continue
+        key = (s["signal_type"], s["url"] or (doc.url if doc else None), summary)
+        if key in by_key:
+            if s["use_case_key"] and s["use_case_key"] not in by_key[key]["use_cases"]:
+                by_key[key]["use_cases"].append(s["use_case_key"])
+            continue
+        item = {
+            "type": s["signal_type"],
+            "event_date": s["event_date"].isoformat() if s["event_date"] else None,
+            "summary": summary,
+            "quote": s["quote"],
+            "learned_at": s["captured_at"].isoformat(),
+            "reported": _reported(doc.published_at, doc.retrieved_at) if doc else None,
+            "use_cases": [s["use_case_key"]] if s["use_case_key"] else [],
+            "source_ref": sources.ref(s["url"] or (doc.url if doc else None)),
+        }
+        by_key[key] = item
+        signals.append(item)
     timeline = history(conn, company_id)
     for item in timeline:
         if item.get("document_id"):
@@ -427,6 +447,19 @@ def build_profile(
     }
 
 
+def _reported(published: Any, retrieved: Any) -> str | None:
+    """Wann die Quelle die Meldung brachte (veröffentlicht) bzw. wann sie abgerufen wurde."""
+    if published:
+        return f"veröffentlicht {str(published)[:10]}"
+    if retrieved:
+        return f"Ereignisdatum unbekannt, Quelle abgerufen {str(retrieved)[:10]}"
+    return None
+
+
+def _when(item: dict[str, Any]) -> str:
+    return str(item.get("event_date") or item.get("reported") or "Ereignisdatum unbekannt")
+
+
 def _growth_indicators(
     revenue: list[dict[str, Any]],
     heads: list[dict[str, Any]],
@@ -456,7 +489,7 @@ def _growth_indicators(
             out.append(
                 {
                     "kind": event["type"],
-                    "text": f"{event['event_date'] or 'Datum unbekannt'}: {event['summary'][:200]}",
+                    "text": f"{_when(event)}: {event['summary'][:200]}",
                     "source_ref": event["source_ref"],
                     "verification": event["verification"],
                 }
@@ -465,7 +498,7 @@ def _growth_indicators(
         out.append(
             {
                 "kind": f"signal:{signal['type']}",
-                "text": f"{signal['event_date'] or 'Datum unbekannt'}: {signal['summary'][:200]}",
+                "text": f"{_when(signal)}: {signal['summary'][:200]}",
                 "source_ref": signal["source_ref"],
             }
         )

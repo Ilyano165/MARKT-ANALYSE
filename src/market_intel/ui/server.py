@@ -21,7 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 from sqlalchemy import Engine, func, or_, select
 
@@ -107,8 +107,10 @@ class App:
         out_dir: Path | None = None,
         llm_available: bool = False,
         shell: Any = None,
+        settings: Any = None,
     ) -> None:
         self.engine = engine
+        self.settings = settings  # geladene Einstellungen (Einstellungsseite), optional
         self.shell = shell  # Desktop-Hülle (Fokus, Beenden) oder None
         self.worker = worker  # jobs.Worker oder None (Aufträge warten dann)
         self.out_dir = out_dir or Path("out")
@@ -126,21 +128,30 @@ class App:
 
     # ------------------------------------------------------------------ Seiten
 
-    def companies(self, query: str) -> str:
+    def companies(self, query: str, page: int = 1, per_page: int = 50) -> str:
         with self.engine.connect() as conn:
-            stmt = select(db.company).where(db.company.c.merged_into_id.is_(None))
+            where: list[Any] = [db.company.c.merged_into_id.is_(None)]
             if query:
                 like = f"%{query.lower()}%"
-                stmt = stmt.where(
+                where.append(
                     or_(
                         func.lower(db.company.c.display_name).like(like),
                         func.lower(db.company.c.website_domain).like(like),
                     )
                 )
+            total = int(
+                conn.execute(select(func.count()).select_from(db.company).where(*where)).scalar()
+                or 0
+            )
+            page = max(1, min(page, max(1, -(-total // per_page))))
             rows = [
                 dict(r)
                 for r in conn.execute(
-                    stmt.order_by(db.company.c.display_name).limit(500)
+                    select(db.company)
+                    .where(*where)
+                    .order_by(db.company.c.entity_kind == "public_buyer", db.company.c.display_name)
+                    .limit(per_page)
+                    .offset((page - 1) * per_page)
                 ).mappings()
             ]
             for row in rows:
@@ -159,7 +170,7 @@ class App:
                     ).scalar()
                     or 0
                 )
-        return render.page("Unternehmen", render.company_list(rows, query))
+        return render.page("Unternehmen", views.companies_page(rows, query, page, total, per_page))
 
     def profile(self, company_id: int, years: int, estimates: bool) -> tuple[str, dict[str, Any]]:
         with self.engine.connect() as conn:
@@ -266,7 +277,44 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
 
         def _route_get(self, path: str, query: dict[str, list[str]]) -> None:
             if path == "/":
-                self._html(app.companies(query.get("q", [""])[0][:100]))
+                if query.get("q"):  # alte Suchadresse
+                    self._redirect("/companies?q=" + quote(query["q"][0][:100]))
+                    return
+                self._html(render.page("Übersicht", dashboard_view(app)))
+                return
+            if path == "/companies":
+                self._html(
+                    app.companies(
+                        query.get("q", [""])[0][:100],
+                        _int(query.get("page", ["1"])[0], 1, 1, 10_000),
+                    )
+                )
+                return
+            if path == "/customers":
+                self._html(render.page("Bestandskunden", customers_view(app)))
+                return
+            if path == "/products":
+                from ..products import matrix_status
+
+                self._html(
+                    render.page(
+                        "Produkt-Fit",
+                        views.products_page(app.catalog, matrix_status(app.catalog), app.cases),
+                    )
+                )
+                return
+            if path == "/sources":
+                self._html(render.page("Quellen", sources_view(app)))
+                return
+            if path == "/settings":
+                self._html(
+                    render.page(
+                        "Einstellungen",
+                        settings_view(
+                            app, query.get("ok", [""])[0][:300], query.get("err", [""])[0][:300]
+                        ),
+                    )
+                )
                 return
             if path == "/favicon.ico":
                 body = (
@@ -309,8 +357,9 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                                 app.model.segments,
                                 segments,
                                 csrf=app.csrf,
-                                stale=len(stale_ids(fresh)),
+                                stale=len(stale_ids(fresh, include_missing=False)),
                                 total=len(fresh),
+                                missing=sum(1 for f in fresh.values() if f.status == "fehlt"),
                             ),
                         )
                     )
@@ -605,6 +654,17 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                     return
                 self._redirect(f"/company/{company_id}/opportunity#outcome")
                 return
+            if path == "/settings/backup":
+                from ..backup import BackupError, create_backup, sqlite_path
+
+                try:
+                    info = create_backup(app.engine, sqlite_path(app.engine).parent / "backups")
+                    done = f"Sicherung geprüft ({info.companies} Firmen): {info.path.name}"
+                    target = "/settings?ok=" + quote(done)
+                except BackupError as exc:
+                    target = "/settings?err=" + quote(str(exc))
+                self._redirect(target)
+                return
             if path == "/app/quit":
                 if app.shell is None:
                     self._error(404, "nicht gefunden")
@@ -686,8 +746,6 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                 except MaintenanceError as exc:
                     self._error(HTTPStatus.BAD_REQUEST, str(exc))
                     return
-                from urllib.parse import quote
-
                 self._redirect("/maintenance?ok=" + quote(done))
                 return
             if path == "/jobs":
@@ -778,6 +836,144 @@ def parse_multipart(
 def _safe_back(back: str) -> str:
     """Nur eigene relative Pfade als Rücksprung (kein offener Redirect)."""
     return back if back.startswith("/") and not back.startswith("//") else "/"
+
+
+def dashboard_view(app: App) -> str:
+    from ..backup import BackupError, list_backups, sqlite_path
+    from ..maintenance import duplicate_groups, missing_websites
+
+    fresh = freshness(app.engine, app.cases, app.catalog, app.model)
+    leads = lead_rows(app.engine, fresh=fresh)
+    with app.engine.connect() as conn:
+        companies = conn.execute(
+            select(func.count())
+            .select_from(db.company)
+            .where(
+                db.company.c.merged_into_id.is_(None), db.company.c.entity_kind != "public_buyer"
+            )
+        ).scalar()
+        running = conn.execute(
+            select(func.count())
+            .select_from(db.job)
+            .where(db.job.c.status.in_(["queued", "running"]))
+        ).scalar()
+        since = db.utcnow() - __import__("datetime").timedelta(days=30)
+        ok = conn.execute(
+            select(func.count())
+            .select_from(db.fetch_log)
+            .where(
+                db.fetch_log.c.at >= since,
+                db.fetch_log.c.status.in_(["ok", "cached", "not_modified"]),
+            )
+        ).scalar()
+    try:
+        backups = list_backups(sqlite_path(app.engine).parent / "backups")
+    except BackupError:
+        backups = []
+    stats = {
+        "companies": companies or 0,
+        "leads": sum(1 for r in leads if r["aktualitaet"] == "aktuell"),
+        "stale": len(stale_ids(fresh, include_missing=False)),
+        "unassessed": sum(1 for f in fresh.values() if f.status == "fehlt"),
+        "running": running or 0,
+        "customers": len(customer_rows(app)),
+        "sources_ok": ok or 0,
+        "missing_websites": len(missing_websites(app.engine, limit=100_000)),
+        "duplicates": len(duplicate_groups(app.engine)),
+        "backup": bool(backups),
+        "contact_email": bool(getattr(app.settings, "contact_email", "")) if app.settings else True,
+    }
+    current = [r for r in leads if r["aktualitaet"] == "aktuell"][:5]
+    return views.dashboard_page(stats, jobs.list_jobs(app.engine, 5), current)
+
+
+def customer_rows(app: App) -> list[dict[str, Any]]:
+    from ..opportunity.outcomes import current_outcome
+
+    lists = _customer_lists(app)
+    out: dict[int, dict[str, Any]] = {}
+    with app.engine.connect() as conn:
+        for cid, name, web, list_name in conn.execute(
+            select(
+                db.company.c.id, db.company.c.display_name, db.company.c.website_domain,
+                db.list_membership.c.list_name,
+            )
+            .join(db.list_membership, db.list_membership.c.company_id == db.company.c.id)
+            .where(db.list_membership.c.list_name.in_(lists))
+        ):  # fmt: skip
+            out.setdefault(
+                cid, {"id": cid, "name": name, "website": web, "basis": f"Liste {list_name}"}
+            )
+        won = (
+            conn.execute(
+                select(db.sales_outcome.c.company_id).where(
+                    db.sales_outcome.c.outcome == "gewonnen"
+                )
+            )
+            .scalars()
+            .all()
+        )
+    for cid in set(won):
+        outcome = current_outcome(app.engine, cid)
+        if outcome and outcome["outcome"] == "gewonnen":
+            with app.engine.connect() as conn:
+                row = repo.company_row(conn, cid)
+            out.setdefault(
+                cid,
+                {"id": cid, "name": row["display_name"], "website": row["website_domain"],
+                 "basis": f"gewonnen am {outcome['occurred_on']}"},
+            )  # fmt: skip
+    return sorted(out.values(), key=lambda r: str(r["name"]).lower())
+
+
+def customers_view(app: App) -> str:
+    return views.customers_page(customer_rows(app), _customer_lists(app))
+
+
+def sources_view(app: App) -> str:
+    from datetime import timedelta
+
+    from ..sources.registry import SOURCES
+
+    since = db.utcnow() - timedelta(days=30)
+    stats: dict[str, dict[str, int]] = {}
+    with app.engine.connect() as conn:
+        for key, status, n in conn.execute(
+            select(db.fetch_log.c.source_key, db.fetch_log.c.status, func.count())
+            .where(db.fetch_log.c.at >= since)
+            .group_by(db.fetch_log.c.source_key, db.fetch_log.c.status)
+        ):
+            bucket = "ok" if status in ("ok", "cached", "not_modified") else "failed"
+            stats.setdefault(key, {}).setdefault(bucket, 0)
+            stats[key][bucket] += int(n)
+    return views.sources_page(list(SOURCES), stats)
+
+
+def settings_view(app: App, message: str = "", error: str = "") -> str:
+    from .. import __version__
+    from ..backup import BackupError, list_backups, sqlite_path
+
+    try:
+        database = sqlite_path(app.engine)
+        backups = list_backups(database.parent / "backups")
+        db_text = str(database)
+        logs = str(database.parent / "logs" / "market_intel.log")
+    except BackupError:
+        backups, db_text, logs = [], str(app.engine.url.render_as_string(hide_password=True)), "–"
+    settings = app.settings
+    info = {
+        "Version": __version__,
+        "Datenbank": db_text,
+        "Protokolldatei": logs,
+        "Ausgabeordner": str(app.out_dir),
+        "Hintergrund-Worker": "läuft" if app.worker is not None and app.worker.alive() else "aus",
+        "Kontaktadresse (User-Agent)": (getattr(settings, "contact_email", "") or "nicht gesetzt")
+        if settings
+        else "unbekannt",
+        "Lokale KI": "eingeschaltet" if app.llm_available else "aus (regelbasiert)",
+        "Bewertungsmodell": app.model.version,
+    }
+    return views.settings_page(info, backups, app.csrf, message, error)
 
 
 def _list_overview(engine: Engine) -> list[dict[str, Any]]:

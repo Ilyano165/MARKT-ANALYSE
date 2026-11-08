@@ -90,6 +90,7 @@ def data_states(engine: Engine, company_ids: list[int] | None = None) -> dict[in
             db.company.c.website_domain,
             db.company.c.country_code,
             db.company.c.merged_into_id,
+            db.company.c.entity_kind,
         )
         if company_ids is not None:
             companies = companies.where(db.company.c.id.in_(company_ids))
@@ -120,7 +121,7 @@ def data_states(engine: Engine, company_ids: list[int] | None = None) -> dict[in
     for child, parent in merged:
         if parent in states and child in states:
             states[int(parent)][f"merged:{child}"] = {
-                k: v for k, v in states[int(child)].items() if k != "company"
+                k: v for k, v in states[int(child)].items() if k != "company" and k[0] != "_"
             }
     if requested is not None:
         states = {k: v for k, v in states.items() if k in requested}
@@ -128,7 +129,8 @@ def data_states(engine: Engine, company_ids: list[int] | None = None) -> dict[in
 
 
 def fingerprint(model_version: str, digest: str, state: dict[str, Any]) -> str:
-    payload = json.dumps([model_version, digest, state], sort_keys=True, default=str)
+    data = {k: v for k, v in state.items() if not k.startswith("_")}  # interne Felder ohne Belang
+    payload = json.dumps([model_version, digest, data], sort_keys=True, default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:20]
 
 
@@ -150,7 +152,7 @@ def basis_for(
         "model_version": model.version,
         "rules_digest": digest,
         "fingerprint": fingerprint(model.version, digest, state),
-        "data": {k: v for k, v in state.items() if k != "company"},
+        "data": {k: v for k, v in state.items() if k != "company" and not k.startswith("_")},
         "computed_at": db.utcnow().isoformat(),
     }
 
@@ -191,6 +193,8 @@ def freshness(
     for cid, state in states.items():
         if state["company"][3] is not None:
             continue  # zusammengeführt
+        if state.get("_kind") == "public_buyer" and cid not in stored:
+            continue  # öffentliche Auftraggeber werden nicht als Leads bewertet
         found = stored.get(cid)
         if found is None:
             out[cid] = Freshness(cid, "fehlt", None, None)
@@ -213,8 +217,13 @@ def freshness(
     return out
 
 
-def stale_ids(fresh: dict[int, Freshness]) -> list[int]:
-    return sorted(cid for cid, f in fresh.items() if not f.current)
+def stale_ids(fresh: dict[int, Freshness], *, include_missing: bool = True) -> list[int]:
+    """Neu zu bewertende Firmen: veraltet und (Standard) noch gar nicht bewertet."""
+    return sorted(
+        cid
+        for cid, f in fresh.items()
+        if not f.current and (include_missing or f.status != "fehlt")
+    )
 
 
 def refresh(

@@ -54,9 +54,13 @@ LEAD_COLUMNS = (
 def _figure(point: dict[str, Any] | None) -> str:
     if not point:
         return "unbekannt"
+    from ..intel.profile import PROVENANCE_LABELS, SCOPE_LABELS
+
     unit = "Personen" if point["unit"] == "persons" else point["unit"]
     value = f"{float(point['value']):,.0f}".replace(",", ".")
-    return f"{value} {unit} ({point['label']}, {point['scope']}, {point['provenance']})"
+    scope = SCOPE_LABELS.get(point["scope"], point["scope"])
+    provenance = PROVENANCE_LABELS.get(point["provenance"], point["provenance"])
+    return f"{value} {unit} ({point['label']}, {scope}, {provenance})"
 
 
 def _assessment_columns(details: dict[str, Any]) -> dict[str, str]:

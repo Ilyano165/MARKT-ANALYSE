@@ -119,6 +119,24 @@ def static_asset(name: str) -> str:
 
 
 APP_ACTIONS = "<!--app-actions-->"
+# Navigation nach Arbeitsabläufen (Seitenleiste); aktive Seite markiert app.js.
+NAVIGATION = (
+    (
+        "Arbeit",
+        (
+            ("/", "Übersicht"),
+            ("/jobs", "Rechercheaufträge"),
+            ("/leads", "Leads & Opportunities"),
+            ("/companies", "Unternehmen"),
+            ("/customers", "Bestandskunden"),
+        ),
+    ),
+    ("Grundlagen", (("/products", "Produkt-Fit"), ("/sources", "Quellen & Belege"))),
+    (
+        "Daten",
+        (("/imports", "Importe"), ("/maintenance", "Datenpflege"), ("/settings", "Einstellungen")),
+    ),
+)
 
 
 def page(title: str, body: str, *, static: bool = False, data: Any = None) -> str:
@@ -140,29 +158,33 @@ def page(title: str, body: str, *, static: bool = False, data: Any = None) -> st
         css = '<link rel="stylesheet" href="/static/app.css">'
         map_json = ""
         js = '<script src="/static/app.js" defer></script>'
+    if static:  # eigenständige Exportdatei: schlichter Kopf ohne Navigation
+        return (
+            '<!doctype html><html lang="de"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            f"<title>{e(title)}</title>{css}</head><body>"
+            '<header class="top"><a class="brand" href="#">Market Intelligence</a>'
+            '<span class="muted">lokal · kostenlos · jede Zahl mit Quelle</span></header>'
+            f"<main>{body}</main>{data_json}{map_json}{js}</body></html>"
+        )
+    nav = "".join(
+        f'<p class="navgroup">{e(group)}</p>'
+        + "".join(f'<a href="{href}" data-nav="{href}">{e(label)}</a>' for href, label in links)
+        for group, links in NAVIGATION
+    )
     return (
         '<!doctype html><html lang="de"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        f"<title>{e(title)}</title>{css}</head><body>"
-        f'<header class="top"><a class="brand" href="{"#" if static else "/"}">'
-        "Market Intelligence</a>"
-        + (
-            ""
-            if static
-            else '<a href="/jobs">Rechercheaufträge</a><a href="/">Unternehmen</a>'
-            '<a href="/leads">Leads</a><a href="/imports">Importe</a>'
-            '<a href="/maintenance">Datenpflege</a>'
-        )
-        + '<span class="muted">lokal · kostenlos · jede Zahl mit Quelle</span>'
-        + ("" if static else APP_ACTIONS)
-        + "</header>"
-        + (
-            ""
-            if static
-            else '<div id="offline" class="errorbox" hidden>Verbindung zur Anwendung '
-            "unterbrochen – neuer Versuch läuft …</div>"
-        )
-        + f"<main>{body}</main>{data_json}{map_json}{js}</body></html>"
+        f"<title>{e(title)} · Market Intelligence</title>{css}"
+        '<link rel="icon" href="/static/icon.png"></head><body class="app">'
+        '<aside class="sidebar"><a class="brand" href="/"><img src="/static/icon.png" alt="" '
+        'width="28" height="28"><span>Market Intelligence</span></a>'
+        f'<nav class="mainnav" aria-label="Hauptnavigation">{nav}</nav>'
+        f'<div class="sidefoot">{APP_ACTIONS}<span class="muted">lokal · kostenlos · '
+        "jede Zahl mit Quelle</span></div></aside>"
+        '<div class="content"><div id="offline" class="errorbox" hidden>Verbindung zur Anwendung '
+        "unterbrochen – neuer Versuch läuft …</div>"
+        f"<main>{body}</main></div>{data_json}{map_json}{js}</body></html>"
     )
 
 
@@ -661,9 +683,10 @@ def competitors_page(result: dict[str, Any], csrf: str) -> str:
     cid = result["company_id"]
     focal = result["focal"]
     blocks = []
+    hidden = {k: len(result["groups"][k]) for k in ("no_relation", "insufficient_data")}
     for key, label in CLASS_LABELS.items():
         items = result["groups"][key]
-        if not items:
+        if not items or key in hidden:
             continue
         rows = "".join(
             f'<tr><th scope="row"><a href="/company/{r["competitor_id"]}">{e(r["name"])}</a></th>'
@@ -698,7 +721,13 @@ def competitors_page(result: dict[str, Any], csrf: str) -> str:
         f'<form method="post" action="/company/{cid}/competitors/store">'
         f'<input type="hidden" name="csrf" value="{e(csrf)}">'
         "<button>Einordnung speichern (Historie)</button></form>"
-        + ("".join(blocks) or "<p>Keine Vergleichsunternehmen in der Datenbank.</p>")
+        + (
+            "".join(blocks)
+            or "<p>Kein Unternehmen mit belegtem Bezug (gemeinsame Produktgruppe, Branche oder Zielgruppe) in der Datenbank.</p>"
+        )
+        + f'<p class="muted">Verglichen mit {result.get("compared", 0)} Unternehmen (ohne öffentliche Auftraggeber). '
+        f"Nicht einzeln aufgeführt: {hidden['no_relation']} ohne belegten Bezug, {hidden['insufficient_data']} "
+        "mit unzureichender Datenlage – das ist keine Aussage, dass sie keine Wettbewerber sind.</p>"
     )
 
 
@@ -1084,18 +1113,26 @@ def _outcome_block(report: dict[str, Any], csrf: str) -> str:
     )
 
 
-def _refresh_banner(stale: int, total: int, csrf: str, back: str) -> str:
-    """Hinweis auf veraltete Bewertungen mit Knopf für die kontrollierte Neubewertung."""
-    if not stale:
-        return f'<p class="ok">Alle {total} gespeicherten Bewertungen sind aktuell.</p>'
+def _refresh_banner(stale: int, total: int, csrf: str, back: str, missing: int = 0) -> str:
+    """Hinweis auf veraltete/fehlende Bewertungen mit Knopf für die kontrollierte Neubewertung."""
+    assessed = total - missing
+    if not stale and not missing:
+        return f'<p class="ok">Alle {assessed} gespeicherten Bewertungen sind aktuell.</p>'
+    parts = []
+    if stale:
+        parts.append(
+            f"<strong>{stale} von {assessed} Bewertungen sind veraltet</strong> (älteres Modell, "
+            "geänderte Regeln oder neue Firmendaten). Sie sind unten markiert und nach den "
+            "aktuellen einsortiert – ihre Werte gelten nicht als aktueller Stand."
+        )
+    if missing:
+        parts.append(f"<strong>{missing} Unternehmen sind noch nicht bewertet.</strong>")
     return (
-        f'<div class="warnbox"><strong>{stale} von {total} Bewertungen sind veraltet</strong> '
-        "(älteres Modell, geänderte Regeln oder neue Firmendaten). Sie sind unten markiert und "
-        "nach den aktuellen einsortiert – ihre Werte gelten nicht als aktueller Stand."
+        f'<div class="warnbox">{" ".join(parts)}'
         '<form method="post" action="/assessments/refresh">'
         f'<input type="hidden" name="csrf" value="{e(csrf)}">'
         f'<input type="hidden" name="back" value="{e(back)}">'
-        "<button>Veraltete jetzt neu bewerten</button></form></div>"
+        "<button>Jetzt (neu) bewerten</button></form></div>"
     )
 
 
@@ -1106,6 +1143,7 @@ def leads_page(
     csrf: str = "",
     stale: int = 0,
     total: int = 0,
+    missing: int = 0,
 ) -> str:
     """Lead-Liste mit Segmentfilter, Aktualität der Bewertung und CSV-Download."""
     options = "".join(
@@ -1132,7 +1170,7 @@ def leads_page(
     query = "&".join(f"segment={e(s)}" for s in selected)
     return (
         "<h1>Leads</h1>"
-        + (_refresh_banner(stale, total, csrf, "/leads") if csrf else "")
+        + (_refresh_banner(stale, total, csrf, "/leads", missing) if csrf else "")
         + (f'<p class="gapnote">Produktmatrix: {e(rows[0]["produktmatrix"])}</p>' if rows else "")
         + '<p class="gapnote">Ein hoher Score bedeutet nur: nach den gewählten Kriterien interessant für '
         "eine weitere Prüfung. Bedarf, Werkzeuge, Lieferanten und Kaufbereitschaft sind nicht belegt.</p>"

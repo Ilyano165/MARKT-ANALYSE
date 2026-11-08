@@ -209,7 +209,15 @@ def build_ui(
         out_dir=settings.output_dir,
         llm_available=bool(settings.llm.enabled),
         shell=shell,
+        settings=settings,
     )
+    if shell is not None:  # Desktop: tägliche automatische Sicherung beim Start
+        import contextlib
+
+        from .backup import BackupError, backup_if_due, sqlite_path
+
+        with contextlib.suppress(BackupError):  # PostgreSQL: Sicherung über pg_dump
+            backup_if_due(engine, sqlite_path(engine).parent / "backups")
     return server, worker
 
 

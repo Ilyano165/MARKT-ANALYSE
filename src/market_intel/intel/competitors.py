@@ -298,11 +298,17 @@ def _classify(
     return "no_relation", ["keine gemeinsamen Produktgruppen, Branchen oder Zielgruppen belegt"]
 
 
+RELEVANT = ("direct", "indirect", "related_market")
+
+
 def candidate_ids(conn: Connection, company_id: int) -> list[int]:
-    """Alle anderen (nicht zusammengeführten) Unternehmen in der Datenbank."""
+    """Alle anderen (nicht zusammengeführten) Unternehmen – ohne öffentliche Auftraggeber
+    (kaufen ein, bieten nichts an; Audit: 252 von 516 Firmen)."""
     rows = conn.execute(
         select(db.company.c.id).where(
-            db.company.c.id != company_id, db.company.c.merged_into_id.is_(None)
+            db.company.c.id != company_id,
+            db.company.c.merged_into_id.is_(None),
+            db.company.c.entity_kind != "public_buyer",
         )
     ).scalars()
     return [int(r) for r in rows]
@@ -329,9 +335,9 @@ def analyze_competitors(
             r["name"],
         )
     )
-    if store:
+    if store:  # nur Unternehmen mit belegtem Bezug als Einordnung speichern
         now = db.utcnow()
-        for result in results:
+        for result in (r for r in results if r["classification"] in RELEVANT):
             conn.execute(
                 insert(db.competitor_assessment).values(
                     company_id=company_id,
@@ -356,6 +362,8 @@ def analyze_competitors(
             "market_countries": sorted(focal.market_countries),
         },
         "groups": {key: [r for r in results if r["classification"] == key] for key in CLASS_LABELS},
+        # Audit P2-4: ohne Bezug bzw. ohne Daten werden sie nur gezählt, nicht aufgelistet
+        "compared": len(results),
         "note": "Keine Marktanteile: Ohne belegte Marktgröße und vergleichbare Umsätze aller "
         "Anbieter wären Anteile scheinpräzise. Größenangaben sind Verhältnisse zweier belegter "
         "Werte.",

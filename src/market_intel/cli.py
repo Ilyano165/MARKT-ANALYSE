@@ -177,6 +177,43 @@ def cmd_research(args: argparse.Namespace) -> int:
     return _run_and_report(settings, engine, cases, run_id, no_llm=args.no_llm)
 
 
+def cmd_backup(args: argparse.Namespace) -> int:
+    from .backup import BackupError, create_backup, list_backups, restore_backup, sqlite_path
+
+    _, engine, _ = _setup(args)
+    try:
+        database = sqlite_path(engine)
+        folder = database.parent / "backups"
+        if args.action == "create":
+            info = create_backup(engine, folder)
+            print(f"Sicherung geprüft und gespeichert: {info.path} ({info.companies} Firmen)")
+        elif args.action == "list":
+            for info in list_backups(folder):
+                print(f"{info.created:%Y-%m-%d %H:%M}  {info.size / 1e6:8.1f} MB  {info.path}")
+        else:
+            if not args.file:
+                print("Bitte die Sicherungsdatei angeben: mi backup restore DATEI")
+                return 2
+            from .shell import InstanceLock
+
+            lock = InstanceLock(database.parent)
+            if not lock.acquire():
+                print("Die Anwendung läuft noch – bitte zuerst beenden.")
+                return 2
+            try:
+                engine.dispose()
+                safety = restore_backup(Path(args.file), database, folder)
+            finally:
+                lock.release()
+            if safety:
+                print(f"Vorheriger Stand gesichert: {safety.path}")
+            print(f"Wiederhergestellt aus {args.file}")
+    except BackupError as exc:
+        print(f"Fehler: {exc}")
+        return 1
+    return 0
+
+
 def cmd_worker(args: argparse.Namespace) -> int:
     from .jobs import Worker, load_runtime
 
@@ -527,6 +564,11 @@ def build_parser() -> argparse.ArgumentParser:
     idoc.add_argument("--publisher")
     idoc.add_argument("--title")
     idoc.set_defaults(func=cmd_import_document)
+
+    bk = sub.add_parser("backup", help="Datensicherung anlegen, anzeigen, wiederherstellen")
+    bk.add_argument("action", choices=["create", "list", "restore"])
+    bk.add_argument("file", nargs="?", help="Sicherungsdatei (bei restore)")
+    bk.set_defaults(func=cmd_backup)
 
     wk = sub.add_parser("worker", help="Hintergrundaufträge verarbeiten (ohne Oberfläche)")
     wk.add_argument("--once", action="store_true", help="nur einen Auftrag verarbeiten")
