@@ -1,7 +1,10 @@
 """Starter für die installierte Windows-Anwendung (auch unter Linux/macOS nutzbar).
 
-- Ohne Argumente: lokale Oberfläche auf 127.0.0.1 starten und im Browser öffnen.
-- Mit Argumenten: wie die Kommandozeile ``mi`` (z. B. ``MarketIntel.exe research …``).
+- ``MarketIntel.exe`` ohne Argumente: Desktop-Anwendung mit eigenem Fenster (``shell.run``):
+  Backend und Worker im eigenen Prozess, Einzelinstanz, Protokolldatei.
+- ``MarketIntel.exe --no-browser [--port N]``: nur die lokale Oberfläche ohne Fenster
+  (Server-Betrieb, Rauchtest).
+- Mit Befehl bzw. als ``mi.exe``: wie die Kommandozeile ``mi`` (z. B. ``mi research …``).
 
 Einstellungen, Datenbank und Ausgaben liegen in einem Datenordner je Benutzer – nicht im
 (schreibgeschützten) Programmordner und nicht im zufälligen Arbeitsordner:
@@ -17,8 +20,6 @@ import argparse
 import os
 import socket
 import sys
-import threading
-import webbrowser
 from pathlib import Path
 
 APP_DIR_WINDOWS = "YellotoolsMarketIntel"
@@ -84,27 +85,38 @@ def _with_config(argv: list[str], config: Path) -> list[str]:
     return argv if "--config" in argv else ["--config", str(config), *argv]
 
 
-def main(argv: list[str] | None = None) -> int:
+def is_cli_program(program: str) -> bool:
+    """``mi.exe``/``mi`` ist immer die Kommandozeile (Konsolenprogramm)."""
+    return Path(program).stem.lower() in ("mi", "mi-cli")
+
+
+def main(argv: list[str] | None = None, program: str | None = None) -> int:
     """Einstiegspunkt der installierten Anwendung."""
+    from .applog import setup_logging
     from .cli import main as cli_main
 
     argv = list(sys.argv[1:] if argv is None else argv)
-    config = prepare_home(app_home())
+    program = sys.argv[0] if program is None else program
+    home = app_home()
+    config = prepare_home(home)
+    setup_logging(home)
+    if is_cli_program(program):
+        return cli_main(_with_config(argv, config) if argv else ["--help"])
     starter = argparse.ArgumentParser(add_help=False)
     starter.add_argument("--no-browser", action="store_true")
     starter.add_argument("--port", type=int, default=8765)
+    starter.add_argument("--window", choices=["auto", "webview", "app", "browser"], default="auto")
+    starter.add_argument("--smoke-test", type=Path)
     known, rest = starter.parse_known_args(argv)
     if rest:  # Kommandozeilenmodus wie „mi …“ – Argumente unverändert weitergeben
         return cli_main(_with_config(argv, config))
     port = free_port(known.port)
-    url = f"http://127.0.0.1:{port}/"
-    print("Yellotools Market Intelligence")
-    print(f"Datenordner: {config.parent}")
-    print(f"Oberfläche:  {url}")
-    print("Zum Beenden dieses Fenster schließen (oder Strg+C).")
-    if not known.no_browser:
-        threading.Timer(1.5, webbrowser.open, args=(url,)).start()
-    return cli_main(_with_config(["ui", "--port", str(port)], config))
+    if known.no_browser:  # nur Server (z. B. Rauchtest, Betrieb ohne Fenster)
+        print(f"Oberfläche: http://127.0.0.1:{port}/  Datenordner: {config.parent}")
+        return cli_main(_with_config(["ui", "--port", str(port)], config))
+    from .shell import run
+
+    return run(config, home, port, known.window, known.smoke_test)
 
 
 if __name__ == "__main__":

@@ -118,6 +118,9 @@ def static_asset(name: str) -> str:
     return resources.files("market_intel.ui").joinpath("static", name).read_text("utf-8")
 
 
+APP_ACTIONS = "<!--app-actions-->"
+
+
 def page(title: str, body: str, *, static: bool = False, data: Any = None) -> str:
     """Komplette Seite. ``static`` bettet CSS/JS/Karte ein (Datei ohne Server)."""
     data_json = ""
@@ -150,8 +153,16 @@ def page(title: str, body: str, *, static: bool = False, data: Any = None) -> st
             '<a href="/leads">Leads</a><a href="/imports">Importe</a>'
             '<a href="/maintenance">Datenpflege</a>'
         )
-        + '<span class="muted">lokal · kostenlos · jede Zahl mit Quelle</span></header>'
-        f"<main>{body}</main>{data_json}{map_json}{js}</body></html>"
+        + '<span class="muted">lokal · kostenlos · jede Zahl mit Quelle</span>'
+        + ("" if static else APP_ACTIONS)
+        + "</header>"
+        + (
+            ""
+            if static
+            else '<div id="offline" class="errorbox" hidden>Verbindung zur Anwendung '
+            "unterbrochen – neuer Versuch läuft …</div>"
+        )
+        + f"<main>{body}</main>{data_json}{map_json}{js}</body></html>"
     )
 
 

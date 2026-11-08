@@ -198,3 +198,5 @@ label.check { display: flex; gap: .4rem; align-items: baseline; margin: 0; }
 .rowform input { min-width: 8rem; flex: 1 1 8rem; }
 .okbox { background: #d8f0dc; color: #1d5b2a; border-radius: 6px; padding: .6rem .8rem; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .okbox { background: #183d22; color: #b9e6c3; } }
+header.top form.quit { margin-left: auto; }
+header.top form.quit button { font: inherit; padding: .2rem .6rem; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--text-2); cursor: pointer; }

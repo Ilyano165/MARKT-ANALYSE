@@ -14,7 +14,7 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -23,10 +23,13 @@ jobs:
           python-version: "3.12"
 
       - name: Abhängigkeiten installieren
-        run: python -m pip install -e ".[dev]" "pyinstaller==6.16.0"
+        run: python -m pip install -e ".[dev,desktop]" "pyinstaller==6.16.0"
+
+      - name: Chromium für Browser-Tests (Playwright)
+        run: python -m playwright install chromium
 
       - name: Tests unter Windows
-        run: python -m pytest
+        run: python -m pytest -rs
 
       - name: Anwendung paketieren (PyInstaller)
         run: python -m PyInstaller installer/MarketIntel.spec --noconfirm

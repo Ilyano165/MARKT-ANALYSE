@@ -19,6 +19,8 @@ dependencies = [
 
 [project.optional-dependencies]
 postgres = ["psycopg[binary]==3.2.10"]
+# Eigenes Anwendungsfenster (Microsoft Edge WebView2) – nur Windows; BSD-3/MIT
+desktop = ["pywebview==6.1; sys_platform == 'win32'", "pythonnet==3.0.5; sys_platform == 'win32'"]
 dev = ["pytest==8.4.2", "ruff==0.13.0", "mypy==1.18.1", "types-openpyxl==3.1.5.20250919", "pip-licenses==5.0.0", "playwright==1.56.0"]
 
 [project.scripts]

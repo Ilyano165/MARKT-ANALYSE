@@ -320,3 +320,30 @@
   }
   setTimeout(tick, 1000);
 })();
+
+/* Anwendung: externe Quellenlinks im Standardbrowser (im App-Fenster gibt es keine
+ * Zurück-Taste) und Hinweis bei unterbrochener Verbindung zum lokalen Backend. */
+(function () {
+  "use strict";
+  document.querySelectorAll('a[href^="http"]').forEach(function (a) {
+    try {
+      if (new URL(a.href).host !== location.host) {
+        a.setAttribute("target", "_blank");
+        a.setAttribute("rel", "noopener noreferrer");
+      }
+    } catch (e) { /* ungültige Adresse: unverändert lassen */ }
+  });
+  var banner = document.getElementById("offline");
+  if (!banner || !window.fetch || location.protocol === "file:") return;
+  var down = false;
+  function ping() {
+    fetch("/health", { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r; })
+      .then(function () {
+        if (down) { location.reload(); return; }
+        setTimeout(ping, 15000);
+      })
+      .catch(function () { down = true; banner.hidden = false; setTimeout(ping, 3000); });
+  }
+  setTimeout(ping, 15000);
+})();

@@ -7,6 +7,7 @@ import json
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import Engine, select
 
@@ -163,38 +164,67 @@ def _print_profile(profile: dict[str, object]) -> None:
     print(f"\n  {len(profile['sources'])} Quellen; Details: mi profile … --html profil.html")  # type: ignore[arg-type]
 
 
-def cmd_ui(args: argparse.Namespace) -> int:
-    from .cli import _setup as setup
+def build_ui(
+    config: Path | None,
+    host: str,
+    port: int,
+    *,
+    db_url: str | None = None,
+    shell: Any = None,
+    start_worker: bool = True,
+) -> tuple[Any, Any]:
+    """Server und (gestarteten) Worker erzeugen – gemeinsam für ``mi ui`` und die Desktop-Hülle."""
+    import dataclasses
+
+    from .config import load_settings
+    from .jobs import Runtime, Worker
     from .opportunity.model import load_model
     from .products import load_products
     from .ui.server import make_server
+    from .usecases import load_use_cases, register
 
-    settings, engine, cases = setup(args)
+    settings = load_settings(config if config else Path("market_intel.toml"))
+    if db_url:
+        settings = dataclasses.replace(settings, database_url=db_url)
+    engine = db.make_engine(settings.database_url)
+    db.init_db(engine)
+    cases = load_use_cases(settings.use_cases_file)
+    register(engine, cases)
     repo.sync_sources(engine, (), (), False)
     discovery = (
         cases,
         load_products(settings.products_file),
         load_model(settings.opportunity_file),
     )
+    worker = None
+    if start_worker:
+        worker = Worker(engine, Runtime(settings, cases, discovery[1], discovery[2]))
+        worker.start()
+    server = make_server(
+        engine,
+        host,
+        port,
+        discovery,
+        worker=worker,
+        out_dir=settings.output_dir,
+        llm_available=bool(settings.llm.enabled),
+        shell=shell,
+    )
+    return server, worker
+
+
+def cmd_ui(args: argparse.Namespace) -> int:
     if args.host not in ("127.0.0.1", "localhost") and not args.allow_lan:
         raise SystemExit(
             "Die Oberfläche hat keine Anmeldung. Andere Adressen als 127.0.0.1 nur mit "
             "--allow-lan in vertrauenswürdigen Netzen."
         )
-    worker = None
-    if not args.no_worker:
-        from .jobs import Runtime, Worker
-
-        worker = Worker(engine, Runtime(settings, cases, discovery[1], discovery[2]))
-        worker.start()
-    server = make_server(
-        engine,
+    server, worker = build_ui(
+        Path(args.config) if args.config else None,
         args.host,
         args.port,
-        discovery,
-        worker=worker,
-        out_dir=settings.output_dir,
-        llm_available=bool(settings.llm.enabled),
+        db_url=args.db,
+        start_worker=not args.no_worker,
     )
     print(f"Oberfläche: http://{args.host}:{server.server_address[1]}/  (Beenden: Strg+C)")
     try:

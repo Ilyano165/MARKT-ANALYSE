@@ -53,7 +53,7 @@ def test_launcher_mode_starts_ui_on_free_port(home: Path, monkeypatch: pytest.Mo
     calls: list[list[str]] = []
     opened: list[Any] = []
     monkeypatch.setattr("market_intel.cli.main", lambda argv: calls.append(argv) or 0)
-    monkeypatch.setattr(desktop.webbrowser, "open", opened.append)
+    monkeypatch.setattr("market_intel.shell.run", lambda *a, **k: opened.append(a) or 0)
     with socket.socket() as busy:  # bevorzugter Port belegt → anderer freier Port
         busy.bind(("127.0.0.1", 0))
         busy.listen()
@@ -62,6 +62,9 @@ def test_launcher_mode_starts_ui_on_free_port(home: Path, monkeypatch: pytest.Mo
     argv = calls[0]
     assert argv[:3] == ["--config", str(home / "market_intel.toml"), "ui"]
     assert int(argv[argv.index("--port") + 1]) != taken and not opened
+    # ohne Argumente: Desktop-Hülle mit eigenem Fenster (nicht der Server allein)
+    assert desktop.main([], program="MarketIntel.exe") == 0
+    assert len(calls) == 1 and opened and opened[0][3] == "auto"
 
 
 def test_cli_works_end_to_end_with_home(home: Path, capsys: pytest.CaptureFixture[str]) -> None:

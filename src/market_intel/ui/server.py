@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import re
 import secrets
+import threading
 from datetime import date
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -47,6 +48,7 @@ CSP = (
 STATIC = {
     "app.js": "text/javascript; charset=utf-8",
     "app.css": "text/css; charset=utf-8",
+    "icon.png": "image/png",
 }
 MAX_BODY = 64 * 1024
 MAX_UPLOAD = 10 * 1024 * 1024  # CSV-Import
@@ -104,8 +106,10 @@ class App:
         worker: Any = None,
         out_dir: Path | None = None,
         llm_available: bool = False,
+        shell: Any = None,
     ) -> None:
         self.engine = engine
+        self.shell = shell  # Desktop-Hülle (Fokus, Beenden) oder None
         self.worker = worker  # jobs.Worker oder None (Aufträge warten dann)
         self.out_dir = out_dir or Path("out")
         self.llm_available = llm_available
@@ -217,6 +221,14 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                 self.wfile.write(body)
 
         def _html(self, html: str, status: int = 200) -> None:
+            if app.shell is not None:  # Desktop-Hülle: „Anwendung beenden“ in der Navigation
+                html = html.replace(
+                    render.APP_ACTIONS,
+                    '<form method="post" action="/app/quit" class="inline quit">'
+                    f'<input type="hidden" name="csrf" value="{render.e(app.csrf)}">'
+                    "<button>Anwendung beenden</button></form>",
+                    1,
+                )
             self._send(status, html.encode("utf-8"), "text/html; charset=utf-8")
 
         def _error(self, status: int, message: str) -> None:
@@ -257,7 +269,20 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                 self._html(app.companies(query.get("q", [""])[0][:100]))
                 return
             if path == "/favicon.ico":
-                self._send(HTTPStatus.NO_CONTENT, b"", "image/x-icon")
+                body = (
+                    resources.files("market_intel.ui").joinpath("static", "icon.png").read_bytes()
+                )
+                self._send(200, body, "image/png")
+                return
+            if path == "/health":
+                from .. import __version__
+
+                health = {
+                    "ok": True,
+                    "version": __version__,
+                    "worker": app.worker is not None and app.worker.alive(),
+                }
+                self._send(200, json.dumps(health).encode(), "application/json")
                 return
             if path in ("/leads", "/leads.csv"):
                 segments = tuple(s for s in query.get("segment", []) if s)
@@ -460,6 +485,14 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
             if not self._host_ok():
                 self._error(HTTPStatus.MISDIRECTED_REQUEST, "Unbekannter Host")
                 return
+            if urlsplit(self.path).path == "/app/focus":  # Zweitstart der Desktop-Hülle
+                token = self.headers.get("X-MI-Token", "")
+                if app.shell is None or not secrets.compare_digest(token, app.shell.token):
+                    self._error(HTTPStatus.FORBIDDEN, "nicht erlaubt")
+                    return
+                app.shell.focus()
+                self._send(HTTPStatus.NO_CONTENT, b"", "text/plain")
+                return
             if not origin_allowed(
                 self.headers.get("Origin"),
                 self.headers.get("Referer"),
@@ -571,6 +604,20 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                     self._error(HTTPStatus.BAD_REQUEST, str(exc))
                     return
                 self._redirect(f"/company/{company_id}/opportunity#outcome")
+                return
+            if path == "/app/quit":
+                if app.shell is None:
+                    self._error(404, "nicht gefunden")
+                    return
+                self._html(
+                    render.page(
+                        "Beenden",
+                        "<h1>Market Intelligence wird beendet</h1><p>Laufende Aufträge werden "
+                        "angehalten und beim nächsten Start fortgesetzt. Dieses Fenster kann "
+                        "geschlossen werden.</p>",
+                    )
+                )
+                threading.Timer(0.3, app.shell.quit).start()
                 return
             if path == "/imports":
                 try:
