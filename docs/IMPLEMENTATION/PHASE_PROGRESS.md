@@ -161,12 +161,14 @@ Worker) im eigenen Prozess. Kein zweites Programm.
 - Linux-PyInstaller-Build mit beiden Programmen: `mi --version` und `mi jobs` laufen.
 - E2E mit der Hülle: Start, Beenden, Neustart, Zweitstart (Exitcode 0 nach 0,8 s).
 
-**NICHT VERIFIZIERT bis zum grünen Windows-Lauf:**
-- das echte WebView2-Fenster,
-- Installer und Deinstallation von Version 0.6.0 unter Windows.
+**VERIFIZIERT auf Windows** (Abschnitt „Windows-Build“): Der Rauchtest öffnet das echte
+WebView2-Fenster (`MarketIntel.exe --smoke-test`), liest Titel und Navigation aus dem Fenster,
+prüft Zweitstart und Logdatei; Installation, Deinstallation und Abbruch bei laufender App
+bestanden.
 
-Der Windows-Rauchtest öffnet das Fenster wirklich (`MarketIntel.exe --smoke-test`). Er liest
-Titel und Navigation aus dem Fenster und prüft Zweitstart und Logdatei. Ergebnis: siehe unten.
+**Nicht automatisiert prüfbar:** wie das Fenster für einen Menschen aussieht und sich bedient
+(Fenstergröße, Symbol in der Taskleiste). Das Programmsymbol ist in die EXE eingebettet
+(PyInstaller „Copying icon to EXE“); die Darstellung in der Taskleiste ist **NICHT VERIFIZIERT**.
 
 **Gefundener und behobener Fehler:** Der Windows-Testlauf zu Phase E hing. Ursache: Ein Test
 provoziert einen Startfehler, und unter Windows öffnete `show_error` einen modalen Dialog, den
