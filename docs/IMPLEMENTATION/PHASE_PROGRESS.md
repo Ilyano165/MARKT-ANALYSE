@@ -14,12 +14,12 @@ gesehen. **NICHT VERIFIZIERT** = nicht ausführbar oder nicht geprüft (mit Grun
 | B | Ein Bewertungsstand überall (P1-4) | a1925f6 | VERIFIZIERT mit Audit-Datenbank |
 | C | Rechercheaufträge + Hintergrund-Worker (P1-1, P1-5) | 0da31d4 | VERIFIZIERT (Test-Internet und echte Quellen) |
 | D | TED-Rollen, Datenpflege, Import (P1-2, P1-3 teilweise) | c15ca5f | VERIFIZIERT |
-| E | Desktop-Anwendung mit eigenem Fenster (P2) | 0640387, b051df0 | siehe Abschnitt E |
+| E | Desktop-Anwendung mit eigenem Fenster (P2) | 0640387, b051df0, 8aa309c, 3207cb5 | VERIFIZIERT auf Windows (CI) |
 | F | Backup, Logs, Wettbewerb, Dubletten, Navigation | 3f5e4d0, f3ff17b, b051df0 | VERIFIZIERT (lokal) |
 
-Tests lokal (Linux, Python 3.13): **301 bestanden, 3 übersprungen** (zwei manuelle Live-Tests,
-ein Windows-Test) vor Phase F; Phase F zusätzlich 8/8 und die Desktop-Tests 9/9. `ruff` und
-`mypy --strict` ohne Befund. Windows-Ergebnisse siehe Abschnitt „Windows-Build“.
+Tests lokal (Linux, Python 3.13): **310 bestanden, 3 übersprungen** (zwei manuelle Live-Tests,
+ein Windows-Test). Windows (GitHub Actions, Python 3.12, Lauf 12): **311 bestanden,
+2 übersprungen** (die zwei manuellen Live-Tests). `ruff` und `mypy --strict` ohne Befund.
 
 ---
 
@@ -260,6 +260,32 @@ Beide wurden protokolliert und nicht umgangen.
 8. **Wiederherstellung einer Sicherung nur per Kommandozeile**, mit Absicht: nur bei beendeter
    Anwendung sicher.
 
-## Windows-Build
+## Windows-Build (VERIFIZIERT, GitHub Actions `windows-latest`, Windows Server 2025)
 
-Wird nach Abschluss des Windows-Laufs zu Commit b051df0 eingetragen.
+Lauf 12 zu Commit 3207cb5 – alle Schritte grün:
+<https://github.com/Ilyano165/MARKT-ANALYSE/actions/runs/42497233814>
+
+| Schritt | Ergebnis |
+|---|---|
+| Tests unter Windows (mit Chromium) | 311 bestanden, 2 übersprungen (3:37 min) |
+| PyInstaller: `MarketIntel.exe` (Fenster) + `mi.exe` (Kommandozeile) | ok |
+| Rauchtest Paket | `mi` (Version, Produktmatrix, CSV-Roundtrip, `mi jobs`), Server-Seiten, **echtes Fenster:** `{"mode": "webview", "title": "Übersicht · Market Intelligence", "nav": 10, "second_instance_focus": true}`, Logdatei |
+| NSIS-Installer | `MarketIntel-Setup-0.6.0.exe` (34,3 MB) |
+| Installieren, testen, deinstallieren | Startmenü- und Desktop-Verknüpfung, Apps & Features, Fenstertest im installierten Programm, Deinstallation bricht bei laufender App ab (Exitcode ≠ 0, Dateien bleiben), danach vollständige Deinstallation |
+
+Verlauf der Fehler auf dem Weg dorthin (alle behoben):
+- Lauf 7–9 hingen im Testschritt: modaler Fehlerdialog im Test (siehe Phase E).
+- Lauf 10: Rauchtest prüfte noch den alten Titel; das Fenster selbst funktionierte bereits.
+- Lauf 11: Installer erkannte die laufende Anwendung nicht (Umbenennen laufender Programme ist
+  unter Windows erlaubt); jetzt Schreibprobe.
+
+## Installer
+
+- **Artefakt:** `MarketIntel-Setup` aus Lauf 12, Datei `MarketIntel-Setup-0.6.0.exe`.
+  Download (GitHub-Anmeldung, 30 Tage gültig bis 2026-12-08):
+  <https://github.com/Ilyano165/MARKT-ANALYSE/actions/runs/42497233814/artifacts/13623653042>
+- **Pfad im Build:** `dist-installer/MarketIntel-Setup-0.6.0.exe` (Repository-Wurzel).
+- **Installiert nach:** `%LOCALAPPDATA%\Programs\Yellotools Market Intelligence\` mit
+  `MarketIntel.exe` und `mi.exe`.
+- **Daten:** `%LOCALAPPDATA%\YellotoolsMarketIntel\`, darin `market_intel.db`, `logs\`,
+  `backups\` und `out\`.
