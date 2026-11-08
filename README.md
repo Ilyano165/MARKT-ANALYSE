@@ -5,7 +5,9 @@ mehrjährige Beobachtung von Unternehmen. **100 % kostenloser Betrieb:** keine B
 keine Abos, keine Cloud, keine KI-Dienste. Jede Zahl ist auf eine Quelle zurückführbar;
 fehlende Daten bleiben sichtbar unbekannt.
 
-Stand: Version 0.5.0 – Research Engine, Unternehmensanalyse und Customer Discovery (Produktmatrix, belegte Bedarfshypothesen, transparente Bewertung, Watchlist, Lead-Export) mit lokaler Oberfläche.
+Stand: Version 0.6.0 – Desktop-Anwendung mit eigenem Fenster: Rechercheaufträge mit
+Hintergrund-Worker und Live-Fortschritt, Leads mit einheitlichem Bewertungsstand, Importe,
+Datenpflege, Datensicherung. Fortschritt und offene Punkte: `docs/IMPLEMENTATION/PHASE_PROGRESS.md`.
 
 ## Installation unter Windows (Setup)
 
@@ -13,15 +15,22 @@ Stand: Version 0.5.0 – Research Engine, Unternehmensanalyse und Customer Disco
    Die Datei ist **nicht signiert** (Code-Signing-Zertifikate kosten Geld): Windows SmartScreen
    zeigt beim ersten Start „Der Computer wurde durch Windows geschützt“ → „Weitere Informationen“
    → „Trotzdem ausführen“.
-2. Startmenü → **Yellotools Market Intelligence**: Die Oberfläche öffnet sich im Browser
-   (nur auf diesem PC erreichbar, 127.0.0.1). Das Konsolenfenster zeigt Adresse und Datenordner;
-   Schließen des Fensters beendet die Anwendung.
-3. Kommandozeile: Startmenü → **Market Intelligence – Eingabeaufforderung**, dann z. B.
-   `mi sources`, `mi research …`, `mi leads --out leads`.
+2. Startmenü oder Desktop → **Yellotools Market Intelligence**: Die Anwendung öffnet sich in
+   einem eigenen Fenster (Microsoft Edge WebView2, auf Windows 10/11 vorinstalliert; ohne
+   WebView2 als Edge-App-Fenster). Kein Konsolenfenster. Ein zweiter Start holt das laufende
+   Fenster nach vorn. Schließen des Fensters oder „Anwendung beenden“ hält laufende
+   Rechercheaufträge an; sie werden beim nächsten Start fortgesetzt.
+3. Arbeitsablauf: **Rechercheaufträge → Neuer Rechercheauftrag** (Zielgruppe, Regionen,
+   Suchbegriffe), Fortschritt live verfolgen, gefundene Unternehmen öffnen, unter **Leads**
+   verwalten und als CSV exportieren. Firmenlisten und Bestandskunden unter **Importe**,
+   fehlende Websites und Dubletten unter **Datenpflege**, Sicherung unter **Einstellungen**.
+4. Kommandozeile: Startmenü → **Market Intelligence – Eingabeaufforderung**, dann z. B.
+   `mi sources`, `mi research …`, `mi jobs`, `mi backup create`, `mi leads --out leads`.
 
 Daten (Datenbank, Einstellungen `market_intel.toml`, Exporte) liegen in
 `%LOCALAPPDATA%\YellotoolsMarketIntel` und bleiben bei Update und Deinstallation erhalten.
-Dort einmal `contact_email` (Funktionsadresse der Firma) eintragen. Update: neues Setup
+Dort einmal `contact_email` (Funktionsadresse der Firma) eintragen. Protokoll:
+`logs\market_intel.log`; Sicherungen: `backups\` (täglich automatisch, letzte 10). Update: neues Setup
 darüber installieren. Bezug des Setups: GitHub → Actions → „Windows-Build und Installer“ →
 Artefakt `MarketIntel-Setup` (wird bei jedem Push auf einem Windows-Rechner gebaut und durch
 Installieren, Starten und Deinstallieren geprüft).

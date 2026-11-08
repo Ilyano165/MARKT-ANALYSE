@@ -316,7 +316,7 @@ def _smoke(webview: Any, backend: Backend, home: Path, out: Path) -> int:
     def check(window: Any) -> None:
         try:
             result["title"] = window.evaluate_js("document.title")
-            result["nav"] = window.evaluate_js("document.querySelectorAll('header a').length")
+            result["nav"] = window.evaluate_js("document.querySelectorAll('.mainnav a').length")
             result["second_instance_focus"] = notify_running(home)
         except Exception as exc:  # pragma: no cover - nur im Rauchtest
             result["error"] = repr(exc)

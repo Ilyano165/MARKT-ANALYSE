@@ -1,6 +1,6 @@
 # Verbindliche Übersicht: Abhängigkeiten, Datenquellen und Kosten
 
-Stand: 2026-10-22 · gilt für market-intel 0.4.0
+Stand: 2026-11-08 · gilt für market-intel 0.6.0
 
 **Ergebnis:** Die Kernanwendung benötigt **keine** kostenpflichtige Software, keinen
 kostenpflichtigen Dienst, kein Abonnement, keine Cloud und keinen KI-Zugang. Optionale Kosten
@@ -29,6 +29,15 @@ Domain/Zertifikat für einen Teamserver.
 | psycopg[binary] | 3.2.10 | LGPL-3.0 (bündelt libpq, PostgreSQL License) | nur für PostgreSQL | nein (`.[postgres]`) | 0 € | nein |
 | pytest, mypy, ruff, pip-licenses | 8.4.2 / 1.18.1 / 0.13.0 / 5.0.0 | MIT | Entwicklung | nein (`.[dev]`) | 0 € | nein |
 | types-openpyxl | 3.1.5.20250919 | Apache-2.0 | Entwicklung | nein | 0 € | nein |
+
+| pywebview | 6.1 | BSD-3-Clause (Paket-Metadaten geprüft 2026-11-08) | eigenes Anwendungsfenster (Edge WebView2) | nur Windows-Desktop (`.[desktop]`) | 0 € | nein |
+| pythonnet | 3.0.5 | MIT | von pywebview unter Windows (.NET-Zugriff) | nur Windows-Desktop | 0 € | nein |
+| bottle, proxy_tools | – | MIT | von pywebview | nur Windows-Desktop | 0 € | nein |
+| playwright | 1.56.0 | Apache-2.0 | Browser-Tests (Chromium) | nein (`.[dev]`) | 0 € | nein |
+| Pillow | (nur Entwicklung) | HPND | erzeugt einmalig das Programmsymbol (`tools/make_icon.py`) | nein, Ergebnis eingecheckt | 0 € | nein |
+
+Microsoft Edge WebView2 Runtime: Bestandteil von Windows 10/11 (Evergreen), kostenlos, wird nicht
+mitgeliefert. Fehlt sie, öffnet die Anwendung ein Edge-/Chrome-App-Fenster.
 
 Python selbst: PSF-2.0. SQLite: gemeinfrei (in Python enthalten). Keine Komponente verlangt
 Lizenzgebühren. psycopg (LGPL) wird unverändert als Bibliothek genutzt.

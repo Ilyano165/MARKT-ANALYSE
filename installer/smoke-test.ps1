@@ -60,7 +60,8 @@ $result = Get-Content $out -Raw | ConvertFrom-Json
 Write-Host "Fenstertest: $(Get-Content $out -Raw)"
 if ($p.ExitCode -ne 0) { throw "Fenstertest fehlgeschlagen (Exitcode $($p.ExitCode))" }
 if ($result.mode -ne "webview") { throw "Kein eigenes Fenster (Modus $($result.mode))" }
-if ($result.title -notmatch "Unternehmen") { throw "Fenster zeigt nicht die Anwendung: $($result.title)" }
+if ($result.title -notmatch "Market Intelligence") { throw "Fenster zeigt nicht die Anwendung: $($result.title)" }
+if ([int]$result.nav -lt 10) { throw "Navigation im Fenster unvollständig ($($result.nav) Einträge)" }
 if (-not $result.second_instance_focus) { throw "Einzelinstanz: Zweitstart nicht übergeben" }
 if (-not (Test-Path (Join-Path $env:MI_HOME "logs\market_intel.log"))) { throw "Protokolldatei fehlt" }
 Write-Host "Rauchtest bestanden: $Exe"
