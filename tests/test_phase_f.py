@@ -31,7 +31,6 @@ from market_intel.sources.user_data import store_document
 
 from .test_opportunity import world  # noqa: F401  (Fixture)
 
-
 # ---------------------------------------------------------------------- Datensicherung
 
 
