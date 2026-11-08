@@ -45,6 +45,44 @@ STATIC = {
     "app.css": "text/css; charset=utf-8",
 }
 MAX_BODY = 64 * 1024
+REFERRER_POLICY = "same-origin"
+SAME_ORIGIN_FETCH = frozenset({"same-origin", "none"})
+
+
+def origin_allowed(
+    origin: str | None,
+    referer: str | None,
+    fetch_site: str | None,
+    allowed_hosts: set[str],
+) -> bool:
+    """Herkunftsprüfung für schreibende Anfragen (zusätzlich zum CSRF-Token).
+
+    Reihenfolge der Belege:
+
+    1. ``Sec-Fetch-Site`` (vom Browser gesetzt, von Seiten nicht fälschbar): nur
+       ``same-origin`` oder ``none`` (direkte Nutzeraktion) sind erlaubt; ``same-site`` und
+       ``cross-site`` werden abgelehnt.
+    2. ``Origin``: muss ``http://<erlaubter Host>`` sein. ``null`` (Sandbox, Datei, manche
+       Datenschutz-Einstellungen) gilt nur, wenn ``Sec-Fetch-Site`` die gleiche Herkunft
+       bestätigt.
+    3. Ohne ``Origin``: ``Referer`` muss, falls vorhanden, auf einen erlaubten Host zeigen.
+    4. Ohne alle drei Angaben (Kommandozeilen-Clients, Tests): erlaubt – das CSRF-Token
+       bleibt Pflicht.
+    """
+    if fetch_site is not None and fetch_site.strip().lower() not in SAME_ORIGIN_FETCH:
+        return False
+    if origin is not None:
+        origin = origin.strip()
+        if origin == "null":
+            return fetch_site is not None
+        parts = urlsplit(origin)
+        return parts.scheme == "http" and parts.netloc in allowed_hosts and parts.path in ("", "/")
+    if referer:
+        parts = urlsplit(referer.strip())
+        return parts.scheme == "http" and parts.netloc in allowed_hosts
+    return True
+
+
 Discovery = tuple[dict[str, UseCase], Catalog, Model]
 
 
@@ -146,7 +184,11 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Content-Security-Policy", CSP)
             self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Referrer-Policy", "no-referrer")
+            # same-origin statt no-referrer: Bei no-referrer senden Chromium-Browser bei
+            # Formularen „Origin: null“ (Fetch-Standard), wodurch die Herkunftsprüfung jede
+            # eigene Speicher-Aktion ablehnte. Externe Quellenlinks erhalten weiterhin keinen
+            # Referrer.
+            self.send_header("Referrer-Policy", REFERRER_POLICY)
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Cache-Control", "no-store")
             for key, value in (extra or {}).items():
@@ -320,8 +362,12 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
             if not self._host_ok():
                 self._error(HTTPStatus.MISDIRECTED_REQUEST, "Unbekannter Host")
                 return
-            origin = self.headers.get("Origin")
-            if origin and urlsplit(origin).netloc not in app.allowed_hosts:
+            if not origin_allowed(
+                self.headers.get("Origin"),
+                self.headers.get("Referer"),
+                self.headers.get("Sec-Fetch-Site"),
+                app.allowed_hosts,
+            ):
                 self._error(HTTPStatus.FORBIDDEN, "Fremde Herkunft")
                 return
             length = _int(self.headers.get("Content-Length", "0"), 0, 0, MAX_BODY + 1)
