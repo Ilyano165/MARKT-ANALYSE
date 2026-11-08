@@ -44,24 +44,46 @@ InstallDirRegKey HKCU "${REGKEY}" "InstallLocation"
 !insertmacro MUI_LANGUAGE "German"
 
 !macro EnsureClosed
-  ; Läuft die Anwendung noch, ist MarketIntel.exe gesperrt – nicht überschreiben, sondern fragen
+  ; Läuft MarketIntel.exe oder mi.exe noch, lässt Windows die Datei nicht zum Schreiben öffnen.
+  ; (Umbenennen wäre kein Test: Windows erlaubt das Umbenennen laufender Programme.)
   retry:
-  ClearErrors
-  IfFileExists "$INSTDIR\MarketIntel.exe" 0 done
-  Rename "$INSTDIR\MarketIntel.exe" "$INSTDIR\MarketIntel.exe.check"
-  IfErrors 0 renamed
+  StrCpy $R1 "$INSTDIR\MarketIntel.exe"
+  Call ${UN}CheckLocked
+  StrCmp $R0 "locked" busy
+  StrCpy $R1 "$INSTDIR\mi.exe"
+  Call ${UN}CheckLocked
+  StrCmp $R0 "locked" busy done
+  busy:
   IfSilent 0 +3
     SetErrorLevel 5
-    Abort "Market Intelligence läuft noch."
+    Quit
   MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Market Intelligence läuft noch. Bitte die Anwendung beenden und „Wiederholen“ wählen." IDRETRY retry
-  Abort
-  renamed:
-  Rename "$INSTDIR\MarketIntel.exe.check" "$INSTDIR\MarketIntel.exe"
+  SetErrorLevel 5
+  Quit
   done:
 !macroend
 
+!macro CheckLockedFunc PREFIX
+Function ${PREFIX}CheckLocked
+  ; $R1 = Datei; Ergebnis in $R0: "locked" oder "free"
+  StrCpy $R0 "free"
+  IfFileExists "$R1" 0 end
+  ClearErrors
+  FileOpen $0 "$R1" a
+  IfErrors 0 +3
+    StrCpy $R0 "locked"
+    Goto end
+  FileClose $0
+  end:
+FunctionEnd
+!macroend
+!insertmacro CheckLockedFunc ""
+!insertmacro CheckLockedFunc "un."
+
 Section "Installieren"
+  !define UN ""
   !insertmacro EnsureClosed
+  !undef UN
   ; Update: alte Bibliotheken entfernen (nur der eigene Unterordner), dann neu kopieren
   RMDir /r "$INSTDIR\_internal"
   Delete "$INSTDIR\mi.cmd"  ; bis Version 0.5: Kommandozeile als Batchdatei
@@ -89,7 +111,9 @@ Section "Installieren"
 SectionEnd
 
 Section "Uninstall"
+  !define UN "un."
   !insertmacro EnsureClosed
+  !undef UN
   Delete "$SMPROGRAMS\${APPNAME}.lnk"
   Delete "$DESKTOP\${APPNAME}.lnk"
   Delete "$SMPROGRAMS\${CMDLINK}.lnk"
