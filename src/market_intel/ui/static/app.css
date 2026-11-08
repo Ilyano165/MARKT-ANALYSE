@@ -158,3 +158,6 @@ ul.notes { margin: .2rem 0; padding-left: 1.1rem; font-size: .82rem; color: var(
 blockquote.quote { border-left: 3px solid var(--accent); margin: .5rem 0; padding: .3rem .8rem; background: var(--surface); white-space: pre-wrap; }
 pre.excerpt { white-space: pre-wrap; background: var(--surface); border: 1px solid var(--line); padding: .75rem; border-radius: 8px; max-height: 70vh; overflow: auto; font-size: .82rem; }
 @media print { .tabs, .controls, .noteform, .chart-toolbar { display: none; } .js .section { display: block; } }
+.warnbox { background: var(--warn-bg); color: var(--warn-text); border-radius: 6px; padding: .6rem .8rem; margin: .6rem 0; }
+.warnbox form { display: inline; margin-left: .5rem; }
+.ok { color: var(--text-2); }

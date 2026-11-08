@@ -12,6 +12,7 @@ from sqlalchemy import Engine, select
 from .. import db, repo
 from ..export import _write_csv, safe_cell
 from .assess import latest_assessments
+from .current import Freshness, freshness
 from .outcomes import current_outcome, outcome_text
 from .run import NO_FIT_KEY
 from .watch import STATUS_LABELS, status_of
@@ -44,6 +45,7 @@ LEAD_COLUMNS = (
     "quellenlinks",
     "letzte_recherche",
     "bewertet_am",
+    "aktualitaet",
     "modell",
     "firma_id",
 )
@@ -83,8 +85,24 @@ def lead_rows(
     include_excluded: bool = False,
     min_priority: int = 0,
     segments: tuple[str, ...] = (),
+    context: tuple[Any, Any, Any] | None = None,
+    fresh: dict[int, Freshness] | None = None,
 ) -> list[dict[str, Any]]:
-    """Beste Bewertung je Unternehmen; Unternehmen ohne Produkt-Fit nur auf Wunsch."""
+    """Beste Bewertung je Unternehmen; Unternehmen ohne Produkt-Fit nur auf Wunsch.
+
+    Quelle ist dieselbe gespeicherte Bewertungsrunde wie auf der Opportunity-Seite. Veraltete
+    Bewertungen (älteres Modell, geänderte Regeln oder Daten) werden in ``aktualitaet``
+    ausgewiesen und nach den aktuellen einsortiert. ``context`` = (Anwendungsfälle,
+    Produktmatrix, Modell); Standard: mitgelieferte Dateien.
+    """
+    if fresh is None:
+        if context is None:
+            from ..products import load_products
+            from ..usecases import load_use_cases
+            from .model import load_model
+
+            context = (load_use_cases(), load_products(), load_model())
+        fresh = freshness(engine, *context)
     best: dict[int, dict[str, Any]] = {}
     for row in latest_assessments(engine):
         if row["company_id"] not in best:
@@ -147,11 +165,12 @@ def lead_rows(
                 "quellenlinks": " ".join(links),
                 "letzte_recherche": last_run.isoformat() if last_run else "",
                 "bewertet_am": row["assessed_at"].isoformat(),
+                "aktualitaet": fresh[company_id].label if company_id in fresh else "unbekannt",
                 "modell": row["model_version"],
                 "firma_id": company_id,
             }
         )
-    rows.sort(key=lambda r: (-int(r["prioritaet"] or 0), r["firma"]))
+    rows.sort(key=lambda r: (r["aktualitaet"] != "aktuell", -int(r["prioritaet"] or 0), r["firma"]))
     return rows
 
 

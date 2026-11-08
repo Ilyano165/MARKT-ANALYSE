@@ -9,6 +9,7 @@ from typing import Any
 
 from . import repo
 from .cli_intel import _company_args, resolve_company
+from .opportunity.current import freshness, refresh
 from .opportunity.leads import export_leads, lead_rows
 from .opportunity.model import ModelError, load_model
 from .opportunity.report import opportunity_report, to_markdown
@@ -188,8 +189,9 @@ def cmd_watch(args: argparse.Namespace) -> int:
 
 
 def cmd_leads(args: argparse.Namespace) -> int:
-    _, engine, _, _, _ = _context(args)
+    _, engine, cases, catalog, model = _context(args)
     filters = {
+        "context": (cases, catalog, model),
         "include_no_fit": args.include_no_fit,
         "include_excluded": args.include_excluded,
         "min_priority": args.min_priority,
@@ -200,10 +202,37 @@ def cmd_leads(args: argparse.Namespace) -> int:
         print("\n".join(str(f) for f in files))
         return 0
     for row in lead_rows(engine, **filters):
+        stale = "" if row["aktualitaet"] == "aktuell" else f"  [{row['aktualitaet']}]"
         print(
             f"{row['prioritaet']:>3}  {row['firma'][:40]:40} {row['segment']} · "
-            f"{row['bewertungsstatus']}"
+            f"{row['bewertungsstatus']}{stale}"
         )
+    return 0
+
+
+def cmd_reassess(args: argparse.Namespace) -> int:
+    _, engine, cases, catalog, model = _context(args)
+    ids = (
+        [resolve_company(engine, args.company, args.company_id)]
+        if args.company or args.company_id
+        else None
+    )
+    fresh = freshness(engine, cases, catalog, model, ids)
+    counts: dict[str, int] = {}
+    for f in fresh.values():
+        counts[f.label] = counts.get(f.label, 0) + 1
+    print(f"Bewertungsstand (Modell {model.version}):")
+    for label, n in sorted(counts.items()):
+        print(f"  {n:>5}  {label}")
+    if args.check:
+        return 0
+    result = refresh(
+        engine, cases, catalog, model, ids, only_stale=not args.all, trigger="kommandozeile"
+    )
+    print(
+        f"Neu bewertet: {result['reassessed']}; übersprungen (neuere Runde vorhanden): "
+        f"{result['skipped_newer_exists']}"
+    )
     return 0
 
 
@@ -308,6 +337,14 @@ def add_commands(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> No
     rep.add_argument("--md", help="Markdown-Datei schreiben")
     rep.add_argument("--min-cases", type=int, default=10, help="Anteile erst ab n Fällen")
     rep.set_defaults(func=cmd_outcomes_report)
+
+    ra = sub.add_parser(
+        "reassess", help="Bewertungsstand prüfen und veraltete Bewertungen neu berechnen"
+    )
+    _company_args(ra)
+    ra.add_argument("--check", action="store_true", help="nur anzeigen, nichts neu bewerten")
+    ra.add_argument("--all", action="store_true", help="auch aktuelle Bewertungen neu berechnen")
+    ra.set_defaults(func=cmd_reassess)
 
     lead = sub.add_parser("leads", help="Lead-Liste anzeigen oder exportieren (CSV/XLSX/JSON)")
     lead.add_argument("--out", help="Ordner für leads.csv/.xlsx/.json")

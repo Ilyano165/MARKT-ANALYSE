@@ -752,27 +752,35 @@ def data_status_of(conn: Any, company_id: int, index: EvidenceIndex) -> str:
     return "keine_website" if row.status == "not_applicable" else "nicht_untersucht"
 
 
-def store_assessment(engine: Engine, result: dict[str, Any], run_id: int | None) -> int:
-    """Bewertung speichern (jede Bewertung ist eine neue Zeile – Historie)."""
+def store_assessment(
+    conn: Any, result: dict[str, Any], run_id: int | None, *, assessed_at: datetime | None = None
+) -> int:
+    """Bewertung speichern (jede Bewertung ist eine neue Zeile – Historie).
+
+    ``conn`` ist eine offene Transaktion (eine Runde wird gemeinsam geschrieben) oder eine
+    Engine (Einzelzeile, eigene Transaktion). ``assessed_at`` = Datenstand der Bewertung.
+    """
+    if isinstance(conn, Engine):
+        with conn.begin() as tx:
+            return store_assessment(tx, result, run_id, assessed_at=assessed_at)
     scores = result["scores"]
-    with engine.begin() as conn:
-        return int(
-            conn.execute(
-                insert(db.opportunity_score).values(
-                    company_id=result["company_id"],
-                    use_case_key=result["use_case"],
-                    model_version=result["model_version"],
-                    product_relevance=scores["product_relevance"],
-                    business_potential=scores["business_potential"],
-                    data_quality=scores["data_quality"],
-                    priority_score=scores["priority"],
-                    segment=result["segment"]["key"],
-                    details=json.dumps(result, ensure_ascii=False, default=str),
-                    research_run_id=run_id,
-                    assessed_at=db.utcnow(),
-                )
-            ).inserted_primary_key[0]
-        )
+    return int(
+        conn.execute(
+            insert(db.opportunity_score).values(
+                company_id=result["company_id"],
+                use_case_key=result["use_case"],
+                model_version=result["model_version"],
+                product_relevance=scores["product_relevance"],
+                business_potential=scores["business_potential"],
+                data_quality=scores["data_quality"],
+                priority_score=scores["priority"],
+                segment=result["segment"]["key"],
+                details=json.dumps(result, ensure_ascii=False, default=str),
+                research_run_id=run_id,
+                assessed_at=assessed_at or db.utcnow(),
+            )
+        ).inserted_primary_key[0]
+    )
 
 
 def _batch(row: dict[str, Any]) -> str | None:

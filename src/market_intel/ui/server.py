@@ -27,6 +27,7 @@ from .. import db, repo
 from ..intel.competitors import analyze_competitors
 from ..intel.manual import ManualEntryError, document_plain_text
 from ..intel.profile import build_profile, observation_detail
+from ..opportunity.current import freshness, refresh, stale_ids
 from ..opportunity.leads import LEAD_COLUMNS, lead_rows
 from ..opportunity.model import Model, load_model
 from ..opportunity.outcomes import record_outcome
@@ -242,10 +243,12 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                 return
             if path in ("/leads", "/leads.csv"):
                 segments = tuple(s for s in query.get("segment", []) if s)
+                fresh = freshness(app.engine, app.cases, app.catalog, app.model)
                 rows = lead_rows(
                     app.engine,
                     include_no_fit=query.get("nofit", [""])[0] == "1",
                     segments=segments,
+                    fresh=fresh,
                 )
                 if path.endswith(".csv"):
                     self._send(
@@ -258,7 +261,14 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                     self._html(
                         render.page(
                             "Leads",
-                            render.leads_page(rows, app.model.segments, segments),
+                            render.leads_page(
+                                rows,
+                                app.model.segments,
+                                segments,
+                                csrf=app.csrf,
+                                stale=len(stale_ids(fresh)),
+                                total=len(fresh),
+                            ),
                         )
                     )
                 return
@@ -465,6 +475,16 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                     self._error(HTTPStatus.BAD_REQUEST, str(exc))
                     return
                 self._redirect(f"/company/{company_id}/opportunity#outcome")
+                return
+            if path == "/assessments/refresh":
+                result = refresh(
+                    app.engine, app.cases, app.catalog, app.model, trigger="lead-liste"
+                )
+                back = form.get("back", ["/leads"])[0]
+                self._redirect(
+                    (back if back.startswith("/") and not back.startswith("//") else "/leads")
+                    + f"?refreshed={result['reassessed']}"
+                )
                 return
             match = re.fullmatch(r"/company/(\d+)/competitors/store", path)
             if match:

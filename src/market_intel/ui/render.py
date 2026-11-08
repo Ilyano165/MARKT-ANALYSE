@@ -851,6 +851,22 @@ def _assessment_block(best: dict[str, Any]) -> str:
     )
 
 
+def _state_line(state: dict[str, Any]) -> str:
+    """Gespeicherter Bewertungsstand: Zeitpunkt, Modell, Anlass – identisch mit der Lead-Liste."""
+    if not state.get("stored"):
+        return '<p class="warnbox">Keine gespeicherte Bewertung.</p>'
+    refreshed = (
+        f" Beim Öffnen neu bewertet, weil die gespeicherte Bewertung {e(state['refreshed_because'])} war."
+        if state.get("refreshed_because")
+        else ""
+    )
+    return (
+        f'<p class="muted" id="assessment-state">Gespeicherte Bewertung vom {e(state["assessed_at"][:16].replace("T", " "))} UTC'
+        f" · Modell {e(state['model_version'])} · Anlass: {e(state['trigger'])}"
+        f" · gleicher Stand wie Lead-Liste und Export.{refreshed}</p>"
+    )
+
+
 def opportunity_page(
     report: dict[str, Any], notes: list[dict[str, Any]], csrf: str, statuses: tuple[str, ...]
 ) -> str:
@@ -942,6 +958,8 @@ def opportunity_page(
     return (
         f'<p><a href="/company/{cid}">← Profil</a> · <a href="/leads">Leads</a></p>'
         f"<h1>Opportunity: {e(report['name'])}</h1>"
+        + _state_line(report.get("assessment_state") or {})
+        + ""
         f'<div class="cards"><div class="card"><h3>Segment</h3><strong>{e(best["segment"]["name"])}</strong>'
         f'<br><span class="muted">{e(best["segment"]["description"])}</span></div>'
         f'<div class="card"><h3>Priorität</h3><strong>{scores["priority"]}</strong><br>'
@@ -1042,8 +1060,30 @@ def _outcome_block(report: dict[str, Any], csrf: str) -> str:
     )
 
 
-def leads_page(rows: list[dict[str, Any]], segments: Any, selected: tuple[str, ...]) -> str:
-    """Lead-Liste mit Segmentfilter und CSV-Download."""
+def _refresh_banner(stale: int, total: int, csrf: str, back: str) -> str:
+    """Hinweis auf veraltete Bewertungen mit Knopf für die kontrollierte Neubewertung."""
+    if not stale:
+        return f'<p class="ok">Alle {total} gespeicherten Bewertungen sind aktuell.</p>'
+    return (
+        f'<div class="warnbox"><strong>{stale} von {total} Bewertungen sind veraltet</strong> '
+        "(älteres Modell, geänderte Regeln oder neue Firmendaten). Sie sind unten markiert und "
+        "nach den aktuellen einsortiert – ihre Werte gelten nicht als aktueller Stand."
+        '<form method="post" action="/assessments/refresh">'
+        f'<input type="hidden" name="csrf" value="{e(csrf)}">'
+        f'<input type="hidden" name="back" value="{e(back)}">'
+        "<button>Veraltete jetzt neu bewerten</button></form></div>"
+    )
+
+
+def leads_page(
+    rows: list[dict[str, Any]],
+    segments: Any,
+    selected: tuple[str, ...],
+    csrf: str = "",
+    stale: int = 0,
+    total: int = 0,
+) -> str:
+    """Lead-Liste mit Segmentfilter, Aktualität der Bewertung und CSV-Download."""
     options = "".join(
         f'<option value="{e(s.key)}"{" selected" if s.key in selected else ""}>{e(s.name)}</option>'
         for s in segments
@@ -1056,12 +1096,19 @@ def leads_page(rows: list[dict[str, Any]], segments: Any, selected: tuple[str, .
         f'<td>{e(r["anwendungsfall"])}<br><span class="muted">{e(r["produktgruppen"])}</span></td>'
         f'<td class="num">{e(r["produktrelevanz"])}</td><td class="num">{e(r["potenzial"])}</td>'
         f'<td class="num">{e(r["datenqualitaet"])}</td><td>{e(r["mitarbeiter"])}</td>'
-        f"<td>{e(r['bewertungsstatus'])}</td></tr>"
+        f"<td>{e(r['bewertungsstatus'])}"
+        + (
+            ""
+            if r["aktualitaet"] == "aktuell"
+            else f'<br><span class="badge warn">{e(r["aktualitaet"])}</span>'
+        )
+        + "</td></tr>"
         for r in rows
     )
     query = "&".join(f"segment={e(s)}" for s in selected)
     return (
         "<h1>Leads</h1>"
+        + (_refresh_banner(stale, total, csrf, "/leads") if csrf else "")
         + (f'<p class="gapnote">Produktmatrix: {e(rows[0]["produktmatrix"])}</p>' if rows else "")
         + '<p class="gapnote">Ein hoher Score bedeutet nur: nach den gewählten Kriterien interessant für '
         "eine weitere Prüfung. Bedarf, Werkzeuge, Lieferanten und Kaufbereitschaft sind nicht belegt.</p>"

@@ -63,10 +63,23 @@ def assess_and_store(
     catalog: Catalog,
     model: Model,
     run_id: int | None = None,
+    *,
+    trigger: str = "bewertung",
 ) -> dict[int, dict[str, Any]]:
-    """Speichert je Firma alle Anwendungsfälle mit Fit, sonst einen „kein Fit“-Eintrag."""
+    """Speichert je Firma alle Anwendungsfälle mit Fit, sonst einen „kein Fit“-Eintrag.
+
+    Je Firma entsteht eine Runde (``batch``) mit ihrer Grundlage (``basis``: Modell, Regeln,
+    Datenstand) und ihrem Anlass (``trigger``). Die Runde wird in einer Transaktion
+    geschrieben und nur, wenn keine Runde mit jüngerem Datenstand existiert – ein langsamer
+    Lauf überschreibt nie ein neueres Ergebnis. Rückgabe: beste Bewertung je gespeicherter Firma.
+    """
+    from .current import basis_for, rules_digest
+
+    digest = rules_digest(cases, catalog, model)
     best: dict[int, dict[str, Any]] = {}
     for company_id in company_ids:
+        as_of = db.utcnow()  # Datenstand: vor dem Lesen der Firmendaten festgehalten
+        basis = basis_for(engine, company_id, cases, catalog, model, digest=digest)
         results = assess_all_applications(engine, company_id, cases, catalog, model)
         with_fit = [r for r in results if r["scores"]["product_relevance"] > 0]
         stored = with_fit or [no_fit_summary(results, len(cases))]
@@ -76,7 +89,19 @@ def assess_and_store(
         batch = uuid.uuid4().hex
         for result in stored:
             result["batch"] = batch
-            store_assessment(engine, result, run_id)
+            result["basis"] = basis
+            result["trigger"] = trigger
+        with engine.begin() as conn:
+            newer = conn.execute(
+                select(db.opportunity_score.c.id).where(
+                    db.opportunity_score.c.company_id == company_id,
+                    db.opportunity_score.c.assessed_at > as_of,
+                )
+            ).first()
+            if newer is not None:
+                continue
+            for result in stored:
+                store_assessment(conn, result, run_id, assessed_at=as_of)
         best[company_id] = stored[0]
     return best
 

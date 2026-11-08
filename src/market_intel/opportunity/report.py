@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from typing import Any
 
@@ -10,6 +11,8 @@ from sqlalchemy import Engine
 from ..intel.profile import build_profile
 from ..products import Catalog
 from ..usecases import UseCase
+from .assess import latest_assessments
+from .current import freshness, refresh
 from .model import Model
 from .outcomes import outcome_history
 from .run import assess_all_applications, no_fit_summary
@@ -43,7 +46,21 @@ def opportunity_report(
     catalog: Catalog,
     model: Model,
 ) -> dict[str, Any]:
-    """Alle Anwendungsfälle prüfen und das Ergebnis für die beste Hypothese aufbereiten."""
+    """Alle Anwendungsfälle prüfen und das Ergebnis für die beste Hypothese aufbereiten.
+
+    Ist die gespeicherte Bewertung veraltet oder fehlt sie, wird diese eine Firma zuerst neu
+    bewertet und gespeichert (Anlass „opportunity-seite“). So zeigen Opportunity-Seite,
+    Lead-Liste und Export immer denselben Stand – die Seite rechnet nie ein Ergebnis, das
+    nicht gespeichert ist.
+    """
+    fresh = freshness(engine, cases, catalog, model, [company_id]).get(company_id)
+    refreshed_because = None
+    if fresh is not None and not fresh.current:
+        refreshed_because = fresh.label
+        refresh(
+            engine, cases, catalog, model, [company_id], only_stale=True,
+            trigger="opportunity-seite",
+        )  # fmt: skip
     results = assess_all_applications(engine, company_id, cases, catalog, model)
     with engine.connect() as conn:
         profile = build_profile(conn, company_id, years=10, as_of=date.today())
@@ -99,9 +116,29 @@ def opportunity_report(
             "sites": profile["locations"]["locations"],
         },
         "sources": {"profile": profile["sources"], "evidence": list(evidence_sources.values())},
+        "assessment_state": _state(engine, company_id, refreshed_because),
         "watch_history": history_of(engine, company_id),
         "outcome_history": outcome_history(engine, company_id),
         "generated_at": profile["generated_at"],
+    }
+
+
+def _state(engine: Engine, company_id: int, refreshed_because: str | None) -> dict[str, Any]:
+    """Wann, mit welchem Modell und aus welchem Anlass die gezeigte Bewertung entstand."""
+    rows = latest_assessments(engine, company_id)
+    if not rows:
+        return {"stored": False}
+    row = rows[0]
+    details = json.loads(row["details"] or "{}")
+    basis = details.get("basis") or {}
+    return {
+        "stored": True,
+        "assessed_at": row["assessed_at"].isoformat(),
+        "model_version": row["model_version"],
+        "trigger": details.get("trigger", "unbekannt"),
+        "documents": (basis.get("data") or {}).get("source_document"),
+        "rules_digest": basis.get("rules_digest"),
+        "refreshed_because": refreshed_because,
     }
 
 
