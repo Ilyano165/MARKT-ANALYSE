@@ -295,9 +295,9 @@ td .badge { white-space: normal; }
 
 /* ---- KI-Status und KI-Einstellungen (Phase H) ---- */
 .aichip { display: flex; align-items: center; gap: .5rem; margin: .75rem .75rem 0; padding: .5rem .65rem;
-  border: 1px solid var(--line, #d9dee5); border-radius: 8px; font-size: .82rem; color: inherit;
-  text-decoration: none; background: var(--panel, #fff); line-height: 1.3; }
-.aichip:hover { border-color: var(--accent, #1f5fbf); }
+  border: 1px solid rgba(255, 255, 255, .22); border-radius: 8px; font-size: .82rem; color: #f2f5f9;
+  text-decoration: none; background: rgba(255, 255, 255, .08); line-height: 1.3; }
+.aichip:hover, .aichip:focus-visible { border-color: rgba(255, 255, 255, .55); background: rgba(255, 255, 255, .14); }
 .aichip .dot { flex: none; width: .55rem; height: .55rem; border-radius: 50%; background: #9aa4b1; }
 .aichip[data-state="ok"] .dot { background: #1e8e4e; }
 .aichip[data-state="err"] .dot { background: #c62828; }
@@ -324,3 +324,5 @@ td .badge { white-space: normal; }
 .novasetup { border-top: 1px dashed var(--line, #d9dee5); padding-top: .5rem; }
 .warnbox { background: #fff7e6; border: 1px solid #f0c36d; border-radius: 8px; padding: .6rem .8rem; margin: .75rem 0; }
 @media (max-width: 720px) { .aistatus { grid-template-columns: 1fr; } }
+details.card > summary { cursor: pointer; list-style-position: inside; }
+details.card > summary h2 { display: inline; margin: 0; }

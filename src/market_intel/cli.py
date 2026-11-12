@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
 import json
 import platform
@@ -595,8 +596,21 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _utf8_output() -> None:
+    """Windows: Ausgaben immer UTF-8 – auch in Pipes (Windows-CI 2026-11-12: „ungültig“ kam
+    als „ung�ltig“ an, obwohl das Paket mit utf8_mode gebaut ist)."""
+    if sys.platform != "win32":
+        return
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            with contextlib.suppress(ValueError, OSError):  # Strom ohne Neukonfiguration
+                reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(argv: list[str] | None = None) -> int:
     """Einstiegspunkt."""
+    _utf8_output()
     args = build_parser().parse_args(argv)
     return int(args.func(args))
 

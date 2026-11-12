@@ -1,7 +1,7 @@
 # Entwicklungsphase 1 – Fortschritt
 
 Grundlage: `docs/audits/IC_WARE_FORENSIC_AUDIT.md` (Stand 2026-11-06).
-Stand dieses Dokuments: 2026-11-12, Version 0.7.0, Branch `claude/confident-faraday-0tsww5`.
+Stand dieses Dokuments: 2026-11-12, Version 0.8.0, Branch `claude/confident-faraday-0tsww5`.
 
 Kennzeichnung: **VERIFIZIERT** = in diesem Projekt tatsächlich ausgeführt und Ergebnis
 gesehen. **NICHT VERIFIZIERT** = nicht ausführbar oder nicht geprüft (mit Grund).
@@ -16,7 +16,8 @@ gesehen. **NICHT VERIFIZIERT** = nicht ausführbar oder nicht geprüft (mit Grun
 | D | TED-Rollen, Datenpflege, Import (P1-2, P1-3 teilweise) | c15ca5f | VERIFIZIERT |
 | E | Desktop-Anwendung mit eigenem Fenster (P2) | 0640387, b051df0, 8aa309c, 3207cb5 | VERIFIZIERT auf Windows (CI) |
 | F | Backup, Logs, Wettbewerb, Dubletten, Navigation | 3f5e4d0, f3ff17b, b051df0 | VERIFIZIERT (lokal) |
-| G | Automatische Website-Ermittlung mit Bestätigung (P1-3) | df5463c | VERIFIZIERT (lokal + echter E2E), Windows siehe unten |
+| G | Automatische Website-Ermittlung mit Bestätigung (P1-3) | df5463c, ff141ae | VERIFIZIERT (lokal, echter E2E, Windows-Lauf 16) |
+| H | KI-Manager, NOVA als Standard, externe Provider, sichere Schlüssel | d213f51 + Folgecommit | VERIFIZIERT lokal und mit echter NOVA; gültige externe Keys NICHT VERIFIZIERT; Windows siehe unten |
 
 Tests lokal (Linux, Python 3.13): **310 bestanden, 3 übersprungen** (zwei manuelle Live-Tests,
 ein Windows-Test). Windows (GitHub Actions, Python 3.12, Lauf 12): **311 bestanden,
@@ -369,6 +370,161 @@ Vorherige Läufe sind ehrlich dokumentiert:
 - Lauf 2 scheiterte an einem Locator im Testskript, weil das Formular zwei Knöpfe hat. Das war
   kein Fehler der Anwendung.
 
+## Phase H – KI-Architektur: KI-Manager, NOVA als Standard, externe Provider
+
+Auftrag: verbindlicher Architekturauftrag „Desktop-App, KI-Integration und NOVA-Fallback“.
+Die vollständige Architektur steht in `docs/AI_ARCHITECTURE.md`.
+
+### Schritt A – Untersuchung (Befunde)
+
+- **NOVA** ist das Repository `Ilyano165/MY-LOCAL-AI`, Version 0.2.2. Es läuft lokal als
+  Dienst auf `127.0.0.1:8765` und bietet:
+  - die Integrations-API `/api/v1` mit Integrationsschlüssel (`nova integrations create`),
+  - eine OpenAI-kompatible Schnittstelle `/v1`,
+  - **keinen** JSON-Modus und **kein** Function Calling.
+- In MARKT-ANALYSE gab es keine NOVA-Konfiguration. Die Anbindung beruht ausschließlich auf
+  NOVAs dokumentierter und getesteter Schnittstelle; keine Schnittstelle wurde erfunden.
+- **Portkonflikt gefunden:** MARKT-ANALYSE nutzte ebenfalls 8765. Der Windows-Fenstertest in
+  Lauf 16 zeigt `"url": "http://127.0.0.1:8765/"`. Startete MARKT-ANALYSE zuerst, konnte NOVA
+  nicht starten. Jetzt nutzt MARKT-ANALYSE 8780.
+- Die Desktop-Anwendung (Phase E) erfüllte Punkt 1 des Auftrags bereits:
+  - eigenes Fenster mit eingebettetem WebView2,
+  - Installer mit Startmenü- und Desktop-Verknüpfung,
+  - kein externer Browser nötig.
+
+  Daran wurde nichts zurückgebaut.
+
+### Umsetzung (Schritte C–G)
+
+| Schritt | Ergebnis |
+|---|---|
+| C – Interface und Manager | `llm/providers.py`: einheitliches `AIReply` und `ProviderError(kind)`, `Probe`. `llm/manager.py`: Auswahl, Fallback-Regel, Sperre nach Konfigurationsfehlern, Protokoll `ai_call`, Status. |
+| D – NOVA | `NovaProvider` (Bearer-Integrationsschlüssel, Schema in der Anweisung mit Beispielform, Antwort ohne Denkblock und Markdown, strenge Pflichtfeldprüfung). `nova_setup.py`: `nova service start` und `nova integrations create/rotate`, der Schlüssel geht direkt in den sicheren Speicher. |
+| E – externe Provider, Schlüssel | `AnthropicProvider` (offizielles SDK 2.8.0, strukturierte JSON-Ausgabe, Standardmodell `claude-opus-5-5`). `OpenAIProvider` (Chat Completions mit `json_schema`, Modell wird nach dem Verbindungstest aus `/v1/models` gewählt). `secrets.py`: Windows-Anmeldeinformationsverwaltung über `advapi32` (`CredWriteW/CredReadW/CredDeleteW`). |
+| F – Oberfläche | Seite **KI-Einstellungen** (`/settings/ai`), siehe Liste unter der Tabelle. |
+| G – Anbindung | Alle `Assistant`-Aufgaben laufen über den Manager. Der Auftrag bindet jeden Aufruf (`research_run_id`). Belege tragen `llm:<provider>/<modell>`; Widerspruchshinweise heißen „KI-Hinweis (<provider>, ungeprüfte Schlussfolgerung)“. Der Lauf-Bericht enthält `ai_detail`. |
+
+Die Seite **KI-Einstellungen** bietet:
+
+- aktiven Provider mit Grund, Verbindung, Modell, laufender KI-Aufgabe und Fallback-Regel,
+- je Provider: Schlüssel hinterlegen, ändern und entfernen (nur maskiert angezeigt),
+  Verbindung testen, Provider wählen sowie „NOVA wieder als Standard verwenden“,
+- NOVA-Einrichtung mit einem Klick,
+- Diagnose der letzten Aufrufe ohne Inhalte.
+
+Außerdem:
+
+- KI-Status in der Seitenleiste, aktualisiert alle 10 s,
+- KI-Anteil in jedem Auftrag: Provider/Modell, erfolgreiche Aufgaben, letzter Fehler, Wechsel,
+- Auftragsformular: „KI-Analyse verwenden“ mit dem aktiven Provider.
+
+### Datenbank (Schema 7 → 8, automatische Migration)
+
+- `ai_setting` für Provider, Modelle, Fallback-Regel und NOVA-Adresse, **ohne** Schlüssel.
+- `ai_call` für jeden KI-Aufruf mit Metadaten, ohne Prompt, Antwort oder Schlüssel.
+
+### Geänderte und neue Dateien
+
+**Neu:**
+
+- `src/market_intel/llm/manager.py`, `llm/secrets.py`, `llm/nova_setup.py`, `cli_ai.py`
+- `tests/test_ai.py`, `tests/manual/test_nova_live.py`
+- `docs/AI_ARCHITECTURE.md`
+
+**Geändert:**
+
+- `llm/providers.py`, `llm/assistant.py`
+- `cli.py`, `cli_intel.py`, `desktop.py` (Port, Kommentar `[llm]`)
+- `db.py`, `jobs.py` (`ai_progress`), `research.py`
+- `engine/extract.py`, `engine/derive.py`, `proof.py`
+- `ui/server.py`, `ui/views.py`, `ui/render.py`, `ui/static/app.js`, `ui/static/app.css`
+- `installer/MarketIntel.spec` (Anthropic-SDK), `installer/smoke-test.ps1` (KI-Prüfungen)
+- `pyproject.toml` (`anthropic==2.8.0`, Apache-2.0)
+- `README.md`, `DATA_MODEL.md` §3.30
+- Version 0.8.0
+
+### Ehrliche Grenzen
+
+- **Externe Provider mit gültigem Key: NICHT VERIFIZIERT.** Es lag kein echter Anthropic- oder
+  OpenAI-Key vor.
+  - Verifiziert ist mit den echten APIs: Ein ungültiger Key ergibt die klare Meldung „API-Key
+    ungültig“ (Anthropic SDK: `AuthenticationError` 401; OpenAI: 401 `invalid_api_key`).
+  - Der Ablauf mit gültigem Key ist mit den dokumentierten Antwortformaten automatisiert
+    getestet.
+- **NOVA mit Produktionsmodell: NICHT VERIFIZIERT.** Der echte Test lief mit NOVA 0.2.2 aus
+  dem Quellcode, `llama-cpp-python` 0.3.36 als Runtime und **Qwen3 0.6B** (639 MB, CPU), nicht
+  mit dem von NOVA empfohlenen Qwen3.5 9B.
+  - Das kleine Modell antwortet langsam (rund 25–30 s je Aufgabe auf 4 CPU-Kernen) und
+    inhaltlich schwach.
+  - Die Prüfung verwirft deshalb mehr Antworten.
+- **Echter Windows-Desktop mit installierter NOVA: NICHT VERIFIZIERT.** Geprüft ist, was der
+  Windows-CI-Lauf leisten kann; das Zusammenspiel mit einer per MSI installierten NOVA wurde
+  nicht getestet.
+  - Was CI abdeckt: Credential Manager, echter Anthropic-Aufruf mit ungültigem Key aus der
+    gepackten `mi.exe`, Fenster, Installer.
+  - „NOVA starten und Zugang einrichten“ ist nur mit einer CLI-Attrappe getestet.
+- Ohne Systemschlüsselbund (Linux-Sandbox) lehnt die Anwendung das Speichern von Keys ab.
+  - NOVA kann dort über `NOVA_API_KEY` (nur lesend) genutzt werden, wie mit NOVAs eigenem
+    Client.
+  - Unter Windows ist immer die Anmeldeinformationsverwaltung da.
+- Die Website-Ermittlung und das Bewertungsmodell bleiben bewusst deterministisch. Die KI
+  liefert dort nur geprüfte Zitate zu. Eine KI-Zweitmeinung zur Website-Zuordnung ist
+  vorbereitet, aber nicht eingebaut.
+
+### Tests
+
+| Prüfung | Ergebnis |
+|---|---|
+| Linux, gesamte Suite (Python 3.13) | **351 bestanden, 6 übersprungen** (4 manuelle Live-Tests, 2 nur unter Windows); `ruff` und `mypy --strict` ohne Befund |
+| `tests/test_ai.py` (21 Tests) | siehe Liste unter der Tabelle |
+| Echte NOVA, `tests/manual/test_nova_live.py` | **2 bestanden** (NOVA 0.2.2, Qwen3 0.6B): Verbindungstest, KI-Einordnung mit wörtlich geprüften Zitaten (fahrzeugfolierung, glasfolien; 24–29 s), falscher Schlüssel → `auth` |
+| Echte Anbieter-APIs mit ungültigem Key | Anthropic (SDK 2.8.0): `AuthenticationError` 401 → „API-Key ungültig“. OpenAI: 401 `invalid_api_key` → klare Meldung. |
+| Windows (CI) | siehe Abschnitt „Windows-Build“ |
+
+`tests/test_ai.py` deckt ab:
+
+- ohne Key → NOVA
+- gültiger externer Key → dieser Provider
+- ungültiger Key → klarer Fehler ohne Wechsel, auch mit Fallback-Regel
+- externer Anbieter fällt aus → Regel `keiner` bzw. `nova_bei_ausfall`
+- NOVA nicht erreichbar → klare Meldung, Recherche läuft weiter
+- Schlüssel nie in DB, Log oder Seite
+- Entfernen löscht wirklich
+- Provider-Wechsel bleibt nach Neustart erhalten (UI)
+- Recherche enthält Provider-Informationen
+- KI-Belege an Quelle und Zitat gebunden, erfundenes Zitat verworfen
+- NOVA-Einrichtung über die NOVA-CLI
+- Portkonflikt
+- unerwarteter Absturz wird protokolliert
+- Credential-Manager-Roundtrip (Windows)
+
+Befunde aus den echten Tests, alle behoben:
+
+1. Das kleine Modell lieferte statt `{"matches": [...]}` nur die Liste. Jetzt gibt die
+   Anweisung eine Beispielform vor, und es gibt eine rein strukturelle Reparatur, wenn das
+   Schema genau ein Listenfeld hat. Die Inhalte werden weiter wörtlich geprüft.
+2. Ein unerwarteter Fehler eines Providers ließ den Aufruf als „läuft“ stehen. Jetzt wird er
+   als `intern` protokolliert.
+3. `mi.exe` schrieb Umlaute in Pipes trotz `utf8_mode` nicht als UTF-8 (Windows-Lauf 17).
+   Jetzt wird die Ausgabe unter Windows auf UTF-8 umgestellt.
+4. Die Statusanzeige in der dunklen Seitenleiste war kaum lesbar und hat jetzt einen helleren
+   Kontrast.
+
+### Echter End-to-End-Test mit NOVA (2026-11-12, VERIFIZIERT)
+
+Desktop-Hülle im Browser-Modus mit Chromium, echte Quellen, echte NOVA 0.2.2 mit Qwen3 0.6B.
+Den NOVA-Schlüssel hat NOVA selbst über `nova integrations create` erzeugt.
+
+| Schritt | Ergebnis |
+|---|---|
+| KI-Einstellungen | „NOVA – Standard (kein externer Anbieter gewählt)“, Verbindung „verbunden“, Statusleiste „KI: NOVA · verbunden“ |
+| Auftragsformular | „KI-Analyse verwenden (aktiv: NOVA · verbunden)“, standardmäßig angehakt |
+| Auftrag „Fahrzeugfolierer in Deutschland“ (3 Firmen, 250 Abrufe) | Status „teilweise fehlgeschlagen“, weil Quellen fehlten (21 nicht erreichbar, protokolliert). Ergebnis: 5 Firmen gefunden, 3 ausgewählt, 3 bewertet. |
+| KI im Auftrag | **7 von 7 KI-Aufgaben erfolgreich über NOVA/local-general**: Suchstrategie (31,8 s), 3 Profil-Zusammenfassungen (Ø 16,9 s), 3 Bedarfs-Hypothesen (Ø 139 s). Laufende Aufgaben wurden live angezeigt. Auftragsseite: „KI: nova/local-general · 7 von 7 Aufgaben erfolgreich“. |
+| Tätigkeitserkennung auf Websites | **lief nicht.** Keine der 3 Firmen hatte eine *bestätigte* Website, und Websites werden erst nach Bestätigung ausgewertet (Phase G). Der Weg ist per Live-Test und Unit-Test belegt, im E2E aber nicht vorgekommen. |
+| Schlüssel | weder in der Datenbank noch im Protokoll |
+| Beenden und Neustart | Exitcode 0; KI-Einstellungen laden, NOVA aktiv; keine JavaScript-Fehler |
+
 ## End-to-End-Ablauf mit echten Quellen (2026-11-08, VERIFIZIERT)
 
 Ablauf: Desktop-Hülle mit Worker im Modus ohne Fenster (diese Umgebung hat keine grafische
@@ -421,6 +577,24 @@ Beide wurden protokolliert und nicht umgangen.
    Anwendung sicher.
 
 ## Windows-Build (VERIFIZIERT, GitHub Actions `windows-latest`, Windows Server 2025)
+
+**Phase G – Lauf 16 zu Commit ff141ae, alle Schritte grün:**
+<https://github.com/Ilyano165/MARKT-ANALYSE/actions/runs/43206031255>
+
+- Tests: 332 bestanden, 2 übersprungen (4:24 min).
+- Fenstertest: `{"mode": "webview", "nav": 11, "second_instance_focus": true}`.
+- Installer `MarketIntel-Setup-0.7.0.exe`: installiert, gestartet und deinstalliert.
+- Artefakt: <https://github.com/Ilyano165/MARKT-ANALYSE/actions/runs/43206031255/artifacts/13939640113>
+  (gültig bis 2026-12-12).
+
+Lauf 15 war rot: Ein Test las `leads.json` unter Windows ohne Angabe der Kodierung (cp1252).
+Der Export selbst war korrekt UTF-8.
+
+**Phase H:** Lauf 17 zu d213f51 war rot im Rauchtest. `mi.exe` lieferte die richtige Meldung
+„API-Key ungültig“ vom echten Anthropic-Aufruf, aber mit kaputten Umlauten in der Pipe.
+Behoben im Folgecommit, Ergebnis siehe unten.
+
+**Frühere Läufe (Phase E):**
 
 Lauf 12 zu Commit 3207cb5 – alle Schritte grün:
 <https://github.com/Ilyano165/MARKT-ANALYSE/actions/runs/42497233814>
