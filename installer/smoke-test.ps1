@@ -38,7 +38,7 @@ $saved = $fake | & $mi ai set-key anthropic --stdin | Out-String
 if ($LASTEXITCODE -ne 0 -or $saved -notmatch "Anmeldeinformationsverwaltung") { throw "Schlüssel nicht gespeichert: $saved" }
 $cred = cmdkey /list:MarketIntel/ai/anthropic | Out-String
 Write-Host $cred
-if ($cred -notmatch "target=MarketIntel/ai/anthropic") { throw "Eintrag fehlt in der Anmeldeinformationsverwaltung: $cred" }
+if ($cred -notmatch "Target:\s*MarketIntel/ai/anthropic") { throw "Eintrag fehlt in der Anmeldeinformationsverwaltung: $cred" }
 & $mi ai use anthropic | Out-Null
 $test = & $mi ai test anthropic | Out-String
 Write-Host $test
@@ -51,7 +51,7 @@ $rm = & $mi ai remove-key anthropic | Out-String
 if ($rm -notmatch "gelöscht") { throw "Entfernen fehlgeschlagen: $rm" }
 $cred = cmdkey /list:MarketIntel/ai/anthropic | Out-String
 Write-Host $cred
-if ($cred -match "target=MarketIntel/ai/anthropic") { throw "Eintrag nach dem Entfernen noch vorhanden: $cred" }
+if ($cred -match "Target:\s*MarketIntel/ai/anthropic") { throw "Eintrag nach dem Entfernen noch vorhanden: $cred" }
 $st = & $mi ai status | Out-String
 if ($st -notmatch "Aktiver Provider: NOVA" -or $st -notmatch "kein API-Key") { throw "Nach dem Entfernen nicht NOVA: $st" }
 $nova = & $mi ai test nova | Out-String
