@@ -17,7 +17,7 @@ gesehen. **NICHT VERIFIZIERT** = nicht ausführbar oder nicht geprüft (mit Grun
 | E | Desktop-Anwendung mit eigenem Fenster (P2) | 0640387, b051df0, 8aa309c, 3207cb5 | VERIFIZIERT auf Windows (CI) |
 | F | Backup, Logs, Wettbewerb, Dubletten, Navigation | 3f5e4d0, f3ff17b, b051df0 | VERIFIZIERT (lokal) |
 | G | Automatische Website-Ermittlung mit Bestätigung (P1-3) | df5463c, ff141ae | VERIFIZIERT (lokal, echter E2E, Windows-Lauf 16) |
-| H | KI-Manager, NOVA als Standard, externe Provider, sichere Schlüssel | d213f51 + Folgecommit | VERIFIZIERT lokal und mit echter NOVA; gültige externe Keys NICHT VERIFIZIERT; Windows siehe unten |
+| H | KI-Manager, NOVA als Standard, externe Provider, sichere Schlüssel | d213f51, 9d76883, dbcb324 | VERIFIZIERT lokal, mit echter NOVA und auf Windows (Lauf 20); gültige externe Keys und NOVA-MSI auf echtem Desktop NICHT VERIFIZIERT |
 
 Tests lokal (Linux, Python 3.13): **310 bestanden, 3 übersprungen** (zwei manuelle Live-Tests,
 ein Windows-Test). Windows (GitHub Actions, Python 3.12, Lauf 12): **311 bestanden,
@@ -590,9 +590,37 @@ Beide wurden protokolliert und nicht umgangen.
 Lauf 15 war rot: Ein Test las `leads.json` unter Windows ohne Angabe der Kodierung (cp1252).
 Der Export selbst war korrekt UTF-8.
 
-**Phase H:** Lauf 17 zu d213f51 war rot im Rauchtest. `mi.exe` lieferte die richtige Meldung
-„API-Key ungültig“ vom echten Anthropic-Aufruf, aber mit kaputten Umlauten in der Pipe.
-Behoben im Folgecommit, Ergebnis siehe unten.
+**Phase H – Lauf 20 zu Commit dbcb324, alle Schritte grün:**
+<https://github.com/Ilyano165/MARKT-ANALYSE/actions/runs/43259669156>
+
+| Schritt | Ergebnis |
+|---|---|
+| Tests unter Windows | **352 bestanden, 5 übersprungen** (4:26 min). Darin u. a. `test_windows_credential_manager_roundtrip`: Speichern, Lesen mit Umlauten, Überschreiben und Löschen in der echten Anmeldeinformationsverwaltung. Übersprungen: 4 manuelle Live-Tests und die NOVA-CLI-Attrappe (Shell-Skript). |
+| Rauchtest Paket (`mi.exe`) | siehe Liste unter der Tabelle |
+| Fenster | `{"mode": "webview", "url": "http://127.0.0.1:8780/", "nav": 12, "second_instance_focus": true}` – eigener Port 8780, kein Konflikt mit NOVA |
+| Installer | `MarketIntel-Setup-0.8.0.exe` (45,5 MB) installiert. Danach liefen derselbe KI-Rauchtest und der Fenstertest im installierten Programm. Anschließend wurde es deinstalliert. |
+
+Der Rauchtest des Pakets mit `mi.exe` prüfte:
+
+1. `mi ai status` zeigt „Aktiver Provider: NOVA“ und den Speicher „Windows-Anmeldeinformationsverwaltung“.
+2. Schlüssel über `--stdin` gespeichert; `cmdkey` zeigt `Target: MarketIntel/ai/anthropic`.
+3. **Echter Anthropic-Aufruf** mit ungültigem Schlüssel → „API-Key ungültig oder widerrufen“
+   (Exitcode 3).
+4. Status zeigt Anthropic aktiv, Schlüssel nur maskiert, nicht in der Datenbank.
+5. Entfernen → `cmdkey`: `* NONE *` → Status wieder NOVA („kein API-Key hinterlegt“).
+6. NOVA nicht installiert → „NOVA ist unter http://127.0.0.1:8765 nicht erreichbar. Läuft NOVA?
+   (Startmenü → NOVA oder „nova service start“)“.
+
+Auf dem Weg dorthin (alle behoben):
+
+- **Lauf 17:** `mi.exe` gab Umlaute in Pipes nicht als UTF-8 aus. Jetzt stellt die CLI die
+  Ausgabe unter Windows auf UTF-8 um.
+- **Läufe 18 und 19:** Die `cmdkey`-Prüfung im Testskript war falsch formuliert (zuerst
+  Kopfzeile, dann geratenes Format). Seit Lauf 19 steht das echte Format im Log, und es wird
+  geprüft.
+
+Installer-Artefakt 0.8.0 (GitHub-Anmeldung nötig, gültig bis 2026-12-12):
+<https://github.com/Ilyano165/MARKT-ANALYSE/actions/runs/43259669156/artifacts/13962419641>
 
 **Frühere Läufe (Phase E):**
 
