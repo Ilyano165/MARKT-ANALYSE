@@ -1,7 +1,7 @@
 # Entwicklungsphase 1 – Fortschritt
 
 Grundlage: `docs/audits/IC_WARE_FORENSIC_AUDIT.md` (Stand 2026-11-06).
-Stand dieses Dokuments: 2026-11-08, Version 0.6.0, Branch `claude/confident-faraday-0tsww5`.
+Stand dieses Dokuments: 2026-11-12, Version 0.7.0, Branch `claude/confident-faraday-0tsww5`.
 
 Kennzeichnung: **VERIFIZIERT** = in diesem Projekt tatsächlich ausgeführt und Ergebnis
 gesehen. **NICHT VERIFIZIERT** = nicht ausführbar oder nicht geprüft (mit Grund).
@@ -16,6 +16,7 @@ gesehen. **NICHT VERIFIZIERT** = nicht ausführbar oder nicht geprüft (mit Grun
 | D | TED-Rollen, Datenpflege, Import (P1-2, P1-3 teilweise) | c15ca5f | VERIFIZIERT |
 | E | Desktop-Anwendung mit eigenem Fenster (P2) | 0640387, b051df0, 8aa309c, 3207cb5 | VERIFIZIERT auf Windows (CI) |
 | F | Backup, Logs, Wettbewerb, Dubletten, Navigation | 3f5e4d0, f3ff17b, b051df0 | VERIFIZIERT (lokal) |
+| G | Automatische Website-Ermittlung mit Bestätigung (P1-3) | df5463c | VERIFIZIERT (lokal + echter E2E), Windows siehe unten |
 
 Tests lokal (Linux, Python 3.13): **310 bestanden, 3 übersprungen** (zwei manuelle Live-Tests,
 ein Windows-Test). Windows (GitHub Actions, Python 3.12, Lauf 12): **311 bestanden,
@@ -211,6 +212,163 @@ faulthandler.
 
 ---
 
+## Phase G – Automatische Website-Ermittlung (Audit P1-3)
+
+**Ziel:** Für gefundene Unternehmen mögliche offizielle Websites automatisch ermitteln, jeden
+Kandidaten nachvollziehbar prüfen und dem Nutzer zur Entscheidung vorlegen. Die Funktion ist
+Teil der bestehenden Anwendung: dieselbe Datenbank, derselbe Abruf über das `FetchGateway`
+(robots.txt, Drosselung, Cache, `fetch_log`) und dieselben Aufträge und Worker. Es gibt keinen
+zweiten Server.
+
+### Funktionen
+
+1. **Kandidatenquellen.** Es werden nur Domains geprüft, die eine Quelle tatsächlich nennt oder
+   die sich nachvollziehbar aus dem Namen ableiten:
+   - **Bestand:** die bereits gespeicherte Website, mit Herkunft (`company.website_source`).
+   - **TED-Bieterkontakt:** E-Mail-Domain aus `organisation-email-tenderer`. Sie wird nur
+     genutzt, wenn genau ein Bieter genannt ist und dieser der Zuschlagsempfänger ist.
+     Freemail-Domains (gmail, web.de, …) werden ignoriert. Adresse und Telefon werden
+     zusätzlich als belegte Vergleichsdaten gespeichert.
+   - **Wikidata P856:** nur bei passendem Namen und gleichem Land.
+   - **Ableitung aus dem Namen:** höchstens 4 Domains, z. B. `check-matt.de`. Sie gelten nie
+     als Beleg, nur als Prüfkandidat, und werden mit einem einzigen Abrufversuch geprüft.
+2. **Prüfung jedes Kandidaten** über Startseite, Weiterleitungen sowie Impressum und Kontakt
+   (höchstens 2 Unterseiten). Der Matching-Score enthält nur belegte Treffer:
+   - Name: +35 / +18 / +8, fremder Firmenname −30
+   - Registernummer: +30, abweichend −25
+   - Ort und PLZ: +20 (+5 mit Straße), nur Ort +8, anderer Ort −20
+   - Telefon und E-Mail-Domain: je +10
+   - Branchenbegriffe: +5
+   - Domain entspricht dem Namen: +5 / +2
+   - von einer unabhängigen Quelle genannt: +10
+
+   Fehlende Angaben zählen nie positiv; sie erscheinen als „nicht geprüft“. Die Urteile lauten
+   eindeutig, wahrscheinlich, unklar, widerspricht und nicht erreichbar. Die vollständige
+   Tabelle steht in `PRODUCT_SPECIFICATION.md` §6c.
+3. **Keine Zuordnung über Namensähnlichkeit allein.** Abgeleitete Domains, die nicht
+   erreichbar, unklar oder widersprüchlich sind, werden nicht vorgeschlagen. Eine Weiterleitung
+   auf eine fremde Firma (im E2E: `deko-team.de`) wird erkannt.
+4. **Entscheidungen** im Reiter „Website-Ermittlung“ des Unternehmensprofils, in der Sammelansicht
+   `/websites` und mit `mi websites`:
+   - bestätigen (auch „trotzdem bestätigen“ bei nicht erreichbarer Seite)
+   - eine andere wählen
+   - ablehnen mit Grund
+   - manuell eintragen
+   - erneut suchen
+
+   Jede Entscheidung wird mit Autor und Zeit in `company_edit` protokolliert.
+5. **Abgelehnte Vorschläge** tauchen nicht wieder auf, solange sich die Suchgrundlage nicht
+   ändert. Die Suchgrundlage ist ein Hash aus Name, Land, Orten und PLZ.
+6. **Integration in Rechercheaufträge:** Schritt 3 heißt jetzt „Quellen werden geprüft, Websites
+   ermittelt“. Der Fortschritt zeigt bestätigt, aus Quelle, Vorschlag, zu prüfen und keine.
+   Prüfabrufe werden getrennt von Quellenfehlern gezählt. Nicht erreichbare Quellen blockieren
+   den Auftrag nicht.
+7. **Nach der Bestätigung** folgt ein Auftrag „Website-Analyse“ mit diesen Schritten:
+   - Abruf der Website
+   - Extraktion mit Belegen
+   - Neubewertung nach den Regeln aus Phase B, mit dem Anlass `website-analyse`
+
+   Ohne Website gibt es keine Abwertung. Das Unternehmen erscheint als „unvollständige
+   Datenlage“, und Lead-Liste und Export zeigen eine Spalte `website_status`.
+8. **Sammelansicht** pro Auftrag mit „Alle N eindeutigen Vorschläge bestätigen“. Diese Aktion
+   bestätigt nur das Urteil „eindeutig“ und nur, wenn es genau einen solchen Kandidaten pro
+   Firma gibt.
+
+### Datenbank (Schema 6 → 7, automatische Migration)
+
+- Neue Tabelle `website_candidate` (eindeutig je Firma und Domain) mit:
+  - Status und Urteil
+  - Score und Quellen
+  - Prüfdetails und Dokument-IDs
+  - Suchgrundlage
+  - Entscheidung mit Autor, Zeitpunkt und Grund
+- Neue Tabelle `website_search` für das Protokoll jedes Suchlaufs mit Ergebnis.
+- Neue Spalte `company.website_source` mit den Werten:
+  - `manuell`
+  - `bestaetigt`
+  - `quelle:liste`
+  - `quelle:wikidata`
+  - `quelle:unbekannt`
+- Neue Kennungen `email_domain` und `phone` sowie der Standorttyp `other_site` aus
+  TED-Bieterkontakten.
+
+### Geänderte Dateien
+
+- **Neu:**
+  - `src/market_intel/websites.py`
+  - `tests/test_websites.py`
+- **Geändert:**
+  - `db.py`, `repo.py`, `jobs.py`, `research.py`, `maintenance.py`
+  - `http/gateway.py`
+  - `sources/ted.py`, `sources/registry.py`, `sources/user_data.py`, `sources/wikidata.py`
+  - `opportunity/current.py`, `opportunity/evidence.py`, `opportunity/leads.py`
+  - `cli_opportunity.py`, `config.py`, `__init__.py`
+  - `ui/server.py`, `ui/views.py`, `ui/render.py`, `ui/static/app.css`, `ui/static/app.js`
+  - `tests/test_assessment_consistency.py`
+- **Dokumentation:**
+  - `README.md`
+  - `RESEARCH_SOURCES.md` §3a
+  - `PRODUCT_SPECIFICATION.md` §6c
+  - `DATA_MODEL.md` §3.29
+
+### Quellen und Grenzen (ehrlich)
+
+| Quelle | Status in dieser Umgebung (2026-11-12) |
+|---|---|
+| TED-Bieterkontakt | VERIFIZIERT, liefert E-Mail-Domain, Adresse und Telefon |
+| GLEIF | VERIFIZIERT, liefert Adresse und HRB-Nummer als Vergleichsdaten |
+| Wikidata | HTTP 403/429 aus dieser Umgebung (geteilte IP). Wird protokolliert, nicht umgangen. Unter Windows bzw. beim Nutzer NICHT VERIFIZIERT. |
+| Nominatim (OSM) | **ausgeschlossen:** robots.txt verbietet `/search` |
+| Overpass (OSM) | nicht erreichbar (Zeitüberschreitung), daher nicht eingebaut |
+| Allgemeine Suchmaschinen | nicht eingebaut: keine kostenlose, erlaubte Such-API |
+
+- Vorschläge brauchen immer eine Bestätigung durch einen Menschen. Ein hoher Score ist ein
+  Hinweis, kein Beweis.
+- Für Firmen, die weder in TED/Wikidata eine Website haben noch unter einer naheliegenden Domain
+  erreichbar sind, findet die Suche ehrlich nichts.
+
+### Im Zuge von Phase G gefundene und behobene Fehler
+
+1. **Schwer (Phase B):** `rules_digest` hing vom Hash-Seed des Prozesses ab, weil
+   `repr(frozenset)` je nach Prozess anders ausfällt. Nach jedem Neustart galten deshalb alle
+   Bewertungen als „veraltet – Regeln geändert“.
+   - Jetzt kanonisches JSON.
+   - Regressionstest über 4 Prozesse mit verschiedenem `PYTHONHASHSEED`. Er schlägt ohne den
+     Fix fehl.
+   - Folge für bestehende Installationen: Beim ersten Start nach dem Update werden die
+     Bewertungen einmalig als veraltet angezeigt. Danach bleiben sie stabil.
+2. **Leistung:** Die Opportunity-Seite brauchte bei einer Firma mit analysierter Website
+   103 s, im Browser lief sie in einen Timeout.
+   - Ursache: Satztrennung und Kleinschreibung wurden für jeden Suchbegriff neu berechnet.
+   - Mit Zwischenspeicher dauert sie 0,94 s, mit identischen Ergebnissen.
+3. **Fehlerzahlen:** Geratene Domains wurden mit 3 Wiederholungen abgerufen. Dadurch stieg
+   „Quellen fehlgeschlagen“ auf 124.
+   - Abgeleitete Domains werden jetzt nur einmal versucht.
+   - Nicht erreichbare Hosts werden für Firmen-Websites gemerkt.
+   - Prüfabrufe werden getrennt gezählt. Ergebnis: 20 Quellenfehler, 67 Prüfabrufe.
+
+### Echter End-to-End-Test (2026-11-12, VERIFIZIERT)
+
+Ablauf: Desktop-Hülle im Browser-Modus und Chromium (Playwright). Die Datenbank war leer. Die
+Quellen waren echt, ohne Attrappen. Auftrag: „Finde Fahrzeugfolierer in Deutschland“, 8
+Kandidaten, 400 Abrufe, 15 Minuten.
+
+| Schritt | Ergebnis |
+|---|---|
+| Rechercheauftrag | 3 Firmen; 23 Quellen geprüft, davon 8 ok und 15 fehlgeschlagen (protokolliert); 67 Website-Prüfabrufe. Status „teilweise fehlgeschlagen“, nicht blockiert. |
+| Vorschlag CFC CarFilmComponents e. K. | `cfc.de`, Score 78, „wahrscheinlich“: PLZ 82398 und Ort, Telefonnummer und E-Mail-Domain wie im TED-Bieterkontakt, Begriffe „car wrapping“ und „fahrzeugbeschriftung“, unabhängige Quelle TED |
+| Vorschlag Check Matt Fahrzeugfolierung GmbH | `check-matt.de`, Score 43, „wahrscheinlich“: Adresse einschließlich Straße wie bei GLEIF |
+| DEKO.TEAM Inh. Laura Bonner | `deko.team` nicht erreichbar (SSL-Fehler). `deko-team.de` leitet auf eine fremde Firma weiter und wurde daher nicht vorgeschlagen. |
+| Bestätigung von `cfc.de` | löst die Website-Analyse aus: 8 Seiten, 29 Profilfakten, neu bewertet |
+| Opportunity-Seite | lädt; „Anlass: website-analyse · gleicher Stand wie Lead-Liste und Export“ |
+| CSV-Export | CFC: Priorität 64, „belegt“, Website `cfc.de`, „Website bestätigt“, „aktuell“. Die beiden anderen: Priorität 37, „Vorschläge – manuelle Prüfung nötig“, „aktuell“. Ohne Website gibt es also keine Abwertung unter das Niveau ohne Daten. |
+| Beenden und Neustart | Exitcode 0. Website-Prüfung lädt, die Bewertung ist weiterhin „website-analyse“ und **nicht** als veraltet markiert. JavaScript-Fehler: keine. |
+
+Vorherige Läufe sind ehrlich dokumentiert:
+- Lauf 1 scheiterte an der langsamen Opportunity-Seite. Der Fehler ist behoben, siehe oben.
+- Lauf 2 scheiterte an einem Locator im Testskript, weil das Formular zwei Knöpfe hat. Das war
+  kein Fehler der Anwendung.
+
 ## End-to-End-Ablauf mit echten Quellen (2026-11-08, VERIFIZIERT)
 
 Ablauf: Desktop-Hülle mit Worker im Modus ohne Fenster (diese Umgebung hat keine grafische
@@ -242,7 +400,7 @@ Beide wurden protokolliert und nicht umgangen.
 
 ## Offene Probleme (ehrlich)
 
-1. **Automatische Website-Ermittlung fehlt (Audit P1-3, weiterhin offen).**
+1. **Automatische Website-Ermittlung: umgesetzt in Phase G** (siehe dort). Der folgende Stand ist überholt:
    - Ohne Website gibt es keine eigenen Firmenbelege. Alle 3 E2E-Treffer sind deshalb nur
      „unklar / manuelle Prüfung“.
    - Websites lassen sich jetzt manuell pflegen und direkt aus der Ergebnisliste eintragen.

@@ -486,7 +486,8 @@ def test_confirmation_triggers_analysis_and_consistent_reassessment(
     assert lead["prioritaet"] == after["priority_score"]
     export_leads(engine, tmp_path, include_no_fit=True, include_excluded=True)
     exported = {
-        r["firma_id"]: r for r in json.loads((tmp_path / "leads.json").read_text())["leads"]
+        r["firma_id"]: r
+        for r in json.loads((tmp_path / "leads.json").read_text(encoding="utf-8"))["leads"]
     }
     assert exported[cid]["website_status"] == "Website bestätigt"
     assert int(before["id"]) < int(after["id"])

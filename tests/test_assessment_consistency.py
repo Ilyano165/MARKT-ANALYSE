@@ -114,7 +114,8 @@ def test_report_page_lead_list_and_export_agree_for_every_company(
         opportunity_report(engine, cid, *_ctx(world))
     export_leads(engine, tmp_path, include_no_fit=True, include_excluded=True, context=_ctx(world))
     exported = {
-        r["firma_id"]: r for r in json.loads((tmp_path / "leads.json").read_text())["leads"]
+        r["firma_id"]: r
+        for r in json.loads((tmp_path / "leads.json").read_text(encoding="utf-8"))["leads"]
     }
     for cid in world["ids"].values():
         report = opportunity_report(engine, cid, *_ctx(world))
