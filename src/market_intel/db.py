@@ -16,6 +16,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     Engine,
+    Float,
     ForeignKey,
     Integer,
     LargeBinary,
@@ -32,7 +33,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.types import TypeDecorator
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 class DecimalText(TypeDecorator[Decimal]):
@@ -773,6 +774,35 @@ website_search = Table(  # Protokoll je Suche und Quelle (auch: nicht erreichbar
     Column("search_basis", String(64), nullable=False),
     Column("outcome", Text, nullable=False, default="{}"),  # Quelle → Status, Treffer, Fehler
     Column("research_run_id", Integer),
+)
+
+# --- KI (Phase H): Einstellungen ohne Geheimnisse + Protokoll jedes KI-Aufrufs -------------
+ai_setting = Table(  # aktiver Provider, Modelle, Fallback-Regel – API-Keys NIE hier
+    "ai_setting",
+    metadata,
+    Column("key", String(64), primary_key=True),
+    Column("value", Text, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column("updated_by", String(80)),
+)
+
+ai_call = Table(  # ohne Prompt, Antworttext oder Schlüssel – nur Metadaten
+    "ai_call",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("started_at", DateTime(timezone=True), nullable=False),
+    Column("finished_at", DateTime(timezone=True)),
+    Column("task", String(40), nullable=False),  # z. B. anwendungsfaelle, widersprueche
+    Column("provider", String(30), nullable=False),
+    Column("model", String(120)),
+    Column("status", String(20), nullable=False),  # laeuft | ok | fehler | uebersprungen
+    Column("error_kind", String(30)),
+    Column("message", String(400)),
+    Column("fallback_from", String(30)),  # Provider, der ausfiel (Fallback sichtbar)
+    Column("request_id", String(80)),
+    Column("seconds", Float),
+    Column("research_run_id", Integer),
+    Column("job_id", Integer),
 )
 
 schema_info = Table(

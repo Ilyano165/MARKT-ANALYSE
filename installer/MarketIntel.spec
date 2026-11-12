@@ -6,6 +6,7 @@
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 hidden = collect_submodules("market_intel") + collect_submodules("sqlalchemy.dialects.sqlite")
+hidden += collect_submodules("anthropic")  # wird erst bei Auswahl des Providers importiert
 datas = collect_data_files("market_intel")  # Produktmatrix, Regeln, Karten, Oberfläche
 try:  # Desktop-Fenster (pywebview + WebView2, nur Windows); ohne: Rückfall auf Edge-App-Modus
     hidden += collect_submodules("webview")

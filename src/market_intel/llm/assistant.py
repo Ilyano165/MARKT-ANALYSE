@@ -69,6 +69,16 @@ class Assistant:
     def available(self) -> bool:
         return self.provider.available()
 
+    def _ask(
+        self, kind: str, task: str, user: str, schema: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Über den KI-Manager mit Aufgabenart (Protokoll/Anzeige), sonst direkt am Provider."""
+        complete_task = getattr(self.provider, "complete_task", None)
+        if complete_task is not None:
+            result: dict[str, Any] | None = complete_task(kind, task, user, schema)
+            return result
+        return self.provider.complete_json(task, user, schema)
+
     # ------------------------------------------------------------------ Suchstrategie
 
     def suggest_strategy(self, task_text: str) -> dict[str, list[str]]:
@@ -83,7 +93,8 @@ class Assistant:
             },
             "required": ["search_terms"],
         }
-        data = self.provider.complete_json(
+        data = self._ask(
+            "strategie",
             "Zerlege den Rechercheauftrag in Suchbegriffe (inkl. Synonyme, englische und "
             "landessprachliche Varianten), Branchenbegriffe, ausdrücklich genannte Firmennamen "
             "und gesuchte Kennzahlen.",
@@ -112,7 +123,8 @@ class Assistant:
     def relevant_passages(self, text: str, question: str) -> list[Quoted]:
         """Wörtliche Passagen zu einer Frage; ungeprüfte Zitate werden verworfen."""
         schema = {"type": "object", "properties": {"passages": _ARRAY}, "required": ["passages"]}
-        data = self.provider.complete_json(
+        data = self._ask(
+            "passagen",
             f"Zitiere wörtlich bis zu 5 Passagen (je max. 300 Zeichen), die diese Frage "
             f"beantworten: {question}",
             wrap_untrusted(text),
@@ -143,7 +155,8 @@ class Assistant:
             "required": ["matches"],
         }
         catalog = "\n".join(f"- {k}: {v}" for k, v in labels.items())
-        data = self.provider.complete_json(
+        data = self._ask(
+            "anwendungsfaelle",
             "Welche dieser Tätigkeiten übt das Unternehmen laut eigenem Text aus? Nur ausdrücklich "
             f"belegte Treffer, je mit wörtlichem Zitat (max. 200 Zeichen).\n{catalog}",
             wrap_untrusted(text),
@@ -172,7 +185,8 @@ class Assistant:
             "required": ["summary"],
         }
         listing = "\n".join(f"[{f.fact_id}] {f.text}" for f in facts)
-        data = self.provider.complete_json(
+        data = self._ask(
+            "zusammenfassung",
             "Fasse das Unternehmensprofil in höchstens 5 Sätzen zusammen. Verwende nur die "
             "Fakten; jeder Satz endet mit den genutzten Referenzen wie [F1].",
             wrap_untrusted(listing, 8000),
@@ -205,7 +219,8 @@ class Assistant:
         }
         catalog = "\n".join(f"- {k}: {v}" for k, v in use_cases.items())
         listing = "\n".join(f"[{f.fact_id}] {f.text}" for f in facts)
-        data = self.provider.complete_json(
+        data = self._ask(
+            "bedarfe",
             f"Leite mögliche Bedarfe an diesen Anwendungsfällen ab:\n{catalog}\nNur mit Bezug "
             "auf Fakten-IDs.",
             wrap_untrusted(listing, 8000),
@@ -247,7 +262,8 @@ class Assistant:
             "required": ["contradictions"],
         }
         listing = "\n".join(f"[{f.fact_id}] {f.text}" for f in facts)
-        data = self.provider.complete_json(
+        data = self._ask(
+            "widersprueche",
             "Nenne Faktenpaare, die sich widersprechen (z. B. unterschiedlicher Sitz, "
             "unvereinbare Angaben). Keine neuen Fakten.",
             wrap_untrusted(listing, 8000),

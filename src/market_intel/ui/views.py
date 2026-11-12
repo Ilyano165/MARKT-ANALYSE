@@ -6,6 +6,7 @@ Alle Werte kommen aus der Datenbank (``jobs.progress``, Importberichte); Texte w
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from ..jobs import FINAL, RESUMABLE, STATUS_LABELS
@@ -84,7 +85,7 @@ def jobs_page(jobs: list[dict[str, Any]], progress: dict[int, dict[str, Any]], w
 
 
 def new_job_page(
-    cases: dict[str, Any], csrf: str, llm_available: bool, error: str = "", values: Any = None
+    cases: dict[str, Any], csrf: str, llm_available: bool | str, error: str = "", values: Any = None
 ) -> str:
     values = values or {}
 
@@ -103,12 +104,16 @@ def new_job_page(
         f"{' checked' if code in chosen_countries else ''}> {e(name)}</label>"
         for code, name in COUNTRY_CHOICES
     )
+    ai_line = llm_available if isinstance(llm_available, str) else ""
+    use_ai = (values.get("use_llm", [""])[0] == "1") if values else True
     llm = (
-        '<label class="check"><input type="checkbox" name="use_llm" value="1"> Lokale KI (Ollama) '
-        "für die Suchstrategie nutzen</label>"
-        if llm_available
-        else '<p class="muted">Lokale KI ist nicht eingerichtet – die Recherche läuft '
-        "regelbasiert.</p>"
+        '<label class="check"><input type="checkbox" name="use_llm" value="1"'
+        f"{' checked' if use_ai else ''}> KI-Analyse verwenden "
+        f'<span class="muted">(aktiv: {e(ai_line)} – <a href="/settings/ai">KI-Einstellungen</a>)'
+        "</span></label>"
+        '<p class="muted">Die KI analysiert nur Texte, die die Recherche selbst abgerufen hat; '
+        "jede KI-Aussage wird gegen die Quelle geprüft. Ohne erreichbare KI läuft der Auftrag "
+        "regelbasiert weiter.</p>"
     )
     return (
         '<p><a href="/jobs">← Rechercheaufträge</a></p><h1>Neuer Rechercheauftrag</h1>'
@@ -138,6 +143,28 @@ def new_job_page(
         "und Abrufpausen. Gesperrte Quellen werden protokolliert, nicht umgangen.</p>"
         '<button class="primary">Auftrag starten</button></form>'
     )
+
+
+def _ai_line(info: dict[str, Any] | None, job: dict[str, Any]) -> str:
+    """Wer hat in diesem Auftrag analysiert – und was ging schief (sichtbar, nicht versteckt)."""
+    params = json.loads(job.get("params") or "{}") if isinstance(job.get("params"), str) else {}
+    if params.get("no_llm", True) and not (info and info.get("calls")):
+        return (
+            '<p class="ailine muted">KI: für diesen Auftrag nicht verwendet – Auswertung '
+            "regelbasiert.</p>"
+        )
+    if not info or not info.get("calls"):
+        return '<p class="ailine muted">KI: noch keine KI-Aufgabe ausgeführt.</p>'
+    used = ", ".join(info["used"]) or "–"
+    parts = [f"KI: {e(used)} · {info['ok']} von {info['calls']} Aufgaben erfolgreich"]
+    if info.get("running"):
+        parts.append(f"läuft gerade: {e(str(info['running']))}")
+    if info.get("fallbacks"):
+        parts.append(f"{info['fallbacks']} × Provider-Wechsel (Fallback)")
+    line = '<p class="ailine">' + " · ".join(parts) + ' · <a href="/settings/ai">Details</a></p>'
+    if info.get("last_error"):
+        line += f'<p class="warnbox">Letzter KI-Fehler: {e(info["last_error"])}</p>'
+    return line
 
 
 def _website_tiles(job_id: int, counts: dict[str, int]) -> str:
@@ -252,6 +279,7 @@ def job_page(
         f'<div class="tiles">{tiles}</div>'
         + (f'<p class="errorbox">{e(prog["error"])}</p>' if prog.get("error") else "")
         + _website_tiles(jid, prog.get("websites") or {})
+        + _ai_line(prog.get("ai"), job)
         + (
             '<div class="tablewrap"><table class="steps"><thead><tr><th class="num">Schritt</th><th>Name</th>'
             '<th class="num">ok</th><th class="num">Fehler</th><th class="num">übersprungen</th>'
@@ -907,4 +935,237 @@ def websites_review_page(
         + (f'<div class="tiles">{tiles}</div>' if tiles else "")
         + bulk
         + (blocks or "<p>Keine offenen Website-Vorschläge.</p>")
+    )
+
+
+# ---------------------------------------------------------------------- KI-Einstellungen (Phase H)
+
+AI_CALL_STATUS = {
+    "ok": ("st-ok", "erfolgreich"),
+    "fehler": ("st-err", "Fehler"),
+    "laeuft": ("st-run", "läuft"),
+    "uebersprungen": ("st-muted", "übersprungen"),
+}
+
+
+def ai_chip(state: dict[str, Any]) -> dict[str, Any]:
+    """Kurzstatus für die Seitenleiste (JSON für app.js)."""
+    running = state.get("running")
+    probe = state.get("probe")
+    return {
+        "provider": state["provider"],
+        "label": state["label"],
+        "model": state.get("model"),
+        "connection": state["connection"],
+        "message": probe.message if probe else "noch nicht geprüft",
+        "running": (
+            {"task": running["task"], "provider": running["provider"]} if running else None
+        ),
+        "fallback": bool(state.get("last_fallback")),
+    }
+
+
+def ai_settings_page(
+    state: dict[str, Any],
+    info: dict[str, dict[str, Any]],
+    fallback_rules: dict[str, str],
+    task_labels: dict[str, str],
+    calls: list[dict[str, Any]],
+    csrf: str,
+    *,
+    nova_cli: str | None,
+    local_enabled: bool,
+    message: str = "",
+    error: str = "",
+) -> str:
+    token = f'<input type="hidden" name="csrf" value="{e(csrf)}">'
+    selection = state["selection"]
+    probe = state.get("probe")
+    conn_class = {"verbunden": "st-ok", "Fehler": "st-err"}.get(state["connection"], "st-wait")
+    running = state.get("running")
+    header = (
+        '<section class="card aistatus" aria-label="KI-Status">'
+        '<div class="aistatus-main">'
+        f'<p class="kicker">Aktiver KI-Provider</p><p class="ainame">{e(state["label"])}</p>'
+        f'<p class="muted">{e(selection.reason)}</p></div>'
+        '<dl class="facts">'
+        f'<div><dt>Verbindung</dt><dd><span class="status {conn_class}">{e(state["connection"])}</span>'
+        + (f' <span class="muted">{e(probe.message)}</span>' if probe else "")
+        + "</dd></div>"
+        f"<div><dt>Modell</dt><dd>{e(state.get('model') or 'nicht gewählt')}</dd></div>"
+        f"<div><dt>Aktuelle KI-Aufgabe</dt><dd>"
+        + (
+            f"{e(task_labels.get(running['task'], running['task']))} ({e(running['provider'])})"
+            if running
+            else '<span class="muted">keine</span>'
+        )
+        + "</dd></div>"
+        f"<div><dt>Fallback-Regel</dt><dd>{e(fallback_rules.get(state['fallback'], state['fallback']))}</dd></div>"
+        "</dl>"
+        f'<form method="post" action="/settings/ai/test" class="inline">{token}'
+        f'<input type="hidden" name="provider" value="{e(state["provider"])}">'
+        '<button class="primary">Verbindung jetzt testen</button></form>'
+        "</section>"
+    )
+    if state.get("last_fallback"):
+        fb = state["last_fallback"]
+        header += (
+            '<div class="warnbox" role="status">Letzter Provider-Wechsel: '
+            f"{e(info.get(fb['fallback_from'], {}).get('label', fb['fallback_from']))} fiel aus, NOVA "
+            f"übernahm „{e(task_labels.get(fb['task'], fb['task']))}“ "
+            f"({e(str(fb['started_at'])[:16])} UTC).</div>"
+        )
+    if state.get("last_error"):
+        le = state["last_error"]
+        header += (
+            '<p class="muted">Letzter KI-Fehler: '
+            f"{e(info.get(le['provider'], {}).get('label', le['provider']))} – {e(le['message'] or '')} "
+            f"({e(str(le['started_at'])[:16])} UTC)</p>"
+        )
+
+    cards = []
+    for name, meta in info.items():
+        if name == "lokal" and not local_enabled:
+            continue
+        active = name == state["provider"]
+        chosen = selection.chosen == name or (selection.chosen is None and name == "nova")
+        masked = state["keys"].get(name, "")
+        last = None
+        if state.get("probes", {}).get(name):
+            last = state["probes"][name]
+        badge = (
+            '<span class="status st-ok">aktiv</span>'
+            if active
+            else ('<span class="status st-wait">gewählt, nicht aktiv</span>' if chosen else "")
+        )
+        body = f'<p class="muted">{e(meta["long"])}</p>'
+        if meta["external"]:
+            body += (
+                '<p class="hint">Externer Dienst: Für jede KI-Aufgabe werden Auszüge aus '
+                "öffentlichen Quellen an den Anbieter gesendet; Kosten entstehen beim Anbieter.</p>"
+            )
+        if name != "lokal":
+            body += (
+                f"<p>Schlüssel: <code>{e(masked) if masked else 'nicht hinterlegt'}</code> "
+                f'<span class="muted">· Ablage: {e(state["store"])}</span></p>'
+                f'<form method="post" action="/settings/ai/key" class="stack">{token}'
+                f'<input type="hidden" name="provider" value="{e(name)}">'
+                f"<label>{e(meta['key_label'])} {'ändern' if masked else 'hinterlegen'}"
+                f'<input type="password" name="key" autocomplete="off" spellcheck="false" required></label>'
+                f"<button>{'Schlüssel ersetzen' if masked else 'Schlüssel speichern'}</button></form>"
+            )
+            if masked:
+                body += (
+                    f'<form method="post" action="/settings/ai/key-remove" class="inline">{token}'
+                    f'<input type="hidden" name="provider" value="{e(name)}">'
+                    '<button class="danger">Schlüssel entfernen</button></form>'
+                )
+        if name == "nova":
+            body += (
+                '<div class="novasetup"><p><strong>NOVA automatisch einrichten</strong> – startet NOVA '
+                "und legt über NOVAs eigene Befehle einen Zugang „markt-analyse“ an. Der Schlüssel geht "
+                "direkt in den sicheren Speicher und wird nicht angezeigt.</p>"
+                + (
+                    f'<form method="post" action="/settings/ai/nova-setup" class="inline">{token}'
+                    "<button>NOVA starten und Zugang einrichten</button></form>"
+                    f'<p class="muted">Gefunden: <code>{e(nova_cli)}</code></p>'
+                    if nova_cli
+                    else '<p class="muted">NOVA ist auf diesem Rechner nicht installiert '
+                    "(nova.exe nicht gefunden). Ohne NOVA arbeitet die Recherche regelbasiert oder mit "
+                    "einem externen Anbieter.</p>"
+                )
+                + "</div>"
+            )
+        model = state["models"].get(name) or ""
+        options = state["model_choices"].get(name) or []
+        if name in ("anthropic", "openai", "nova"):
+            datalist = (
+                f'<datalist id="models-{e(name)}">'
+                + "".join(f'<option value="{e(m)}">' for m in options[:200])
+                + "</datalist>"
+                if options
+                else ""
+            )
+            body += (
+                f'<form method="post" action="/settings/ai/model" class="inline">{token}'
+                f'<input type="hidden" name="provider" value="{e(name)}">'
+                f'<label>Modell <input name="model" value="{e(model)}" list="models-{e(name)}" '
+                f'placeholder="{"nach dem Verbindungstest wählen" if not model else ""}"></label>{datalist}'
+                "<button>Modell speichern</button></form>"
+            )
+        actions = f'<form method="post" action="/settings/ai/test" class="inline">{token}'
+        actions += f'<input type="hidden" name="provider" value="{e(name)}"><button>Verbindung testen</button></form>'
+        if not chosen:
+            actions += (
+                f'<form method="post" action="/settings/ai/use" class="inline">{token}'
+                f'<input type="hidden" name="provider" value="{e(name)}">'
+                f'<button class="primary">{"NOVA wieder als Standard verwenden" if name == "nova" else "Diesen Provider verwenden"}</button></form>'
+            )
+        if last:
+            cls = "st-ok" if last.ok else "st-err"
+            actions += f'<p><span class="status {cls}">{"OK" if last.ok else "Fehler"}</span> {e(last.message)}</p>'
+        cards.append(
+            f'<section class="card aiprovider{" active" if active else ""}" id="ki-{e(name)}">'
+            f'<div class="cardhead"><h2>{e(meta["label"])}</h2>{badge}</div>{body}'
+            f'<div class="actions">{actions}</div></section>'
+        )
+
+    rules = "".join(
+        f'<label class="check"><input type="radio" name="rule" value="{e(k)}"'
+        f"{' checked' if state['fallback'] == k else ''}> {e(v)}</label>"
+        for k, v in fallback_rules.items()
+    )
+    fallback = (
+        '<section class="card"><h2>Fallback bei Ausfall</h2>'
+        f'<form method="post" action="/settings/ai/fallback" class="stack">{token}{rules}'
+        "<button>Regel speichern</button></form>"
+        '<p class="muted">Ein ungültiger oder fehlender Schlüssel führt nie zu einem stillen '
+        "Wechsel: Die KI-Aufgabe findet dann nicht statt und der Fehler wird hier und im "
+        "Auftrag angezeigt.</p></section>"
+    )
+    rows = "".join(
+        f"<tr><td>{e(str(c['started_at'])[:19])}</td>"
+        f"<td>{e(task_labels.get(c['task'], c['task']))}</td>"
+        f"<td>{e(info.get(c['provider'], {}).get('label', c['provider']))}"
+        + (
+            f' <span class="muted">(statt {e(c["fallback_from"])})</span>'
+            if c["fallback_from"]
+            else ""
+        )
+        + f"</td><td>{e(c['model'] or '')}</td>"
+        f'<td><span class="status {AI_CALL_STATUS.get(c["status"], ("st-muted", ""))[0]}">'
+        f"{e(AI_CALL_STATUS.get(c['status'], ('', c['status']))[1])}</span></td>"
+        f"<td>{e(c['message'] or '')}</td>"
+        f'<td class="num">{"" if c["seconds"] is None else f"{c['seconds']:.1f} s"}</td></tr>'
+        for c in calls
+    )
+    diagnose = (
+        '<details class="card"><summary><h2>Diagnose: letzte KI-Aufrufe</h2></summary>'
+        '<p class="muted">Ohne Inhalte: Prompts, Antworten und Schlüssel werden nie gespeichert.</p>'
+        '<div class="tablewrap"><table><thead><tr><th>Zeit (UTC)</th><th>Aufgabe</th><th>Provider</th>'
+        '<th>Modell</th><th>Status</th><th>Meldung</th><th class="num">Dauer</th></tr></thead>'
+        f"<tbody>{rows or '<tr><td colspan=7>Noch keine KI-Aufrufe.</td></tr>'}</tbody></table></div></details>"
+    )
+    principles = (
+        '<section class="card"><h2>So arbeitet die KI in dieser Anwendung</h2><ul>'
+        "<li>Die <strong>Recherche</strong> beschafft Quellen selbst (Register, Ausschreibungen, Websites); "
+        "die KI analysiert nur bereits abgerufene Texte.</li>"
+        "<li>Jede KI-Aussage wird geprüft: Zitate müssen wörtlich in der Quelle stehen, Zusammenfassungen "
+        "dürfen nur belegte Fakten verwenden – sonst wird sie verworfen.</li>"
+        "<li>KI-Ergebnisse sind als <em>KI-Einordnung</em> bzw. <em>KI-Schlussfolgerung</em> mit Provider "
+        "und Modell gekennzeichnet und gelten nie als bestätigte Tatsache.</li>"
+        "<li>Ohne erreichbare KI läuft die Recherche regelbasiert weiter und sagt das im Auftrag.</li>"
+        "</ul></section>"
+    )
+    return (
+        "<h1>KI-Einstellungen</h1>"
+        + (f'<p class="okbox" role="status">{e(message)}</p>' if message else "")
+        + (f'<div class="errorbox" role="alert">{e(error)}</div>' if error else "")
+        + header
+        + '<div class="aigrid">'
+        + "".join(cards)
+        + "</div>"
+        + fallback
+        + principles
+        + diagnose
     )

@@ -53,8 +53,10 @@ output_dir = "{root}/out"
 # Bitte eine Funktionsadresse der Firma eintragen, z. B.:
 # contact_email = "vertrieb@ihre-firma.de"
 
+# KI: Auswahl und API-Keys unter „KI-Einstellungen“ in der Anwendung (Standard: NOVA).
+# API-Keys liegen in der Windows-Anmeldeinformationsverwaltung, nie in dieser Datei.
+# Der Abschnitt [llm] betrifft nur einen zusätzlichen lokalen Server (Ollama o. ä.):
 [llm]
-# Optionale lokale KI über Ollama. Ohne KI funktioniert alles regelbasiert.
 enabled = false
 """
 
@@ -106,7 +108,7 @@ def main(argv: list[str] | None = None, program: str | None = None) -> int:
         return cli_main(_with_config(argv, config) if argv else ["--help"])
     starter = argparse.ArgumentParser(add_help=False)
     starter.add_argument("--no-browser", action="store_true")
-    starter.add_argument("--port", type=int, default=8765)
+    starter.add_argument("--port", type=int, default=8780)  # 8765 gehört NOVA
     starter.add_argument("--window", choices=["auto", "webview", "app", "browser"], default="auto")
     starter.add_argument("--smoke-test", type=Path)
     known, rest = starter.parse_known_args(argv)

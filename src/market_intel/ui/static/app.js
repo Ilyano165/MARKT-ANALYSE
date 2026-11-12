@@ -376,3 +376,35 @@
     });
   });
 })();
+
+/* KI-Status in der Seitenleiste: aktiver Provider, Verbindung, laufende Aufgabe, Fallback. */
+(function () {
+  "use strict";
+  var chip = document.getElementById("ai-status");
+  if (!chip || !window.fetch) return;
+  var TASKS = {
+    strategie: "Suchstrategie", passagen: "Textstellen", anwendungsfaelle: "Tätigkeiten erkennen",
+    zusammenfassung: "Zusammenfassung", bedarfe: "Bedarfe", widersprueche: "Widersprüche",
+    website_identitaet: "Website-Prüfung", test: "Verbindungstest", allgemein: "KI-Aufgabe"
+  };
+  function show(s) {
+    var txt = chip.querySelector(".txt");
+    var state = s.running ? "run" : s.connection === "verbunden" ? "ok" : s.connection === "Fehler" ? "err" : "wait";
+    chip.setAttribute("data-state", state);
+    var line = "KI: " + s.label + (s.model && s.provider !== "nova" ? " · " + s.model : "");
+    if (s.running) line += " · " + (TASKS[s.running.task] || s.running.task) + " …";
+    else if (s.connection === "Fehler") line += " · nicht verbunden";
+    else if (s.connection === "verbunden") line += " · verbunden";
+    if (s.fallback) line += " · Fallback aktiv";
+    txt.textContent = line;
+    chip.title = s.message || "";
+  }
+  function poll() {
+    fetch("/ai/status.json", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (s) { if (s) show(s); })
+      .catch(function () {});
+  }
+  poll();
+  setInterval(poll, 10000);
+})();

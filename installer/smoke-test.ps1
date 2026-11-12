@@ -27,6 +27,36 @@ if ($LASTEXITCODE -ne 0 -or $import -notmatch "in Ordnung") { throw "CSV-Roundtr
 $jobs = & $mi jobs | Out-String
 if ($LASTEXITCODE -ne 0) { throw "mi jobs fehlgeschlagen" }
 
+# KI (Phase H): NOVA als Standard, Schlüssel in der Windows-Anmeldeinformationsverwaltung,
+# echter Aufruf der Anthropic-API mit ungültigem Schlüssel (klare Meldung, kein stiller Wechsel).
+$ai = & $mi ai status | Out-String
+Write-Host $ai
+if ($ai -notmatch "Aktiver Provider: NOVA") { throw "Standard-Provider ist nicht NOVA: $ai" }
+if ($ai -notmatch "Windows-Anmeldeinformationsverwaltung") { throw "Kein Credential Manager: $ai" }
+$fake = "sk-ant-api03-smoketest-ungueltig-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
+$saved = $fake | & $mi ai set-key anthropic --stdin | Out-String
+if ($LASTEXITCODE -ne 0 -or $saved -notmatch "Anmeldeinformationsverwaltung") { throw "Schlüssel nicht gespeichert: $saved" }
+$cred = cmdkey /list:MarketIntel/ai/anthropic | Out-String
+if ($cred -notmatch "MarketIntel/ai/anthropic") { throw "Eintrag fehlt in der Anmeldeinformationsverwaltung: $cred" }
+& $mi ai use anthropic | Out-Null
+$test = & $mi ai test anthropic | Out-String
+Write-Host $test
+if ($LASTEXITCODE -ne 3 -or $test -notmatch "API-Key ungültig") { throw "Ungültiger Schlüssel nicht klar gemeldet: $test" }
+$st = & $mi ai status | Out-String
+if ($st -notmatch "Aktiver Provider: Anthropic" -or $st.Contains($fake)) { throw "Status falsch oder Schlüssel im Klartext: $st" }
+$dbBytes = [IO.File]::ReadAllText((Join-Path $env:MI_HOME "market_intel.db"), [Text.Encoding]::Latin1)
+if ($dbBytes.Contains($fake)) { throw "Schlüssel steht in der Datenbank" }
+$rm = & $mi ai remove-key anthropic | Out-String
+if ($rm -notmatch "gelöscht") { throw "Entfernen fehlgeschlagen: $rm" }
+$cred = cmdkey /list:MarketIntel/ai/anthropic | Out-String
+if ($cred -match "MarketIntel/ai/anthropic") { throw "Eintrag nach dem Entfernen noch vorhanden" }
+$st = & $mi ai status | Out-String
+if ($st -notmatch "Aktiver Provider: NOVA" -or $st -notmatch "kein API-Key") { throw "Nach dem Entfernen nicht NOVA: $st" }
+$nova = & $mi ai test nova | Out-String
+Write-Host $nova
+if ($LASTEXITCODE -ne 3 -or $nova -notmatch "NOVA") { throw "NOVA-Fehlermeldung unklar: $nova" }
+& $mi ai use nova | Out-Null
+
 # Server ohne Fenster
 $port = 8799
 $proc = Start-Process -FilePath $Exe -ArgumentList "--no-browser", "--port", "$port" -PassThru -WindowStyle Hidden
@@ -39,7 +69,7 @@ try {
         } catch { Start-Sleep -Seconds 1 }
     }
     if (-not $ok) { throw "Oberfläche antwortet nicht auf Port $port" }
-    foreach ($path in "/leads", "/jobs", "/jobs/new", "/imports", "/maintenance") {
+    foreach ($path in "/leads", "/jobs", "/jobs/new", "/imports", "/maintenance", "/settings/ai", "/ai/status.json") {
         $page = Invoke-WebRequest -Uri "http://127.0.0.1:$port$path" -UseBasicParsing -TimeoutSec 10
         if ($page.StatusCode -ne 200) { throw "$path antwortet mit $($page.StatusCode)" }
     }

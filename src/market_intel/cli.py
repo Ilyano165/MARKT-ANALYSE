@@ -22,7 +22,8 @@ from .engine.report import build_report, step_overview
 from .engine.strategy import ResearchRequest
 from .http.gateway import FetchGateway
 from .llm.assistant import Assistant
-from .llm.providers import NullProvider, build_provider
+from .llm.manager import AIManager
+from .llm.providers import NullProvider
 from .proof import evaluate, write_report
 from .repo import sync_sources
 from .research import create_research, execute, run_parameters, update_budget
@@ -65,8 +66,11 @@ def make_ctx(settings: Settings, engine: Engine, budget: Budget, *, no_llm: bool
         min_intervals=dict(settings.rate_limits),
         cost_limit_eur=budget.max_cost_eur,
     )
+    # Alle KI-Aufgaben laufen über den KI-Manager (NOVA als Standard, externe Anbieter nach Wahl)
     provider = (
-        NullProvider() if no_llm else build_provider(settings.llm, max_calls=budget.max_llm_calls)
+        NullProvider()
+        if no_llm
+        else AIManager(engine, settings.llm, max_calls=budget.max_llm_calls)
     )
     if not settings.contact_email:
         print(
@@ -473,25 +477,18 @@ def cmd_adapters(args: argparse.Namespace) -> int:
 
 
 def cmd_llm(args: argparse.Namespace) -> int:
-    settings, _, _ = _setup(args)
-    provider = build_provider(settings.llm)
-    print(
-        f"Lokale KI eingeschaltet: {settings.llm.enabled}; Provider: {settings.llm.provider}; "
-        f"aktiv: {provider.name}"
-    )
-    if settings.llm.enabled and provider.name == "none":
-        print(
-            f"{settings.llm.base_url} mit Modell {settings.llm.model} nicht erreichbar – die "
-            "Anwendung arbeitet regelbasiert weiter."
-        )
-    return 0
+    """Alias von ``mi ai status`` (früher nur lokale KI)."""
+    args.ai_action = "status"
+    from .cli_ai import cmd_ai
+
+    return cmd_ai(args)
 
 
 def _budget_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--max-requests", type=int, help="max. Netzabrufe (Standard 1500)")
     p.add_argument("--max-candidates", type=int, help="max. untersuchte Firmen (Standard 25)")
     p.add_argument("--max-seconds", type=int, help="max. Laufzeit in Sekunden")
-    p.add_argument("--max-llm-calls", type=int, help="max. Aufrufe der lokalen KI")
+    p.add_argument("--max-llm-calls", type=int, help="max. KI-Aufrufe je Auftrag")
     p.add_argument("--max-hits", type=int, help="max. Treffer je Suchanfrage (Standard 20)")
 
 
@@ -586,7 +583,10 @@ def build_parser() -> argparse.ArgumentParser:
         func=cmd_sources
     )
     sub.add_parser("adapters", help="Adapter und ihre Funktionen").set_defaults(func=cmd_adapters)
-    sub.add_parser("llm-status", help="lokale KI prüfen").set_defaults(func=cmd_llm)
+    sub.add_parser("llm-status", help="KI-Status (wie: mi ai status)").set_defaults(func=cmd_llm)
+    from .cli_ai import add_commands as add_ai_commands
+
+    add_ai_commands(sub)
     from .cli_intel import add_commands
     from .cli_opportunity import add_commands as add_opportunity_commands
 

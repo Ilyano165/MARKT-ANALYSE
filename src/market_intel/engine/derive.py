@@ -168,7 +168,12 @@ def record_website_fits(
     for key, items in by_case.items():
         rule_terms = {i.term.lower() for i in items if i.method == "keyword_rule"}
         level = "strong" if len(rule_terms) >= 2 else "plausible"
-        terms = ", ".join(sorted(rule_terms)) or "lokale KI"
+        ai_methods = sorted({i.method[4:] for i in items if i.method.startswith("llm:")})
+        terms = ", ".join(sorted(rule_terms)) or (
+            f"KI-Einordnung mit wörtlich geprüftem Zitat ({', '.join(ai_methods)})"
+            if ai_methods
+            else "–"
+        )
         evidence = [
             EvidenceDraft(i.document_id, i.url, i.quote, i.method, RULES_VERSION, True)
             for i in items[:5]

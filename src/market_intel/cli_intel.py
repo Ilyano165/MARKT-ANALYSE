@@ -211,6 +211,9 @@ def build_ui(
         shell=shell,
         settings=settings,
     )
+    from .llm.manager import check_at_startup
+
+    check_at_startup(engine, llm=settings.llm)  # KI-Provider im Hintergrund prüfen
     if shell is not None:  # Desktop: tägliche automatische Sicherung beim Start
         import contextlib
 
@@ -443,7 +446,7 @@ def add_commands(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> No
 
     u = sub.add_parser("ui", help="lokale Weboberfläche starten")
     u.add_argument("--host", default="127.0.0.1")
-    u.add_argument("--port", type=int, default=8765)
+    u.add_argument("--port", type=int, default=8780)  # 8765 = NOVA
     u.add_argument("--allow-lan", action="store_true", help="andere Adressen erlauben (ohne Login)")
     u.add_argument(
         "--no-worker", action="store_true", help="keine Hintergrundaufträge in diesem Prozess"

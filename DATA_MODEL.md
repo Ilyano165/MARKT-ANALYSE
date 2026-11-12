@@ -460,6 +460,41 @@ Hinweise, Firmenzuordnung, Datenlage, Gründe für manuelle Prüfung, Matrixstan
 Neue Kennungen in `company_identifier`: `email_domain` und `phone` (aus eindeutigen
 TED-Zuschlägen).
 
+### 3.30 KI-Einstellungen und KI-Aufrufe (Schema 8, Phase H)
+
+**`ai_setting`** speichert Einstellungen ohne Geheimnisse. Spalten: `key` (Primärschlüssel),
+`value`, `updated_at`, `updated_by`.
+
+| Schlüssel | Bedeutung |
+|---|---|
+| `provider` | ausdrücklich gewählter Provider: `nova`, `anthropic`, `openai` oder `lokal`. Fehlt er, gilt NOVA. |
+| `fallback` | `keiner` (Standard) oder `nova_bei_ausfall` |
+| `model.<provider>` | Modell je Provider (NOVA: `nova-auto` = NOVA-Router) |
+| `nova.url` | NOVA-Adresse, Standard `http://127.0.0.1:8765` |
+
+API-Keys stehen **nie** in dieser Tabelle. `set_setting` lehnt Namen wie `api_key…`, `key…`,
+`secret…` und `token…` ab. Keys liegen in der Windows-Anmeldeinformationsverwaltung
+(`MarketIntel/ai/<provider>`).
+
+**`ai_call`** protokolliert jeden KI-Aufruf, aber nur Metadaten, ohne Prompt, Antwort oder
+Schlüssel.
+
+| Spalte | Inhalt |
+|---|---|
+| `started_at`, `finished_at` | Zeitpunkte |
+| `task` | `strategie`, `passagen`, `anwendungsfaelle`, `zusammenfassung`, `bedarfe`, `widersprueche`, `test` |
+| `provider`, `model` | Provider und das tatsächlich genutzte Modell aus der Antwort, z. B. `local-general` hinter `nova-auto` |
+| `status` | `laeuft`, `ok` oder `fehler` |
+| `error_kind` | `auth`, `unreachable`, `timeout`, `rate_limit`, `unavailable`, `server`, `invalid_output`, `not_configured`, `intern` usw. |
+| `message` | verständliche Meldung, ohne Schlüssel |
+| `fallback_from` | gesetzt, wenn NOVA nach der Fallback-Regel für einen ausgefallenen externen Provider einsprang |
+| `request_id`, `seconds` | Nachverfolgung beim Anbieter und Dauer |
+| `research_run_id`, `job_id` | Zuordnung zu Auftrag und Lauf |
+
+Die Herkunft von KI-Ergebnissen steht zusätzlich an den Belegen selbst:
+`evidence.extraction_method = "llm:<provider>/<modell>"` (z. B. `llm:nova/local-general`) mit
+`source_document_id` und wörtlich geprüftem Zitat (`quote_verified`).
+
 ## 4. Beziehungen (Übersicht)
 
 ```mermaid

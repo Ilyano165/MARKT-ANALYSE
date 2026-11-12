@@ -135,7 +135,12 @@ NAVIGATION = (
     ("Grundlagen", (("/products", "Produkt-Fit"), ("/sources", "Quellen & Belege"))),
     (
         "Daten",
-        (("/imports", "Importe"), ("/maintenance", "Datenpflege"), ("/settings", "Einstellungen")),
+        (
+            ("/imports", "Importe"),
+            ("/maintenance", "Datenpflege"),
+            ("/settings/ai", "KI-Einstellungen"),
+            ("/settings", "Einstellungen"),
+        ),
     ),
 )
 
@@ -181,6 +186,8 @@ def page(title: str, body: str, *, static: bool = False, data: Any = None) -> st
         '<aside class="sidebar"><a class="brand" href="/"><img src="/static/icon.png" alt="" '
         'width="28" height="28"><span>Market Intelligence</span></a>'
         f'<nav class="mainnav" aria-label="Hauptnavigation">{nav}</nav>'
+        '<a class="aichip" id="ai-status" href="/settings/ai" title="KI-Status">'
+        '<span class="dot"></span><span class="txt">KI: wird geprüft …</span></a>'
         f'<div class="sidefoot">{APP_ACTIONS}<span class="muted">lokal · kostenlos · '
         "jede Zahl mit Quelle</span></div></aside>"
         '<div class="content"><div id="offline" class="errorbox" hidden>Verbindung zur Anwendung '

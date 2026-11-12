@@ -108,8 +108,10 @@ class App:
         llm_available: bool = False,
         shell: Any = None,
         settings: Any = None,
+        secret_store: Any = None,
     ) -> None:
         self.engine = engine
+        self._secret_store = secret_store  # sicherer Schlüsselspeicher (Standard: System)
         self.settings = settings  # geladene Einstellungen (Einstellungsseite), optional
         self.shell = shell  # Desktop-Hülle (Fokus, Beenden) oder None
         self.worker = worker  # jobs.Worker oder None (Aufträge warten dann)
@@ -125,6 +127,18 @@ class App:
         self.allowed_hosts = {f"{n}:{port}" for n in names} | (
             {f"[::1]:{port}"} if host == "127.0.0.1" else set()
         )
+
+    @property
+    def secret_store(self) -> Any:
+        if self._secret_store is None:
+            from ..llm.secrets import default_store
+
+            self._secret_store = default_store()
+        return self._secret_store
+
+    @property
+    def llm_settings(self) -> Any:
+        return getattr(self.settings, "llm", None)
 
     # ------------------------------------------------------------------ Seiten
 
@@ -322,6 +336,27 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
             if path == "/sources":
                 self._html(render.page("Quellen", sources_view(app)))
                 return
+            if path == "/settings/ai":
+                self._html(
+                    render.page(
+                        "KI-Einstellungen",
+                        ai_view(
+                            app, query.get("ok", [""])[0][:300], query.get("err", [""])[0][:300]
+                        ),
+                    )
+                )
+                return
+            if path == "/ai/status.json":
+                from ..llm import manager as ai
+
+                chip = views.ai_chip(ai.status(app.engine, app.secret_store, app.llm_settings))
+                self._send(
+                    200,
+                    json.dumps(chip, ensure_ascii=False, default=str).encode("utf-8"),
+                    "application/json; charset=utf-8",
+                    {"Cache-Control": "no-store"},
+                )
+                return
             if path == "/settings":
                 self._html(
                     render.page(
@@ -427,7 +462,7 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                 self._html(
                     render.page(
                         "Neuer Rechercheauftrag",
-                        views.new_job_page(app.cases, app.csrf, app.llm_available),
+                        views.new_job_page(app.cases, app.csrf, _ai_line(app)),
                     )
                 )
                 return
@@ -720,6 +755,13 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                 job_id = jobs.create_company_job(app.engine, "websites", [int(match.group(1))])
                 self._redirect(f"/jobs/{job_id}")
                 return
+            match = re.fullmatch(r"/settings/ai/([a-z-]+)", path)
+            if match:
+                ok, msg = ai_action(app, match.group(1), form)
+                anchor = form.get("provider", [""])[0]
+                target = _with_param("/settings/ai", "ok" if ok else "err", msg)
+                self._redirect(target + (f"#ki-{anchor}" if anchor.isalnum() else ""))
+                return
             if path == "/settings/backup":
                 from ..backup import BackupError, create_backup, sqlite_path
 
@@ -821,9 +863,7 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                     self._html(
                         render.page(
                             "Neuer Rechercheauftrag",
-                            views.new_job_page(
-                                app.cases, app.csrf, app.llm_available, str(exc), form
-                            ),
+                            views.new_job_page(app.cases, app.csrf, _ai_line(app), str(exc), form),
                         ),
                         HTTPStatus.BAD_REQUEST,
                     )
@@ -1077,7 +1117,7 @@ def settings_view(app: App, message: str = "", error: str = "") -> str:
         "Kontaktadresse (User-Agent)": (getattr(settings, "contact_email", "") or "nicht gesetzt")
         if settings
         else "unbekannt",
-        "Lokale KI": "eingeschaltet" if app.llm_available else "aus (regelbasiert)",
+        "KI": _ai_line(app),
         "Bewertungsmodell": app.model.version,
     }
     return views.settings_page(info, backups, app.csrf, message, error)
@@ -1226,7 +1266,7 @@ def create_job_from_form(app: App, form: dict[str, list[str]]) -> int:
         budget,
         app.out_dir / f"auftrag-{stamp}",
         title=form.get("title", [""])[0],
-        no_llm=not (app.llm_available and form.get("use_llm", [""])[0] == "1"),
+        no_llm=form.get("use_llm", [""])[0] != "1",
     )
 
 
@@ -1293,7 +1333,7 @@ def _int(value: str, default: int, low: int, high: int) -> int:
 def make_server(
     engine: Engine,
     host: str = "127.0.0.1",
-    port: int = 8765,
+    port: int = 8780,  # nicht 8765: dort lauscht NOVA
     discovery: Discovery | None = None,
     **options: Any,
 ) -> ThreadingHTTPServer:
@@ -1326,3 +1366,130 @@ def export_profile_html(
         static=True,
         data=data,
     )
+
+
+# ---------------------------------------------------------------------- KI-Einstellungen (Phase H)
+
+
+def _ai_line(app: App) -> str:
+    """Kurzbeschreibung des aktiven Providers (Auftragsformular, Einstellungen)."""
+    from ..llm import manager as ai
+
+    try:
+        selection = ai.resolve(app.engine, app.secret_store, app.llm_settings)
+    except Exception as exc:
+        return f"KI-Status nicht ermittelbar ({exc})"
+    label = ai.PROVIDER_INFO[selection.provider]["label"]
+    entry = ai.last_probe(selection.provider)
+    state = "" if entry is None else (" · verbunden" if entry[1].ok else f" · {entry[1].message}")
+    return f"{label}{state}"
+
+
+def ai_view(app: App, message: str = "", error: str = "") -> str:
+    from ..llm import manager as ai
+    from ..llm.nova_setup import find_cli
+
+    state = ai.status(app.engine, app.secret_store, app.llm_settings)
+    values = ai.get_settings(app.engine)
+    state["models"] = {n: ai.model_for(app.engine, n, values) for n in ai.PROVIDER_INFO}
+    state["probes"] = {}
+    state["model_choices"] = {}
+    for name in ai.PROVIDER_INFO:
+        entry = ai.last_probe(name)
+        if entry:
+            state["probes"][name] = entry[1]
+            state["model_choices"][name] = list(entry[1].models)
+    cli = find_cli()
+    llm = app.llm_settings
+    return views.ai_settings_page(
+        state,
+        ai.PROVIDER_INFO,
+        ai.FALLBACK_RULES,
+        ai.TASK_LABELS,
+        ai.recent_calls(app.engine, 40),
+        app.csrf,
+        nova_cli=str(cli) if cli else None,
+        local_enabled=bool(llm is not None and llm.enabled),
+        message=message,
+        error=error,
+    )
+
+
+def ai_action(app: App, action: str, form: dict[str, list[str]]) -> tuple[bool, str]:
+    """POST-Aktionen der KI-Einstellungen; Meldungen ohne Schlüsselwerte."""
+    from ..llm import manager as ai
+    from ..llm.nova_setup import NovaSetupError, create_access, find_cli, start_service
+    from ..llm.secrets import SecretStoreError
+
+    provider = form.get("provider", [""])[0]
+    store = app.secret_store
+    if action in ("use", "key", "key-remove", "test", "model") and provider not in ai.PROVIDER_INFO:
+        return False, "Unbekannter Provider"
+    label = ai.PROVIDER_INFO.get(provider, {}).get("label", provider)
+    try:
+        if action == "use":
+            ai.set_setting(app.engine, "provider", provider, "oberflaeche")
+            ai.forget_probe()
+            result = ai.probe(app.engine, provider, store, app.llm_settings)
+            selection = ai.resolve(app.engine, store, app.llm_settings)
+            note = "" if result.ok else f" – Verbindungstest: {result.message}"
+            return (
+                result.ok,
+                f"Aktiv: {ai.PROVIDER_INFO[selection.provider]['label']} "
+                f"({selection.reason}){note}",
+            )
+        if action == "key":
+            if provider == "lokal":
+                return False, "Der lokale Server braucht keinen Schlüssel"
+            value = form.get("key", [""])[0].strip()
+            store.set(provider, value)
+            ai.forget_probe(provider)
+            result = ai.probe(app.engine, provider, store, app.llm_settings)
+            return result.ok, (
+                f"{label}: Schlüssel gespeichert ({store.label}). Verbindungstest: {result.message}"
+            )
+        if action == "key-remove":
+            removed = store.delete(provider)
+            ai.forget_probe(provider)
+            if not removed:
+                return False, f"{label}: kein Schlüssel hinterlegt"
+            selection = ai.resolve(app.engine, store, app.llm_settings)
+            return True, (
+                f"{label}: Schlüssel gelöscht. Aktiv: "
+                f"{ai.PROVIDER_INFO[selection.provider]['label']} ({selection.reason})"
+            )
+        if action == "test":
+            result = ai.probe(app.engine, provider, store, app.llm_settings)
+            return result.ok, f"{label}: {result.message}"
+        if action == "model":
+            model = form.get("model", [""])[0].strip()
+            if not model or len(model) > 120 or not re.fullmatch(r"[A-Za-z0-9._:/-]+", model):
+                return False, "Ungültiger Modellname"
+            ai.set_setting(app.engine, f"model.{provider}", model, "oberflaeche")
+            ai.forget_probe(provider)
+            result = ai.probe(app.engine, provider, store, app.llm_settings)
+            return (
+                result.ok,
+                f"{label}: Modell {model} gespeichert. Verbindungstest: {result.message}",
+            )
+        if action == "fallback":
+            rule = form.get("rule", [""])[0]
+            if rule not in ai.FALLBACK_RULES:
+                return False, "Unbekannte Fallback-Regel"
+            ai.set_setting(app.engine, "fallback", rule, "oberflaeche")
+            return True, "Fallback-Regel gespeichert"
+        if action == "nova-setup":
+            cli = find_cli()
+            if cli is None:
+                return False, "NOVA ist auf diesem Rechner nicht installiert"
+            start_service(cli)
+            prefix = create_access(cli, store)
+            ai.forget_probe("nova")
+            result = ai.probe(app.engine, "nova", store, app.llm_settings)
+            return (
+                result.ok,
+                f"NOVA-Zugang eingerichtet ({prefix}…). Verbindungstest: {result.message}",
+            )
+    except (SecretStoreError, NovaSetupError, ValueError) as exc:
+        return False, str(exc)
+    return False, "Unbekannte Aktion"

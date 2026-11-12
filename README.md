@@ -1,12 +1,16 @@
 # Yellotools Market Intelligence
 
 Recherche- und Analysewerkzeug für Marktführer-Analyse, Customer Discovery und die
-mehrjährige Beobachtung von Unternehmen. **100 % kostenloser Betrieb:** keine Bezahl-APIs,
-keine Abos, keine Cloud, keine KI-Dienste. Jede Zahl ist auf eine Quelle zurückführbar;
-fehlende Daten bleiben sichtbar unbekannt.
+mehrjährige Beobachtung von Unternehmen. **Kostenloser Betrieb als Standard:** keine
+Bezahl-APIs, keine Abos, keine Cloud. Die KI ist standardmäßig **NOVA**, die eigene lokale KI.
+Externe KI-Anbieter (Anthropic, OpenAI) sind optional und nur mit eigenem API-Key nutzbar;
+Kosten entstehen dann beim Anbieter. Jede Zahl ist auf eine Quelle zurückführbar; fehlende
+Daten bleiben sichtbar unbekannt.
 
-Stand: Version 0.7.0 – Desktop-Anwendung mit eigenem Fenster: Rechercheaufträge mit
-Hintergrund-Worker und Live-Fortschritt, automatische Website-Ermittlung mit belegter Prüfung
+Stand: Version 0.8.0 – Desktop-Anwendung mit eigenem Fenster: Rechercheaufträge mit
+Hintergrund-Worker und Live-Fortschritt, KI-Manager mit NOVA als Standard (KI-Einstellungen,
+Statusanzeige, Schlüssel in der Windows-Anmeldeinformationsverwaltung, siehe
+`docs/AI_ARCHITECTURE.md`), automatische Website-Ermittlung mit belegter Prüfung
 und Bestätigung, Leads mit einheitlichem Bewertungsstand, Importe, Datenpflege, Datensicherung. Fortschritt und offene Punkte: `docs/IMPLEMENTATION/PHASE_PROGRESS.md`.
 
 ## Installation unter Windows (Setup)
@@ -27,9 +31,19 @@ und Bestätigung, Leads mit einheitlichem Bewertungsstand, Importe, Datenpflege,
    amtlichen Quellen) – unter **Website-Prüfung** bestätigen oder ablehnen; danach wird die
    Website ausgewertet und die Firma neu bewertet. Nichts wird ungeprüft übernommen. Firmenlisten und Bestandskunden unter **Importe**,
    fehlende Websites und Dubletten unter **Datenpflege**, Sicherung unter **Einstellungen**.
-4. Kommandozeile: Startmenü → **Market Intelligence – Eingabeaufforderung**, dann z. B.
+4. **KI-Einstellungen** (Seitenleiste; der KI-Status steht immer unten links):
+   - Standard ist **NOVA**. Ist NOVA installiert, richtet „NOVA starten und Zugang
+     einrichten“ den Zugang automatisch ein (`nova integrations create`).
+   - Alternativ kann ein Anthropic- oder OpenAI-Key hinterlegt und der Anbieter gewählt
+     werden. Keys liegen in der Windows-Anmeldeinformationsverwaltung und werden nur maskiert
+     angezeigt.
+   - Ein ungültiger Key führt nie zu einem stillen Wechsel. Ein Wechsel zu NOVA bei Ausfall
+     des externen Anbieters erfolgt nur nach ausdrücklicher Fallback-Regel.
+   - Ohne erreichbare KI läuft die Recherche regelbasiert und sagt das im Auftrag.
+   - NOVA und MARKT-ANALYSE laufen nebeneinander: NOVA nutzt Port 8765, MARKT-ANALYSE 8780.
+5. Kommandozeile: Startmenü → **Market Intelligence – Eingabeaufforderung**, dann z. B.
    `mi sources`, `mi research …`, `mi jobs`, `mi websites pending`, `mi backup create`,
-   `mi leads --out leads`.
+   `mi leads --out leads`, `mi ai status|use|set-key|remove-key|test|fallback|nova-setup|log`.
 
 Daten (Datenbank, Einstellungen `market_intel.toml`, Exporte) liegen in
 `%LOCALAPPDATA%\YellotoolsMarketIntel` und bleiben bei Update und Deinstallation erhalten.
@@ -69,7 +83,7 @@ Linux/macOS: `python3 -m venv .venv && . .venv/bin/activate && pip install -e .`
 | `mi import-document gb2023.pdf --company "ORAFOL"` | Jahresabschluss/Geschäftsbericht aus dem Unternehmensregister auswerten |
 | `mi prove` | Funktionsnachweis (Kriterien 1–9) |
 | `mi sources` / `mi adapters` / `mi llm-status` | Quellen, Adapter, lokale KI |
-| `mi ui` → http://127.0.0.1:8765/ | Oberfläche: Überblick, Finanzen, Mitarbeiter, Standorte, Produkte, Märkte, Historie, Quellen, Notizen |
+| `mi ui` → http://127.0.0.1:8780/ | Oberfläche: Überblick, Finanzen, Mitarbeiter, Standorte, Produkte, Märkte, Historie, Quellen, Notizen |
 | `mi profile --company "ORAFOL" --years 10 --html orafol.html` | Unternehmensprofil als Datei (ohne Server) oder Text |
 | `mi competitors --company "ORAFOL" --store` | Wettbewerbsanalyse (direkt/indirekt/verwandt, keine Marktanteile) |
 | `mi history --company "ORAFOL"` | Veränderungen zwischen Recherchen (Ereignis- und Erfassungsdatum) |

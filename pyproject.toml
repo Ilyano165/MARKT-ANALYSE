@@ -15,6 +15,8 @@ dependencies = [
     "SQLAlchemy==2.0.43",
     "openpyxl==3.1.5",
     "pypdf==6.1.1",
+    # Anthropic-SDK (Apache-2.0) – nur genutzt, wenn der Nutzer Anthropic mit eigenem Key wählt
+    "anthropic==2.8.0",
 ]
 
 [project.optional-dependencies]

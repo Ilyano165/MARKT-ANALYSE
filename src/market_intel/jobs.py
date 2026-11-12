@@ -444,7 +444,43 @@ def progress(engine: Engine, job: dict[str, Any]) -> dict[str, Any]:
             "companies_assessed": int(assessed or 0),
             "website_checks": website_checks,
         }
+        out["ai"] = ai_progress(engine, run_id)
     return out
+
+
+def ai_progress(engine: Engine, run_id: int) -> dict[str, Any]:
+    """KI-Anteil eines Auftrags: Provider/Modelle, Aufrufe, Fehler, Wechsel, laufende Aufgabe."""
+    with engine.connect() as conn:
+        rows = (
+            conn.execute(
+                select(
+                    db.ai_call.c.provider,
+                    db.ai_call.c.model,
+                    db.ai_call.c.status,
+                    db.ai_call.c.task,
+                    db.ai_call.c.message,
+                    db.ai_call.c.fallback_from,
+                )
+                .where(db.ai_call.c.research_run_id == run_id)
+                .order_by(db.ai_call.c.id)
+            )
+            .mappings()
+            .all()
+        )
+    used = sorted(
+        {f"{r['provider']}/{r['model']}" for r in rows if r["status"] == "ok" and r["model"]}
+    )
+    errors = [r["message"] for r in rows if r["status"] == "fehler" and r["message"]]
+    running = next((r for r in reversed(rows) if r["status"] == "laeuft"), None)
+    return {
+        "calls": len(rows),
+        "ok": sum(1 for r in rows if r["status"] == "ok"),
+        "failed": sum(1 for r in rows if r["status"] == "fehler"),
+        "used": used,
+        "last_error": errors[-1] if errors else None,
+        "fallbacks": sum(1 for r in rows if r["fallback_from"]),
+        "running": running["task"] if running else None,
+    }
 
 
 # ---------------------------------------------------------------------- Ausführung

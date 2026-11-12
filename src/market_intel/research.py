@@ -532,9 +532,19 @@ def _validate(ctx: Ctx, params: dict[str, Any], cases: dict[str, UseCase]) -> Ta
                     company_id,
                     "hint",
                     "llm_contradiction_hint",
-                    f"KI-Hinweis (ungeprüft): {hint['reason']} – {', '.join(hint['fact_ids'])}",
+                    f"KI-Hinweis ({ctx.ai.name}, ungeprüfte Schlussfolgerung): "
+                    f"{hint['reason']} – {', '.join(hint['fact_ids'])}",
                 )
     return "succeeded", counts
+
+
+def _ai_detail(ctx: Ctx) -> dict[str, Any]:
+    """Wer hat analysiert, welche Fehler und Wechsel gab es (ohne Inhalte, ohne Schlüssel)."""
+    summary = getattr(ctx.ai.provider, "summary", None)
+    if summary is None:
+        return {"provider": ctx.ai.name, "calls": ctx.ai.provider.calls}
+    detail: dict[str, Any] = summary()
+    return detail
 
 
 def _facts_for(ctx: Ctx, company_id: int) -> list[Fact]:
@@ -674,6 +684,9 @@ def execute(
     """
     ctx.run_id = run_id
     ctx.gateway.run_id = run_id
+    bind = getattr(ctx.ai.provider, "bind", None)
+    if bind is not None:  # KI-Manager: Aufrufe dem Auftrag zuordnen
+        bind(research_run_id=run_id)
     summary = _summary(ctx.engine, run_id)
     previous_seconds = float(summary.get("seconds_total", 0.0))
     ctx.gateway.requests_offset = int(summary.get("requests_total", 0))
@@ -801,6 +814,7 @@ def _write_summary(ctx: Ctx, status: str, seconds_total: float | None = None) ->
         "fetch_by_source": ctx.gateway.stats.by_source,
         "ai": ctx.ai.name,
         "ai_calls": ctx.ai.provider.calls,
+        "ai_detail": _ai_detail(ctx),
         "seconds_total": seconds_total
         if seconds_total is not None
         else previous.get("seconds_total", 0.0),

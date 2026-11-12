@@ -50,9 +50,11 @@ def evaluate(engine: Engine, run_id: int, out_dir: Path, llm_name: str) -> list[
                 "Start ohne bezahlte API-Schlüssel",
                 not paid_enabled,
                 f"Aktive Quellen: {', '.join(enabled)}. Kostenpflichtige Quellen aktiv: "
-                f"{paid_enabled or 'keine'}. Gelesene Schlüssel: keine (das Programm liest keine "
-                f"Bezahl-Schlüssel). Hinweis: Umgebungsvariablen mit Anbieternamen vorhanden, aber "
-                f"ungenutzt: {paid_env or 'keine'}",
+                f"{paid_enabled or 'keine'}. KI dieses Laufs: {llm_name or 'keine'} (externe "
+                f"KI-Anbieter nur bei ausdrücklicher Wahl mit eigenem Schlüssel in der "
+                f"Anmeldeinformationsverwaltung; Umgebungsvariablen werden dafür nie gelesen). "
+                f"Umgebungsvariablen mit Anbieternamen vorhanden, aber ungenutzt: "
+                f"{paid_env or 'keine'}",
             )
         )
 

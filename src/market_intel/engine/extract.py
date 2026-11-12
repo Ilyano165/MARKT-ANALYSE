@@ -175,11 +175,11 @@ def extract_company_documents(
                 findings.append(
                     UseCaseEvidence(
                         match.label,
-                        "lokale KI",
+                        "KI-Einordnung",
                         match.quote,
                         document_id,
                         url,
-                        f"llm:{ctx.ai.name}",
+                        f"llm:{ctx.ai.name}"[:30],  # Spalte extraction_method: 30 Zeichen
                     )
                 )
     report.fits = record_website_fits(ctx, company_id, findings)
