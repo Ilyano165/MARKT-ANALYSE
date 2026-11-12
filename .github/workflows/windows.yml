@@ -59,6 +59,10 @@ jobs:
         shell: pwsh
         run: ./installer/install-test.ps1
 
+      - name: Lebenszyklus (Verknüpfung, Datenerhalt, Überinstallation, Neuinstallation)
+        shell: pwsh
+        run: ./installer/lifecycle-test.ps1
+
       - uses: actions/upload-artifact@v4
         with:
           name: MarketIntel-Setup
