@@ -311,6 +311,15 @@ def _select(ctx: Ctx, params: dict[str, Any], cases: dict[str, UseCase]) -> Task
     investigators = [a for a in adapter_registry.ADAPTERS if a.investigates and a.enabled(ctx)]
     for company_id in chosen:
         for adapter in investigators:
+            if adapter.key == "website":  # Website-Ermittlung vor der Website-Analyse
+                enqueue(
+                    ctx.engine,
+                    run_id,
+                    3,
+                    "find_website",
+                    {"company_id": company_id},
+                    f"Website ermitteln → Firma {company_id}",
+                )
             enqueue(
                 ctx.engine,
                 run_id,
@@ -409,6 +418,26 @@ def _previous_documents(ctx: Ctx, company_id: int, adapter_key: str) -> list[int
         if params.get("company_id") == company_id and params.get("adapter") == adapter_key:
             return list(json.loads(row.result or "{}").get("documents", []))
     return []
+
+
+def _find_website(ctx: Ctx, params: dict[str, Any], cases: dict[str, UseCase]) -> TaskResult:
+    """Website-Kandidaten suchen und prüfen (Phase G). Bestätigt wird nur durch den Nutzer;
+    eine bereits bestätigte Website wird übernommen."""
+    from .websites import discover
+
+    out = discover(ctx, int(params["company_id"]), run_id=ctx.run_id)
+    if out["status"] == "bestätigt":
+        return "skipped", {"reason": f"Website bestätigt: {out['domain']}"}
+    failed = {k: v.get("error") for k, v in out["sources"].items() if v.get("status") == "fehler"}
+    for source, error in failed.items():
+        ctx.note(
+            f"Website-Ermittlung Firma {params['company_id']}: {source} nicht verfügbar – {error}"
+        )
+    return "succeeded", {
+        "proposals": out["stored"],
+        "skipped_rejected": out["skipped_rejected"],
+        "sources": {k: v.get("status") for k, v in out["sources"].items()},
+    }
 
 
 def _extract(ctx: Ctx, params: dict[str, Any], cases: dict[str, UseCase]) -> TaskResult:
@@ -568,6 +597,7 @@ HANDLERS: dict[str, Handler] = {
     "find": _find,
     "select": _select,
     "investigate": _investigate,
+    "find_website": _find_website,
     "extract": _extract,
     "match": _match,
     "validate": _validate,
@@ -676,7 +706,11 @@ def execute(
             before = dict(ctx.gateway.stats.by_status)
             try:
                 status, result = HANDLERS[task["task_type"]](ctx, params, cases)
-                status, result = _check_fetches(status, result, before, ctx.gateway.stats.by_status)
+                if task["task_type"] != "find_website":  # eigener Quellenstatus; DNS-Fehler
+                    # abgeleiteter Domains sind kein Ausfall einer Quelle
+                    status, result = _check_fetches(
+                        status, result, before, ctx.gateway.stats.by_status
+                    )
             except KeyboardInterrupt:
                 _set_task(ctx.engine, task["id"], status="pending")
                 raise

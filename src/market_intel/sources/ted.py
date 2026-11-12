@@ -19,7 +19,7 @@ Gespeichert werden nur Metadaten und der Titel als Beleg.
 from __future__ import annotations
 
 import contextlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any
 
@@ -42,7 +42,26 @@ FIELDS = [
     "winner-name",
     "winner-country",
     "winner-identifier",
+    # Kontakt des Bieters (Live-Abruf 2026-11-12, z. B. 5081-2025): nur bei genau einem Bieter
+    # eindeutig zuzuordnen – die Listen sind nicht positionsgleich.
+    "organisation-name-tenderer",
+    "organisation-email-tenderer",
+    "organisation-tel-tenderer",
+    "organisation-street-tenderer",
+    "organisation-post-code-tenderer",
+    "organisation-city-tenderer",
+    "organisation-country-tenderer",
 ]
+# Freemail- und Providerdomains sagen nichts über die Firmenwebsite aus
+FREEMAIL = frozenset(
+    {
+        "gmail.com", "googlemail.com", "web.de", "gmx.de", "gmx.net", "gmx.at", "t-online.de",
+        "outlook.com", "outlook.de", "hotmail.com", "hotmail.de", "yahoo.com", "yahoo.de",
+        "icloud.com", "me.com", "aol.com", "aol.de", "freenet.de", "posteo.de", "mail.de",
+        "arcor.de", "online.de", "1und1.de", "live.de", "live.com", "msn.com", "proton.me",
+        "protonmail.com", "kabelmail.de", "vodafone.de", "ewetel.net",
+    }
+)  # fmt: skip
 VERSION = "ted-0.1.0"
 ISO3_TO_ISO2 = {
     "DEU": "DE",
@@ -88,6 +107,8 @@ class Notice:
     published: date | None
     notice_type: str = ""
     winners: tuple[tuple[str, str | None, str | None], ...] = ()  # (Name, Land ISO3, USt-IdNr.)
+    # Kontakt des einzigen Bieters (nur wenn er zugleich Gewinner ist), sonst leer
+    contact: dict[str, str] = field(default_factory=dict)
 
     @property
     def is_award(self) -> bool:
@@ -157,9 +178,45 @@ def parse_notice(item: dict[str, Any]) -> Notice | None:
             str(countries[0]) if single else None,
             vat_id(str(ids[0])) if single else None,
         )
+    contact: dict[str, str] = {}
+    tenderers = [t.strip() for t in _all_texts(item.get("organisation-name-tenderer"))]
+    if len(tenderers) == 1 and len(winners) == 1 and tenderers[0] in winners:
+        for key, field_name in (
+            ("email", "organisation-email-tenderer"),
+            ("phone", "organisation-tel-tenderer"),
+            ("street", "organisation-street-tenderer"),
+            ("postal_code", "organisation-post-code-tenderer"),
+            ("city", "organisation-city-tenderer"),
+            ("country", "organisation-country-tenderer"),
+        ):
+            values = item.get(field_name)
+            values = values if isinstance(values, list) else _all_texts(values)
+            if len(values) == 1 and str(values[0]).strip():
+                contact[key] = str(values[0]).strip()
     return Notice(
-        number, title.strip(), buyers, country, published, notice_type, tuple(winners.values())
-    )
+        number, title.strip(), buyers, country, published, notice_type, tuple(winners.values()),
+        contact,
+    )  # fmt: skip
+
+
+def email_domain(email: str) -> str | None:
+    """Domain einer Kontaktadresse, außer Freemail-/Providerdomains."""
+    domain = email.rsplit("@", 1)[-1].strip().lower() if "@" in email else ""
+    if not domain or "." not in domain or domain in FREEMAIL:
+        return None
+    return domain
+
+
+def phone_digits(phone: str) -> str | None:
+    """Telefonnummer als Ziffernfolge mit Landesvorwahl (+49 30 … → 4930…); sonst None."""
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    if phone.strip().startswith("+"):
+        return digits if len(digits) >= 8 else None
+    if digits.startswith("00"):
+        return digits[2:] if len(digits) >= 10 else None
+    if digits.startswith("0"):
+        return "49" + digits[1:] if len(digits) >= 8 else None  # nur deutsche Inlandsnummern
+    return None
 
 
 def vat_id(raw: str) -> str | None:
@@ -221,6 +278,8 @@ def ingest_winners(
                     if vat:
                         repo.add_identifier(conn, company_id, "vat", vat, document_id)
                     repo.add_alias(conn, company_id, name, "ted_winner_name", document_id)
+                if notice.contact and len(notice.winners) == 1:
+                    _store_contact(conn, company_id, notice, document_id)
                 repo.add_signal(
                     conn,
                     company_id=company_id,
@@ -244,6 +303,29 @@ def ingest_winners(
                 )
                 out.append((company_id, notice))
     return out
+
+
+def _store_contact(conn: Any, company_id: int, notice: Notice, document_id: int) -> None:
+    """Kontakt aus der Bekanntmachung speichern (amtliche Veröffentlichung, Bieterangabe)."""
+    contact = notice.contact
+    domain = email_domain(contact.get("email", ""))
+    if domain:
+        repo.add_identifier(conn, company_id, "email_domain", domain, document_id)
+    phone = phone_digits(contact.get("phone", ""))
+    if phone:
+        repo.add_identifier(conn, company_id, "phone", phone, document_id)
+    if contact.get("city") or contact.get("postal_code"):
+        repo.add_location(
+            conn,
+            company_id,
+            "other_site",  # Kontaktadresse laut Bekanntmachung (Art des Standorts unbekannt)
+            country_code=ISO3_TO_ISO2.get(contact.get("country", "")),
+            city=contact.get("city"),
+            postal_code=contact.get("postal_code"),
+            street=contact.get("street"),
+            document_id=document_id,
+            provenance=ProvenanceClass.OFFICIAL,
+        )
 
 
 def ingest_notices(

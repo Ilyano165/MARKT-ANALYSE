@@ -63,6 +63,28 @@ ohne öffentliche Ausschreibung findet der Prototyp nicht automatisch. Ergänzun
 Import vorhandener Listen (Messe-Ausstellerlisten, Verbandsmitglieder, CRM-Export – sofern deren
 Nutzung erlaubt ist) als CSV in M9.
 
+## 3a. Website-Ermittlung (Phase G, Stand 2026-11-12)
+
+Für Unternehmen ohne bestätigte Website schlägt `websites.py` Kandidaten vor. Die Quellen
+wurden am 2026-11-12 live geprüft:
+
+| Quelle | Was sie liefert | Live-Befund | Status |
+|---|---|---|---|
+| Bestand | bereits gespeicherte, aber nicht bestätigte Website (Wikidata, Firmenliste, Altbestand) | – | genutzt |
+| TED (Zuschläge) | Domain der Kontakt-E-Mail des Bieters, z. B. `office@heerlein-werbetechnik.de` (Bekanntmachung 5081-2025); dazu Telefon und Adresse. Nur bei **genau einem Bieter, der zugleich Gewinner ist**, denn die Listen sind nicht positionsgleich. Freemail-Domains werden ausgeschlossen. | Felder `organisation-*-tenderer` vorhanden | genutzt |
+| Wikidata | P856 „offizielle Website“ eines gleichnamigen Eintrags im selben Land | aus dieser Testumgebung HTTP 403/429 (gemeinsame IP gedrosselt); User-Agent jetzt mit Kontakt (Projektseite oder `contact_email`) | genutzt; Ausfall wird je Firma gemeldet |
+| Domain-Ableitung | aus dem Firmennamen gebildete Domains (höchstens 4) | `check-matt.de` gefunden und durch Adresse belegt; `deko-team.de` leitet auf eine fremde Firma weiter und wird verworfen | genutzt, aber **nur vorgeschlagen, wenn die Seite selbst Name bzw. Adresse belegt**; ausdrücklich als Vermutung gekennzeichnet |
+| OpenStreetMap Nominatim | Website-Tags von Geschäften | robots.txt verbietet `/search` für alle automatisierten Zugriffe | **nicht genutzt** (`excluded_robots`) |
+| OpenStreetMap Overpass | Website-Tags | Hauptinstanz aus der Testumgebung nicht erreichbar (Verbindung zurückgesetzt); Ausweichinstanz mit Zeitüberschreitung bei Namenssuchen | nicht implementiert |
+| Suchmaschinen-APIs, Branchenbücher | – | siehe Abschnitt 3 bzw. Nutzungsbedingungen | ausgeschlossen |
+
+**Prüfung jedes Kandidaten:**
+- Startseite und Impressum bzw. Kontaktseite werden abgerufen (robots.txt, Drosselung und Sperren über das Gateway).
+- Weiterleitungen auf andere Domains werden verfolgt und vermerkt.
+- Abgeglichen werden nur Angaben, die zur Firma belegt sind: Name (mit oder ohne Rechtsform), Handelsregisternummer (GLEIF), PLZ, Ort und Straße (GLEIF bzw. TED), Telefon und E-Mail-Domain (TED), Tätigkeitsbegriffe (Anwendungsfälle).
+- Nicht belegte Angaben gelten als **„nicht prüfbar“** und bringen **keine** Punkte.
+- Bewertungsregeln: `PRODUCT_SPECIFICATION.md` §6c.
+
 ## 4. Gesperrt bzw. ausgeschlossen
 
 | Quelle | Grund | Status im Register |

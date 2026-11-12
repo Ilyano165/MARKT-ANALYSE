@@ -97,8 +97,9 @@ def set_website(engine: Engine, company_id: int, raw: str, author: str, reason: 
         conn.execute(
             update(db.company)
             .where(db.company.c.id == company_id)
-            .values(website_domain=new, updated_at=db.utcnow())
-        )
+            .values(website_domain=new, website_source="manuell" if new else None,
+                    updated_at=db.utcnow())
+        )  # fmt: skip
         if new:
             repo.add_identifier(conn, company_id, "domain", new, None)
         _log(conn, company_id, "website_domain", old, new, author, reason or "manuell gepflegt")
@@ -188,7 +189,11 @@ def merge(engine: Engine, keep_id: int, merge_id: int, author: str, reason: str)
             conn.execute(
                 update(db.company)
                 .where(db.company.c.id == keep_id)
-                .values(website_domain=other["website_domain"], updated_at=db.utcnow())
+                .values(
+                    website_domain=other["website_domain"],
+                    website_source=other.get("website_source"),
+                    updated_at=db.utcnow(),
+                )
             )
             _log(conn, keep_id, "website_domain", None, other["website_domain"], author,
                  f"aus zusammengeführter Firma {merge_id} übernommen")  # fmt: skip

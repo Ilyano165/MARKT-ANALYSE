@@ -181,11 +181,27 @@ class App:
 
         with self.engine.connect() as conn:
             company = repo.company_row(conn, company_id)
+        from .. import websites
+
         edit = views.company_edit_block(company, edits_of(self.engine, company_id), self.csrf)
+        state = websites.website_state(self.engine, [company_id]).get(company_id, "keine")
+        site = views.website_section(
+            company,
+            state,
+            websites.STATE_LABELS[state],
+            websites.candidates_of(self.engine, company_id),
+            websites.last_search(self.engine, company_id),
+            self.csrf,
+        )
         html = render.page(
             data["overview"]["display_name"],
             render.profile_page(
-                data, csrf=self.csrf, extra=(("edit", "Stammdaten pflegen", edit),)
+                data,
+                csrf=self.csrf,
+                extra=(
+                    ("websites", "Website-Ermittlung", site),
+                    ("edit", "Stammdaten pflegen", edit),
+                ),
             ),
             data=data,
         )
@@ -377,6 +393,19 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
             if path == "/imports":
                 self._html(render.page("Importe", imports_view(app)))
                 return
+            if path == "/websites":
+                self._html(
+                    render.page(
+                        "Website-Prüfung",
+                        websites_view(
+                            app,
+                            _int(query.get("job", ["0"])[0], 0, 0, 10**9),
+                            query.get("ok", [""])[0][:300],
+                            query.get("err", [""])[0][:300],
+                        ),
+                    )
+                )
+                return
             if path == "/maintenance":
                 from ..maintenance import duplicate_groups, missing_websites
 
@@ -478,7 +507,7 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                     payload = json.dumps(data, ensure_ascii=False, default=str, indent=1)
                     self._send(200, payload.encode("utf-8"), "application/json; charset=utf-8")
                 else:
-                    self._html(html)
+                    self._html(_flash(html, query))
                 return
             match = re.fullmatch(r"/company/(\d+)/competitors", path)
             if match:
@@ -653,6 +682,43 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                     self._error(HTTPStatus.BAD_REQUEST, str(exc))
                     return
                 self._redirect(f"/company/{company_id}/opportunity#outcome")
+                return
+            match = re.fullmatch(r"/websites/(\d+)/(confirm|reject)", path)
+            if match or path == "/websites/confirm-clear":
+                from .. import websites
+
+                back = _safe_back(form.get("back", ["/websites"])[0])
+                author = form.get("author", [""])[0]
+                try:
+                    if path.endswith("confirm-clear"):
+                        ids = [int(i) for i in form.get("ids", [""])[0].split(",") if i.isdigit()]
+                        confirmed = websites.confirm_clear(app.engine, ids, author)
+                        msg = f"{len(confirmed)} Websites bestätigt"
+                    elif match and match.group(2) == "confirm":
+                        confirmed = [
+                            websites.confirm(
+                                app.engine, int(match.group(1)), author, form.get("reason", [""])[0]
+                            )
+                        ]
+                        msg = "Website bestätigt"
+                    else:
+                        assert match is not None
+                        websites.reject(
+                            app.engine, int(match.group(1)), author, form.get("reason", [""])[0]
+                        )
+                        confirmed, msg = [], "Vorschlag abgelehnt"
+                except websites.WebsiteError as exc:
+                    self._redirect(_with_param(back, "err", str(exc)))
+                    return
+                if confirmed:  # bestätigte Website auswerten und neu bewerten (Hintergrund)
+                    jobs.create_company_job(app.engine, "analyze", confirmed)
+                    msg += " – Analyse und Neubewertung als Auftrag eingereiht"
+                self._redirect(_with_param(back, "ok", msg))
+                return
+            match = re.fullmatch(r"/company/(\d+)/websites/search", path)
+            if match:
+                job_id = jobs.create_company_job(app.engine, "websites", [int(match.group(1))])
+                self._redirect(f"/jobs/{job_id}")
                 return
             if path == "/settings/backup":
                 from ..backup import BackupError, create_backup, sqlite_path
@@ -833,6 +899,44 @@ def parse_multipart(
     return fields, files
 
 
+def _flash(html: str, query: dict[str, list[str]]) -> str:
+    """Rückmeldung einer Aktion (``?ok=`` / ``?err=``) oben im Inhalt anzeigen."""
+    ok = query.get("ok", [""])[0][:300]
+    err = query.get("err", [""])[0][:300]
+    box = (f'<p class="okbox" role="status">{render.e(ok)}</p>' if ok else "") + (
+        f'<div class="errorbox" role="alert">{render.e(err)}</div>' if err else ""
+    )
+    return html.replace("<main>", "<main>" + box, 1) if box else html
+
+
+def _with_param(url: str, key: str, value: str) -> str:
+    base, _, frag = url.partition("#")
+    sep = "&" if "?" in base else "?"
+    return f"{base}{sep}{key}={quote(value)}" + (f"#{frag}" if frag else "")
+
+
+def websites_view(app: App, job_id: int = 0, message: str = "", error: str = "") -> str:
+    from .. import websites
+
+    job = jobs.get_job(app.engine, job_id) if job_id else None
+    ids = None
+    if job and job.get("research_run_id"):
+        with app.engine.connect() as conn:
+            ids = [
+                int(i)
+                for i in conn.execute(
+                    select(func.distinct(db.run_candidate.c.company_id)).where(
+                        db.run_candidate.c.run_id == job["research_run_id"],
+                        db.run_candidate.c.selected.is_(True),
+                    )
+                ).scalars()
+            ]
+    counts = websites.summary(websites.website_state(app.engine, ids)) if ids is not None else {}
+    return views.websites_review_page(
+        websites.pending(app.engine, ids), counts, app.csrf, job=job, message=message, error=error
+    )
+
+
 def _safe_back(back: str) -> str:
     """Nur eigene relative Pfade als Rücksprung (kein offener Redirect)."""
     return back if back.startswith("/") and not back.startswith("//") else "/"
@@ -882,6 +986,9 @@ def dashboard_view(app: App) -> str:
         "duplicates": len(duplicate_groups(app.engine)),
         "backup": bool(backups),
         "contact_email": bool(getattr(app.settings, "contact_email", "")) if app.settings else True,
+        "website_pending": __import__("market_intel.websites", fromlist=["x"]).count_pending(
+            app.engine
+        ),
     }
     current = [r for r in leads if r["aktualitaet"] == "aktuell"][:5]
     return views.dashboard_page(stats, jobs.list_jobs(app.engine, 5), current)

@@ -220,6 +220,52 @@ Anzahlen gezählt; Anteile erst ab einer Mindestzahl abgeschlossener Fälle je G
 (Standard 10). Die Auswertung leitet keine Gewichte ab und ist keine Prognose; jeder Fall ist
 mit seiner Bezugsbewertung nachprüfbar.
 
+### 6c. Website-Ermittlung und Bewertung (Phase G, Regelwerk `websites-1.0`)
+
+Eine Website wird **nie automatisch** einer Firma zugeordnet. Kandidaten (Quellen:
+`RESEARCH_SOURCES.md` §3a) werden geprüft und mit einem Matching-Score aus belegten Kriterien
+versehen.
+
+| Kriterium | Punkte | Gegenbeleg |
+|---|---|---|
+| Firmenname vollständig mit Rechtsform | +35 | – |
+| Firmenname ohne Rechtsform | +18 | – |
+| nur Namensbestandteile einzeln | +8 | – |
+| Name nicht gefunden | – | −30 |
+| Handelsregisternummer wie belegt | +30 | andere Nummer: −25 |
+| PLZ und Ort wie belegt (+5 mit Straße) | +20 | andere PLZ: −20 |
+| nur Ort | +8 | – |
+| Telefon bzw. E-Mail-Domain wie belegt | je +10 | – |
+| Tätigkeitsbegriffe | +5 | – |
+| Domain entspricht dem Namen | +5 | – |
+| Domain ähnelt dem Namen | +2 | – |
+| Unabhängige Quelle nennt die Domain (TED, Wikidata) | +10 | – |
+
+Nicht belegte Angaben zur Firma oder auf der Seite zählen 0 („nicht prüfbar“), nie positiv.
+Score 0–100.
+
+**Urteile:**
+- **eindeutig:** mindestens 70 Punkte, vollständiger Name mit Rechtsform, mindestens ein harter Beleg (Register, Adresse oder Kontakt), kein Widerspruch.
+- **wahrscheinlich:** mindestens 40 Punkte, kein Widerspruch.
+- **widerspricht:** Name fehlt, oder Register bzw. Adresse widersprechen.
+- **unklar:** alles andere.
+- **nicht erreichbar:** Seite nicht abrufbar.
+
+Eine aus dem Namen abgeleitete Domain ohne eigenen Beleg (unklar, widerspricht, nicht erreichbar) wird gar nicht vorgeschlagen.
+
+**Entscheidung:** Nur der Nutzer bestätigt oder lehnt ab, mit Autor und Grund im
+Änderungsprotokoll. „Alle eindeutigen bestätigen“ ist eine Sammelaktion für Vorschläge mit dem
+Urteil *eindeutig*, und zwar nur, wenn es je Firma genau einen solchen gibt. Abgelehnte Vorschläge
+erscheinen nicht erneut, solange die Suchgrundlage (Name, Land, Orte, PLZ) unverändert ist.
+
+**Wirkung auf die Bewertung:** Eine bestätigte Website wird abgerufen und ausgewertet (Belege mit
+Zitat) und die Firma neu bewertet (Anlass `website-analyse`, gleicher Stand in Lead-Liste,
+Opportunity-Seite und Export nach §6a/Phase B).
+
+Ohne bestätigte Website bleibt der Belegstatus „keine Daten – Eignung unbekannt“ mit manueller
+Prüfung. Das ist **keine** Abwertung („kein Beleg“ gilt nur, wenn eigene Angaben vorliegen und
+keine Tätigkeit belegen). Die Spalte `website_status` in Lead-Liste und Export zeigt den Stand.
+
 ## 7. Nicht-funktionale Anforderungen
 
 | ID | Anforderung |

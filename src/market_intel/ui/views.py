@@ -25,6 +25,12 @@ COUNTRY_CHOICES = (
     ("GB", "Vereinigtes Königreich"),
     ("US", "USA"),
 )
+KIND_LABELS = {
+    "research": "Recherche",
+    "reassess": "Neubewertung",
+    "websites": "Website-Ermittlung",
+    "analyze": "Website-Analyse und Neubewertung",
+}
 STATUS_CLASS = {
     "queued": "st-wait",
     "running": "st-run",
@@ -52,7 +58,7 @@ def jobs_page(jobs: list[dict[str, Any]], progress: dict[int, dict[str, Any]], w
     rows = "".join(
         f'<tr><td class="num">{j["id"]}</td>'
         f'<td><a href="/jobs/{j["id"]}">{e(j["title"] or "(ohne Titel)")}</a><br>'
-        f'<span class="muted">{"Recherche" if j["kind"] == "research" else "Neubewertung"}</span></td>'
+        f'<span class="muted">{KIND_LABELS.get(j["kind"], j["kind"])}</span></td>'
         f'<td>{status_badge(j["status"])}<br><span class="muted">{e(progress[j["id"]]["phase"])}</span></td>'
         f'<td class="num">{progress[j["id"]]["counts"].get("companies_selected", "–")}</td>'
         f"<td>{_ts(j['created_at'])}</td><td>{_ts(j['finished_at'])}</td></tr>"
@@ -134,6 +140,33 @@ def new_job_page(
     )
 
 
+def _website_tiles(job_id: int, counts: dict[str, int]) -> str:
+    """Website-Stand der ausgewählten Unternehmen eines Auftrags (Phase G)."""
+    if not counts or not sum(counts.values()):
+        return ""
+    open_count = counts.get("vorschlag", 0) + counts.get("pruefen", 0)
+    labels = (
+        ("bestaetigt", "Website bestätigt"),
+        ("keine", "ohne Website"),
+        ("vorschlag", "eindeutiger Vorschlag"),
+        ("pruefen", "Vorschläge zu prüfen"),
+        ("quelle", "aus Quelle, unbestätigt"),
+    )
+    return (
+        '<h3>Websites der gefundenen Unternehmen</h3><div class="tiles">'
+        + "".join(
+            f'<div class="tile"><span class="v" data-website="{k}">{counts.get(k, 0)}</span><span class="l">{e(label)}</span></div>'
+            for k, label in labels
+        )
+        + "</div>"
+        + (
+            f'<p><a class="button primary" href="/websites?job={job_id}">{open_count} Website-Vorschläge prüfen</a></p>'
+            if open_count
+            else ""
+        )
+    )
+
+
 def job_page(
     job: dict[str, Any],
     prog: dict[str, Any],
@@ -169,6 +202,7 @@ def job_page(
         ("davon erfolgreich", counts.get("sources_ok")),
         ("davon gescheitert", counts.get("sources_failed")),
         ("Unternehmen bewertet", counts.get("companies_assessed")),
+        ("Website-Prüfabrufe", counts.get("website_checks")),
     )
     tiles = "".join(
         f'<div class="tile"><span class="v" data-count="{k}">{e(v if v is not None else "–")}</span>'
@@ -182,6 +216,7 @@ def job_page(
                 "sources_ok",
                 "sources_failed",
                 "companies_assessed",
+                "website_checks",
             ),
             strict=True,
         )
@@ -216,6 +251,7 @@ def job_page(
         f'<p class="phase">{status_badge(status)} <span data-field="phase">{e(prog["phase"]) if prog["phase"] != prog["status_label"] else ""}</span></p>'
         f'<div class="tiles">{tiles}</div>'
         + (f'<p class="errorbox">{e(prog["error"])}</p>' if prog.get("error") else "")
+        + _website_tiles(jid, prog.get("websites") or {})
         + (
             '<div class="tablewrap"><table class="steps"><thead><tr><th class="num">Schritt</th><th>Name</th>'
             '<th class="num">ok</th><th class="num">Fehler</th><th class="num">übersprungen</th>'
@@ -485,6 +521,11 @@ def dashboard_page(
         hints.append(
             f'<li><a href="/leads">{stats["stale"]} veraltete Bewertungen</a> – neu bewerten</li>'
         )
+    if stats.get("website_pending"):
+        hints.insert(
+            0,
+            f'<li><a href="/websites">{stats["website_pending"]} Unternehmen mit Website-Vorschlägen</a> – prüfen und bestätigen</li>',
+        )
     if stats.get("unassessed"):
         hints.append(
             f'<li><a href="/leads">{stats["unassessed"]} Unternehmen noch nicht bewertet</a></li>'
@@ -649,4 +690,221 @@ def settings_page(
         f"<tbody>{backup_rows or '<tr><td colspan=3>Noch keine Sicherung.</td></tr>'}</tbody></table></div>"
         "<p><strong>Wiederherstellen:</strong> Anwendung beenden, dann in der Eingabeaufforderung "
         "<code>mi backup restore &lt;Datei&gt;</code>. Der aktuelle Stand wird vorher automatisch gesichert.</p></section>"
+    )
+
+
+# ---------------------------------------------------------------------- Website-Ermittlung (Phase G)
+
+VERDICT_CLASS = {
+    "eindeutig": "st-ok",
+    "wahrscheinlich": "st-run",
+    "unklar": "st-wait",
+    "widerspricht": "st-err",
+    "nicht_erreichbar": "st-muted",
+}
+SOURCE_STATUS = {
+    "ok": "Treffer",
+    "keine": "kein Treffer",
+    "fehler": "nicht erreichbar",
+    "deaktiviert": "deaktiviert",
+    "nicht_prüfbar": "nicht prüfbar",
+}
+
+
+def _decision_forms(c: dict[str, Any], csrf: str, back: str, compact: bool = False) -> str:
+    """Ein Formular, zwei eindeutige Aktionen (Bestätigen / Ablehnen)."""
+    if c["status"] not in ("vorgeschlagen", "nicht_gewaehlt"):
+        return ""
+    reachable = c["verdict"] != "nicht_erreichbar"
+    label = (
+        "Diese Website bestätigen"
+        if c["status"] == "vorgeschlagen"
+        else "Stattdessen diese bestätigen"
+    )
+    if not reachable:
+        label = "Trotzdem bestätigen"
+    reject = (
+        f'<button class="danger" formaction="/websites/{c["id"]}/reject">Ablehnen</button>'
+        if c["status"] == "vorgeschlagen"
+        else ""
+    )
+    return (
+        f'<form method="post" action="/websites/{c["id"]}/confirm" class="rowform decision">'
+        f'<input type="hidden" name="csrf" value="{e(csrf)}"><input type="hidden" name="back" value="{e(back)}">'
+        '<input name="author" placeholder="Ihr Name" maxlength="120" required aria-label="Autor">'
+        + (
+            ""
+            if compact
+            else '<input name="reason" placeholder="Grund (optional)" maxlength="500" aria-label="Grund">'
+        )
+        + f'<button class="{"primary" if reachable else ""}">{e(label)}</button>{reject}</form>'
+    )
+
+
+def _evidence_list(c: dict[str, Any]) -> str:
+    d = c["details"]
+
+    def items(key: str, cls: str, sign: str) -> str:
+        return "".join(
+            f'<li class="{cls}"><span aria-hidden="true">{sign}</span> {e(x)}</li>'
+            for x in d.get(key, [])
+        )
+
+    sources = "".join(
+        f"<li>{e(s.get('detail', ''))}"
+        + (f' – <a href="/document/{s["document_id"]}">Beleg</a>' if s.get("document_id") else "")
+        + "</li>"
+        for s in c["sources"]
+    )
+    pages = " ".join(
+        f'<a href="/document/{d_id}">Seite {i}</a>' for i, d_id in enumerate(c["document_ids"], 1)
+    )
+    return (
+        '<div class="evidence">'
+        f'<ul class="checks-list">{items("pro", "pro", "✓")}{items("contra", "contra", "✗")}{items("unchecked", "open", "?")}</ul>'
+        + "".join(f'<p class="muted">Hinweis: {e(n)}</p>' for n in d.get("notes", []))
+        + f"<details><summary>Woher der Vorschlag stammt und geprüfte Seiten</summary><ul>{sources}</ul>"
+        f"<p>{pages or 'keine Seite abrufbar'}</p></details></div>"
+    )
+
+
+def candidate_card(c: dict[str, Any], csrf: str, back: str, *, company: str = "") -> str:
+    return (
+        f'<article class="card candidate" id="kandidat-{c["id"]}">'
+        '<div class="candhead">'
+        + (f'<p class="muted">{e(company)}</p>' if company else "")
+        + f'<h3><a href="{e(c["url"])}">{e(c["domain"])}</a></h3>'
+        f'<span class="scorebadge" title="Matching-Score aus belegten Kriterien">{c["score"]}</span>'
+        f'<span class="status {VERDICT_CLASS.get(c["verdict"], "")}">{e(c["verdict_label"])}</span>'
+        f'<span class="status">{e(c["status_label"])}</span></div>'
+        f'<p class="muted">{e(c["url"])} · zuletzt geprüft {_ts(c["checked_at"])}'
+        + (
+            f" · entschieden von {e(c['decided_by'])} {_ts(c['decided_at'])}"
+            if c.get("decided_by")
+            else ""
+        )
+        + "</p>"
+        + _evidence_list(c)
+        + _decision_forms(c, csrf, back)
+        + "</article>"
+    )
+
+
+def website_section(
+    company: dict[str, Any],
+    state: str,
+    state_label: str,
+    candidates: list[dict[str, Any]],
+    search: dict[str, Any] | None,
+    csrf: str,
+) -> str:
+    cid = company["id"]
+    back = f"/company/{cid}#websites"
+    source = company.get("website_source")
+    current = (
+        f'<p><strong>Aktuelle Website:</strong> <a href="https://{e(company["website_domain"])}/">{e(company["website_domain"])}</a> '
+        f'<span class="status {"st-ok" if state == "bestaetigt" else "st-warn"}">{e(state_label)}</span>'
+        + (f' <span class="muted">({e(source)})</span>' if source and state != "bestaetigt" else "")
+        + "</p>"
+        if company.get("website_domain")
+        else f'<p><strong>Keine Website bekannt.</strong> <span class="muted">{e(state_label)}</span></p>'
+    )
+    open_items = [c for c in candidates if c["status"] == "vorgeschlagen"]
+    other = [c for c in candidates if c["status"] != "vorgeschlagen"]
+    sources = ""
+    if search:
+        rows = "".join(
+            f"<tr><td>{e(k)}</td><td>{e(SOURCE_STATUS.get(v.get('status'), v.get('status')))}</td>"
+            f'<td class="num">{v.get("hits", 0)}</td><td>{e(v.get("error") or "")}</td></tr>'
+            for k, v in search["outcome"].get("sources", {}).items()
+        )
+        sources = (
+            f"<details><summary>Letzte Suche {_ts(search['searched_at'])}: Quellen</summary>"
+            '<div class="tablewrap"><table><thead><tr><th>Quelle</th><th>Ergebnis</th><th class="num">Treffer</th><th>Hinweis</th></tr></thead>'
+            f"<tbody>{rows}</tbody></table></div>"
+            + (
+                f'<p class="muted">Nicht erneut vorgeschlagen (abgelehnt, Suchgrundlage unverändert): {e(", ".join(search["outcome"].get("skipped_rejected", [])))}</p>'
+                if search["outcome"].get("skipped_rejected")
+                else ""
+            )
+            + "</details>"
+        )
+    return (
+        current
+        + '<p class="muted">Vorschläge werden nur mit Belegen gezeigt (Impressum, Adresse, Registernummer, Kontaktdaten). '
+        "Fehlende Angaben zählen nie als Übereinstimmung. Erst eine bestätigte Website wird für die Unternehmensanalyse genutzt.</p>"
+        + f'<form method="post" action="/company/{cid}/websites/search" class="inline"><input type="hidden" name="csrf" value="{e(csrf)}">'
+        "<button>Erneut suchen</button></form>"
+        + sources
+        + (
+            f"<h3>Offene Vorschläge ({len(open_items)})</h3>"
+            + "".join(candidate_card(c, csrf, back) for c in open_items)
+            if open_items
+            else "<p>Keine offenen Vorschläge.</p>"
+        )
+        + (
+            f"<details><summary>Entschiedene Vorschläge ({len(other)})</summary>"
+            + "".join(candidate_card(c, csrf, back) for c in other)
+            + "</details>"
+            if other
+            else ""
+        )
+        + "<h3>Website manuell eintragen</h3>"
+        f'<form method="post" action="/company/{cid}/edit" class="rowform"><input type="hidden" name="csrf" value="{e(csrf)}">'
+        f'<input type="hidden" name="field" value="website_domain"><input type="hidden" name="back" value="{e(back)}">'
+        '<input name="value" placeholder="firma.de" maxlength="300" required aria-label="Website"><input name="reason" placeholder="Grund" maxlength="500" aria-label="Grund">'
+        '<input name="author" placeholder="Ihr Name" maxlength="120" required aria-label="Autor"><button>Speichern</button></form>'
+    )
+
+
+def websites_review_page(
+    items: list[dict[str, Any]],
+    counts: dict[str, int],
+    csrf: str,
+    *,
+    job: dict[str, Any] | None = None,
+    message: str = "",
+    error: str = "",
+) -> str:
+    from ..websites import STATE_LABELS
+
+    back = f"/websites?job={job['id']}" if job else "/websites"
+    clear = [c for c in items if c["verdict"] == "eindeutig"]
+    per_company: dict[int, list[dict[str, Any]]] = {}
+    for c in items:
+        per_company.setdefault(int(c["company_id"]), []).append(c)
+    blocks = "".join(
+        f'<section class="reviewgroup"><h2><a href="/company/{cid}#websites">{e(cands[0]["company_name"])}</a> '
+        f'<span class="muted">{len(cands)} {"Vorschlag" if len(cands) == 1 else "Vorschläge"}</span></h2>'
+        + "".join(candidate_card(c, csrf, back) for c in cands)
+        + "</section>"
+        for cid, cands in per_company.items()
+    )
+    tiles = (
+        "".join(
+            f'<div class="tile"><span class="v">{counts.get(k, 0)}</span><span class="l">{e(label)}</span></div>'
+            for k, label in STATE_LABELS.items()
+        )
+        if counts
+        else ""
+    )
+    bulk = (
+        '<form method="post" action="/websites/confirm-clear" class="rowform bulk">'
+        f'<input type="hidden" name="csrf" value="{e(csrf)}"><input type="hidden" name="back" value="{e(back)}">'
+        f'<input type="hidden" name="ids" value="{",".join(str(c["id"]) for c in clear)}">'
+        '<input name="author" placeholder="Ihr Name" maxlength="120" required aria-label="Autor">'
+        f'<button class="primary">Alle {len(clear)} eindeutigen Vorschläge bestätigen</button>'
+        '<span class="muted">nur „eindeutig“ (Name mit Rechtsform und Adresse/Register/Kontakt belegt, kein Widerspruch); '
+        "alle anderen bleiben zur Einzelprüfung</span></form>"
+        if clear
+        else ""
+    )
+    return (
+        (f'<p><a href="/jobs/{job["id"]}">← {e(job["title"] or "Auftrag")}</a></p>' if job else "")
+        + "<h1>Website-Prüfung</h1>"
+        + (f'<p class="okbox" role="status">{e(message)}</p>' if message else "")
+        + (f'<div class="errorbox" role="alert">{e(error)}</div>' if error else "")
+        + (f'<div class="tiles">{tiles}</div>' if tiles else "")
+        + bulk
+        + (blocks or "<p>Keine offenen Website-Vorschläge.</p>")
     )

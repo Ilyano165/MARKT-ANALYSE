@@ -234,6 +234,7 @@ def ingest_entity(ctx: Ctx, qid: str, *, company_id: int | None = None) -> int |
                 document_id=document_id,
                 country_code=country,
                 website=websites[0] if websites else None,
+                website_source="quelle:wikidata",
             )
         else:
             for scheme, value in identifiers:
@@ -243,7 +244,11 @@ def ingest_entity(ctx: Ctx, qid: str, *, company_id: int | None = None) -> int |
                         "nicht zusammengeführt (Prüfung nötig)"
                     )
             repo.fill_company_fields(
-                conn, company_id, country_code=country, website=websites[0] if websites else None
+                conn,
+                company_id,
+                "quelle:wikidata",
+                country_code=country,
+                website=websites[0] if websites else None,
             )
         repo.add_alias(conn, company_id, label(entity), "wikidata_label", document_id)
     industry_ids = item_values(entity, "P452")

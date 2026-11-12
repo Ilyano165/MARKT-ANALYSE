@@ -279,3 +279,16 @@ table tbody tr:hover { background: var(--surface-2); }
 @media print { .sidebar { display: none; } body.app { display: block; } }
 td .badge { white-space: normal; }
 .card > h2:first-child, .card > h3:first-child { margin-top: 0; }
+/* Website-Ermittlung */
+.candidate .candhead { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.candidate .candhead h3 { margin: 0; margin-right: auto; }
+.candidate .candhead p { width: 100%; margin: 0; }
+.scorebadge { font-variant-numeric: tabular-nums; font-weight: 700; min-width: 2.4rem; text-align: center; padding: .1rem .5rem; border-radius: var(--radius-sm); background: var(--surface-2); }
+.checks-list { list-style: none; padding: 0; margin: var(--space-2) 0; }
+.checks-list li { padding: .15rem 0; }
+.checks-list li.pro span { color: var(--ok-text); font-weight: 700; }
+.checks-list li.contra span { color: var(--err-text); font-weight: 700; }
+.checks-list li.open { color: var(--muted); }
+.reviewgroup { margin-bottom: var(--space-6); }
+.reviewgroup h2 { font-size: 1.1rem; }
+.rowform.bulk { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--space-3); }

@@ -210,6 +210,56 @@ def cmd_leads(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_websites(args: argparse.Namespace) -> int:
+    from . import websites
+    from .cli import make_ctx
+    from .engine.budget import Budget
+
+    settings, engine, _, _, _ = _context(args)
+    try:
+        if args.action == "pending":
+            for c in websites.pending(engine):
+                print(
+                    f"{c['id']:>5}  {c['company_name'][:36]:36} {c['domain']:32} "
+                    f"{c['score']:>3}  {c['verdict_label']}"
+                )
+            return 0
+        if args.action in ("confirm", "reject"):
+            if not args.candidate:
+                print("Bitte --candidate ID angeben (siehe mi websites pending)")
+                return 2
+            fn = websites.confirm if args.action == "confirm" else websites.reject
+            cid = fn(engine, args.candidate, args.author or "", args.reason or "")
+            print(f"Vorschlag {args.candidate}: {args.action} (Firma {cid})")
+            return 0
+        company_id = resolve_company(engine, args.company, args.company_id)
+        if args.action == "discover":
+            ctx = make_ctx(settings, engine, Budget(max_requests=80), no_llm=True)
+            try:
+                out = websites.discover(ctx, company_id)
+            finally:
+                ctx.gateway.close()
+            for source, info in out.get("sources", {}).items():
+                print(f"  Quelle {source:10} {info.get('status')}  {info.get('error', '') or ''}")
+        state = websites.website_state(engine, [company_id]).get(company_id, "keine")
+        print(f"Website-Status: {websites.STATE_LABELS[state]}")
+        for c in websites.candidates_of(engine, company_id):
+            print(
+                f"{c['id']:>5}  {c['domain']:32} {c['score']:>3}  {c['verdict_label']:30} "
+                f"[{c['status_label']}]"
+            )
+            for item in c["details"].get("pro", []):
+                print(f"         + {item}")
+            for item in c["details"].get("contra", []):
+                print(f"         - {item}")
+            for item in c["details"].get("unchecked", []):
+                print(f"         ? {item}")
+    except websites.WebsiteError as exc:
+        print(f"Fehler: {exc}")
+        return 2
+    return 0
+
+
 def cmd_reassess(args: argparse.Namespace) -> int:
     _, engine, cases, catalog, model = _context(args)
     ids = (
@@ -337,6 +387,14 @@ def add_commands(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> No
     rep.add_argument("--md", help="Markdown-Datei schreiben")
     rep.add_argument("--min-cases", type=int, default=10, help="Anteile erst ab n Fällen")
     rep.set_defaults(func=cmd_outcomes_report)
+
+    ws = sub.add_parser("websites", help="Website-Ermittlung: suchen, prüfen, bestätigen")
+    ws.add_argument("action", choices=["discover", "list", "pending", "confirm", "reject"])
+    _company_args(ws)
+    ws.add_argument("--candidate", type=int, help="Vorschlags-Nr. (bei confirm/reject)")
+    ws.add_argument("--author", help="wer entscheidet (Pflicht bei confirm/reject)")
+    ws.add_argument("--reason", help="Begründung")
+    ws.set_defaults(func=cmd_websites)
 
     ra = sub.add_parser(
         "reassess", help="Bewertungsstand prüfen und veraltete Bewertungen neu berechnen"

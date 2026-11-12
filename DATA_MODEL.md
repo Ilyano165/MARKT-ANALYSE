@@ -447,6 +447,19 @@ Hinweise, Firmenzuordnung, Datenlage, Gründe für manuelle Prüfung, Matrixstan
 |---|---|---|
 | `sales_outcome` | Unternehmen, Ergebnis (`kontakt`/`angebot`/`gewonnen`/`verloren`), Datum, Wert (Dezimal-Text) mit Währung (nur wenn bekannt), Anwendungsfall, Grund, Autor, `assessment_id` (beim Eintrag gültige Bewertung), Erfassungszeit | append-only (Trigger gegen UPDATE/DELETE in SQLite und PostgreSQL); jüngster Eintrag = aktueller Stand; Datum nicht in der Zukunft; Wert nur mit ISO-Währung |
 
+### 3.29 Aufträge, Datenpflege, Website-Ermittlung (Schema-Versionen 6 und 7)
+
+| Tabelle/Spalte | Inhalt | Regeln |
+|---|---|---|
+| `job`, `job_event` (6) | Hintergrundaufträge (research, reassess, websites, analyze) und Protokoll | atomare Übernahme, Herzschlag |
+| `company_edit` (6) | manuelle Änderungen (Website, Name, Land, Zusammenführung) mit Autor und Grund | append-only |
+| `company.website_source` (7) | Herkunft der Website: `manuell`, `bestaetigt`, `quelle:wikidata`, `quelle:liste`, `quelle:unbekannt`; leer = vor 0.7 unbekannt | nur `manuell`/`bestaetigt` gelten als bestätigt |
+| `website_candidate` (7) | Vorschlag je (Firma, Domain): URL, Score, Urteil, Quellen (JSON), Prüfdetails (Kriterien, Für/Gegen/nicht prüfbar), Belegdokumente, Suchgrundlage, Status `vorgeschlagen`/`bestaetigt`/`abgelehnt`/`nicht_gewaehlt`, Entscheider, Grund | eindeutig je Firma und Domain; Entscheidungen bleiben über Neustarts erhalten |
+| `website_search` (7) | Protokoll je Suche: Quelle → Status (Treffer, kein Treffer, nicht erreichbar), gespeicherte und wegen Ablehnung übersprungene Domains | nur anhängen |
+
+Neue Kennungen in `company_identifier`: `email_domain` und `phone` (aus eindeutigen
+TED-Zuschlägen).
+
 ## 4. Beziehungen (Übersicht)
 
 ```mermaid

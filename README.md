@@ -5,9 +5,9 @@ mehrjährige Beobachtung von Unternehmen. **100 % kostenloser Betrieb:** keine B
 keine Abos, keine Cloud, keine KI-Dienste. Jede Zahl ist auf eine Quelle zurückführbar;
 fehlende Daten bleiben sichtbar unbekannt.
 
-Stand: Version 0.6.0 – Desktop-Anwendung mit eigenem Fenster: Rechercheaufträge mit
-Hintergrund-Worker und Live-Fortschritt, Leads mit einheitlichem Bewertungsstand, Importe,
-Datenpflege, Datensicherung. Fortschritt und offene Punkte: `docs/IMPLEMENTATION/PHASE_PROGRESS.md`.
+Stand: Version 0.7.0 – Desktop-Anwendung mit eigenem Fenster: Rechercheaufträge mit
+Hintergrund-Worker und Live-Fortschritt, automatische Website-Ermittlung mit belegter Prüfung
+und Bestätigung, Leads mit einheitlichem Bewertungsstand, Importe, Datenpflege, Datensicherung. Fortschritt und offene Punkte: `docs/IMPLEMENTATION/PHASE_PROGRESS.md`.
 
 ## Installation unter Windows (Setup)
 
@@ -22,10 +22,14 @@ Datenpflege, Datensicherung. Fortschritt und offene Punkte: `docs/IMPLEMENTATION
    Rechercheaufträge an; sie werden beim nächsten Start fortgesetzt.
 3. Arbeitsablauf: **Rechercheaufträge → Neuer Rechercheauftrag** (Zielgruppe, Regionen,
    Suchbegriffe), Fortschritt live verfolgen, gefundene Unternehmen öffnen, unter **Leads**
-   verwalten und als CSV exportieren. Firmenlisten und Bestandskunden unter **Importe**,
+   verwalten und als CSV exportieren. Für gefundene Firmen ohne Website schlägt die Anwendung
+   Websites mit Belegen vor (Name, Adresse, Registernummer, Kontaktdaten aus Impressum und
+   amtlichen Quellen) – unter **Website-Prüfung** bestätigen oder ablehnen; danach wird die
+   Website ausgewertet und die Firma neu bewertet. Nichts wird ungeprüft übernommen. Firmenlisten und Bestandskunden unter **Importe**,
    fehlende Websites und Dubletten unter **Datenpflege**, Sicherung unter **Einstellungen**.
 4. Kommandozeile: Startmenü → **Market Intelligence – Eingabeaufforderung**, dann z. B.
-   `mi sources`, `mi research …`, `mi jobs`, `mi backup create`, `mi leads --out leads`.
+   `mi sources`, `mi research …`, `mi jobs`, `mi websites pending`, `mi backup create`,
+   `mi leads --out leads`.
 
 Daten (Datenbank, Einstellungen `market_intel.toml`, Exporte) liegen in
 `%LOCALAPPDATA%\YellotoolsMarketIntel` und bleiben bei Update und Deinstallation erhalten.

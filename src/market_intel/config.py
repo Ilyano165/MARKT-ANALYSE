@@ -62,10 +62,12 @@ class Settings:
         """
         import httpx
 
-        from . import __version__
+        from . import PROJECT_URL, __version__
 
-        contact = f" (mailto:{self.contact_email})" if self.contact_email else ""
-        return f"YellotoolsMarketIntel/{__version__}{contact} httpx/{httpx.__version__}"
+        # Wikimedia verlangt eine Kontaktangabe; ohne E-Mail die Projektseite (Live-Test
+        # 2026-11-12: ohne Kontakt HTTP 403, mit Projektseite HTTP 200).
+        contact = f"mailto:{self.contact_email}" if self.contact_email else f"+{PROJECT_URL}"
+        return f"YellotoolsMarketIntel/{__version__} ({contact}) httpx/{httpx.__version__}"
 
     @property
     def companies_house_key(self) -> str | None:

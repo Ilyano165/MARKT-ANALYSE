@@ -69,9 +69,36 @@ def _company_tables() -> list[Any]:
     ]
 
 
+def _canonical(value: Any) -> Any:
+    """Prozessunabhängige Form: Mengen sortiert, Dataclasses als Felder, Schlüssel geordnet.
+
+    Regression (Phase G, 2026-11-12): ``repr()`` eines ``frozenset`` hängt von der
+    Hash-Initialisierung des Python-Prozesses ab – nach jedem Neustart galten alle Bewertungen
+    als „veraltet – Regeln geändert“.
+    """
+    import dataclasses
+
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return {f.name: _canonical(getattr(value, f.name)) for f in dataclasses.fields(value)}
+    if isinstance(value, dict):
+        return {str(k): _canonical(v) for k, v in sorted(value.items(), key=lambda kv: str(kv[0]))}
+    if isinstance(value, (set, frozenset)):
+        return sorted(
+            (_canonical(v) for v in value), key=lambda v: json.dumps(v, sort_keys=True, default=str)
+        )
+    if isinstance(value, (list, tuple)):
+        return [_canonical(v) for v in value]
+    if hasattr(value, "pattern"):  # kompilierte reguläre Ausdrücke
+        return f"re:{value.pattern}"
+    return value
+
+
 def rules_digest(cases: dict[str, UseCase], catalog: Catalog, model: Model) -> str:
-    """Prüfsumme aller Regeln, die in die Bewertung eingehen."""
-    text = repr((model, catalog, sorted(cases.items()), load_roles()))
+    """Prüfsumme aller Regeln, die in die Bewertung eingehen (prozessunabhängig)."""
+    payload = _canonical(
+        {"model": model, "catalog": catalog, "cases": cases, "roles": load_roles()}
+    )
+    text = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 

@@ -129,6 +129,7 @@ NAVIGATION = (
             ("/leads", "Leads & Opportunities"),
             ("/companies", "Unternehmen"),
             ("/customers", "Bestandskunden"),
+            ("/websites", "Website-Prüfung"),
         ),
     ),
     ("Grundlagen", (("/products", "Produkt-Fit"), ("/sources", "Quellen & Belege"))),
@@ -1152,7 +1153,13 @@ def leads_page(
     )
     body = "".join(
         f'<tr><td class="num">{e(r["prioritaet"])}</td><td><a href="/company/{r["firma_id"]}/opportunity">'
-        f'{e(r["firma"])}</a><br><span class="muted">{e(r["website"])} {e(r["land"])}</span></td>'
+        f'{e(r["firma"])}</a><br><span class="muted">{e(r["website"] or "keine Website")} {e(r["land"])}</span>'
+        + (
+            f'<br><span class="badge">{e(r["website_status"])}</span>'
+            if r.get("website_status") and r["website_status"] != "Website bestätigt"
+            else ""
+        )
+        + "</td>"
         f'<td>{e(r["segment"])}<br><span class="muted">{e(r["belegstatus"].split(":")[0])}'
         f" · {e(r['rolle'])}</span></td>"
         f'<td>{e(r["anwendungsfall"])}<br><span class="muted">{e(r["produktgruppen"])}</span></td>'

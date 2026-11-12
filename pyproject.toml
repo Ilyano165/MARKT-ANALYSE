@@ -55,6 +55,8 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 # HTML-Vorlagen: lange Zeilen sind dort lesbarer als zerstückelte Tags
 "src/market_intel/ui/render.py" = ["E501"]
 "src/market_intel/ui/views.py" = ["E501"]
+# Prüfprotokoll: deutsche Begründungstexte sind lesbarer als zerstückelte f-Strings
+"src/market_intel/websites.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"

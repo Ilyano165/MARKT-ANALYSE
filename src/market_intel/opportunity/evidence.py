@@ -13,6 +13,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
 from typing import Any
 
 from sqlalchemy import Engine, select
@@ -186,6 +187,17 @@ class StatementRule:
         return len(text.split()) >= self.min_words and bool(text) and text[-1] in self.end_marks
 
 
+@lru_cache(maxsize=1024)
+def _sentences_of(text: str) -> tuple[str, ...]:
+    """Satzzerlegung je Text nur einmal (Phase G: 8 Seiten × alle Begriffe dauerten 51 s)."""
+    return tuple(sentences(text))
+
+
+@lru_cache(maxsize=1024)
+def _lowered(text: str) -> str:
+    return text.lower()
+
+
 def find_hits(
     texts: list[tuple[Document, str]],
     terms: tuple[str, ...],
@@ -208,13 +220,16 @@ def find_hits(
         if legal_page(document.url):
             continue
         found = 0
+        lowered = _lowered(text)
         for term in terms:
+            if term.lower() not in lowered:  # notwendige Bedingung für einen Treffer
+                continue
             pattern = re.compile(r"(?<![\wäöüß])" + re.escape(term), re.IGNORECASE)
             first_negated: Hit | None = None
             first_fragment: Hit | None = None
             first_sentence: Hit | None = None
             accepted = False
-            for sentence in sentences(text):
+            for sentence in _sentences_of(text):
                 match = pattern.search(sentence)
                 if match is None:
                     continue

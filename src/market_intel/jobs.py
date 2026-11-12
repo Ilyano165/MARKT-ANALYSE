@@ -57,7 +57,7 @@ STATUS_LABELS = {
 PHASES = {
     1: "Suchstrategie wird erstellt",
     2: "Unternehmen werden gesucht",
-    3: "Quellen werden geprüft",
+    3: "Quellen werden geprüft, Websites ermittelt",
     4: "Daten werden extrahiert",
     5: "Unternehmen werden abgeglichen",
     6: "Angaben werden geprüft",
@@ -118,6 +118,48 @@ def create_research_job(
             ).inserted_primary_key[0]
         )
     event(engine, job_id, f"Auftrag erstellt (Recherche {run_id}) – wartet auf den Worker")
+    return job_id
+
+
+def create_company_job(
+    engine: Engine,
+    kind: str,
+    company_ids: list[int],
+    *,
+    title: str = "",
+    research_run_id: int | None = None,
+) -> int:
+    """Auftrag je Firmenliste: ``websites`` (Website-Ermittlung) oder ``analyze`` (bestätigte
+    Website auswerten und neu bewerten)."""
+    if kind not in ("websites", "analyze"):
+        raise JobError(f"unbekannte Auftragsart {kind!r}")
+    if not company_ids:
+        raise JobError("keine Unternehmen angegeben")
+    default = {
+        "websites": f"Website-Ermittlung ({len(company_ids)} Unternehmen)",
+        "analyze": f"Website-Analyse und Neubewertung ({len(company_ids)} Unternehmen)",
+    }[kind]
+    with engine.begin() as conn:
+        job_id = int(
+            conn.execute(
+                insert(db.job).values(
+                    kind=kind,
+                    title=(title or default)[:300],
+                    status="queued",
+                    params=json.dumps(
+                        {
+                            "company_ids": sorted(set(company_ids)),
+                            "research_run_id": research_run_id,
+                        }
+                    ),
+                    control="",
+                    attempts=0,
+                    created_at=db.utcnow(),
+                    result="{}",
+                )
+            ).inserted_primary_key[0]
+        )
+    event(engine, job_id, f"{default} eingereiht")
     return job_id
 
 
@@ -358,20 +400,41 @@ def progress(engine: Engine, job: dict[str, Any]) -> dict[str, Any]:
                     db.run_candidate.c.run_id == run_id, db.run_candidate.c.selected.is_(True)
                 )
             ).scalar()
+            # Prüfabrufe der Website-Ermittlung (auch vermutete, nicht existierende Domains)
+            # zählen getrennt – sie sind kein Ausfall einer Datenquelle.
+            discovery = db.fetch_log.c.purpose.like("%Website-Ermittlung%")
             fetches: dict[str, int] = {
                 str(st): int(n)
                 for st, n in conn.execute(
                     select(db.fetch_log.c.status, func.count())
-                    .where(db.fetch_log.c.run_id == run_id)
+                    .where(db.fetch_log.c.run_id == run_id, ~discovery)
                     .group_by(db.fetch_log.c.status)
                 ).all()
             }
+            website_checks = int(
+                conn.execute(
+                    select(func.count()).where(db.fetch_log.c.run_id == run_id, discovery)
+                ).scalar()
+                or 0
+            )
             assessed = conn.execute(
                 select(func.count(func.distinct(db.opportunity_score.c.company_id))).where(
                     db.opportunity_score.c.research_run_id == run_id
                 )
             ).scalar()
         ok = sum(v for k, v in fetches.items() if k in ("ok", "cached", "not_modified"))
+        with engine.connect() as conn:
+            selected_ids = [
+                int(i)
+                for i in conn.execute(
+                    select(func.distinct(db.run_candidate.c.company_id)).where(
+                        db.run_candidate.c.run_id == run_id, db.run_candidate.c.selected.is_(True)
+                    )
+                ).scalars()
+            ]
+        from .websites import summary, website_state
+
+        out["websites"] = summary(website_state(engine, selected_ids)) if selected_ids else {}
         out["counts"] = {
             "companies_found": int(found or 0),
             "companies_selected": int(selected or 0),
@@ -379,6 +442,7 @@ def progress(engine: Engine, job: dict[str, Any]) -> dict[str, Any]:
             "sources_ok": int(ok),
             "sources_failed": int(sum(fetches.values()) - ok),
             "companies_assessed": int(assessed or 0),
+            "website_checks": website_checks,
         }
     return out
 
@@ -412,6 +476,8 @@ def run_job(engine: Engine, job: dict[str, Any], runtime: Runtime, worker_id: st
             status, result = _run_research(engine, job, runtime)
         elif job["kind"] == "reassess":
             status, result = _run_reassess(engine, job, runtime)
+        elif job["kind"] in ("websites", "analyze"):
+            status, result = _run_company_job(engine, job, runtime)
         else:
             raise JobError(f"unbekannte Auftragsart {job['kind']!r}")
     except Exception as exc:
@@ -500,6 +566,132 @@ def _run_research(
         else:
             event(engine, job_id, "Kein passendes Unternehmen gefunden", "warn")
     return status, {"counts": counts, "research_run_id": run_id}
+
+
+def _context(engine: Engine, runtime: Runtime, budget: Budget) -> Any:
+    from .cli import make_ctx
+
+    if runtime.ctx_factory is not None:
+        return runtime.ctx_factory(budget, True)
+    return make_ctx(runtime.settings, engine, budget, no_llm=True)
+
+
+def _run_company_job(
+    engine: Engine, job: dict[str, Any], runtime: Runtime
+) -> tuple[str, dict[str, Any]]:
+    """Website-Ermittlung bzw. Analyse je Firma; Fehler einer Firma stoppen die anderen nicht."""
+    from . import websites
+
+    params = json.loads(job["params"] or "{}")
+    ids = [int(i) for i in params.get("company_ids", [])]
+    job_id = int(job["id"])
+    control = _control(engine, job_id)
+    ctx = _context(engine, runtime, Budget(max_requests=60 * max(1, len(ids))))
+    done: list[int] = []
+    failed: dict[str, str] = {}
+    try:
+        for i, cid in enumerate(ids, 1):
+            if control() in ("pause", "cancel"):
+                event(engine, job_id, f"Nach {len(done)} von {len(ids)} Firmen beendet")
+                return ("paused" if control() == "pause" else "cancelled"), {"done": done}
+            try:
+                if job["kind"] == "websites":
+                    out = websites.discover(ctx, cid, run_id=params.get("research_run_id"))
+                    errors = {
+                        k: v.get("error")
+                        for k, v in out.get("sources", {}).items()
+                        if v.get("status") == "fehler"
+                    }
+                    for source, error in errors.items():
+                        event(
+                            engine,
+                            job_id,
+                            f"Firma {cid}: Quelle {source} nicht verfügbar – {error}",
+                            "warn",
+                        )
+                    event(
+                        engine,
+                        job_id,
+                        f"Firma {cid}: {len(out.get('stored', []))} Website-Vorschläge"
+                        + (
+                            f", {len(out['skipped_rejected'])} abgelehnte nicht erneut"
+                            if out.get("skipped_rejected")
+                            else ""
+                        ),
+                    )
+                else:
+                    summary = analyze_company(ctx, cid, runtime)
+                    event(engine, job_id, f"Firma {cid}: {summary}")
+                done.append(cid)
+            except Exception as exc:  # eine Firma darf die übrigen nicht blockieren
+                failed[str(cid)] = f"{type(exc).__name__}: {exc}"[:300]
+                event(engine, job_id, f"Firma {cid} fehlgeschlagen: {failed[str(cid)]}", "error")
+                log.exception("Firma %s im Auftrag %s", cid, job_id)
+            _set(engine, job_id, result=json.dumps({"done": i, "total": len(ids)}))
+    finally:
+        ctx.gateway.close()
+    status = "completed" if not failed else ("completed_with_gaps" if done else "failed")
+    return status, {"done": done, "failed": failed, "fetches": ctx.gateway.stats.by_status}
+
+
+def analyze_company(ctx: Any, company_id: int, runtime: Runtime) -> str:
+    """Bestätigte Website abrufen, auswerten (Belege) und die Firma neu bewerten."""
+    from .engine.extract import extract_company_documents, summarize_report
+    from .opportunity.current import refresh
+    from .sources import website
+
+    with ctx.engine.connect() as conn:
+        row = conn.execute(
+            select(db.company.c.website_domain, db.company.c.website_source).where(
+                db.company.c.id == company_id
+            )
+        ).first()
+    if row is None or not row.website_domain:
+        return "keine Website – nichts auszuwerten"
+    site = website.fetch_site(ctx, str(row.website_domain))
+    for error in site.errors[:5]:
+        ctx.note(f"Website {row.website_domain}: {error}")
+    with ctx.engine.begin() as conn:  # Datenstatus der Bewertung („Website gesperrt“ usw.)
+        conn.execute(
+            insert(db.investigation_log).values(
+                company_id=company_id,
+                adapter_key="website",
+                run_id=None,
+                status="ok" if site.documents else "failed",
+                detail=(f"{len(site.documents)} Dokumente" if site.documents
+                        else "; ".join(site.errors[:2]) or "keine Seite abrufbar")[:1000],
+                finished_at=db.utcnow(),
+            )
+        )  # fmt: skip
+    if not site.documents:
+        refresh(
+            ctx.engine,
+            runtime.cases,
+            runtime.catalog,
+            runtime.model,
+            [company_id],
+            trigger="website-analyse",
+        )
+        return f"Website {row.website_domain} nicht abrufbar: " + "; ".join(site.errors[:2])
+    terms = sorted({t for c in runtime.cases.values() for t in c.website_terms})
+    report = extract_company_documents(
+        ctx, company_id, [d.document_id for d in site.documents], runtime.cases, terms
+    )
+    result = refresh(
+        ctx.engine,
+        runtime.cases,
+        runtime.catalog,
+        runtime.model,
+        [company_id],
+        trigger="website-analyse",
+    )
+    counts = summarize_report(report)
+    found = ", ".join(f"{k} {v}" for k, v in counts.items() if isinstance(v, int) and v)
+    return (
+        f"{len(site.documents)} Seiten von {row.website_domain} ausgewertet "
+        f"({found or 'keine Angaben'}); "
+        f"neu bewertet: {result['reassessed']}"
+    )
 
 
 def _run_reassess(

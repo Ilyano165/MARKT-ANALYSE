@@ -225,6 +225,7 @@ def import_company_bytes(
                     document_id=document_id,
                     country_code=country,
                     website=website or None,
+                    website_source="quelle:liste",
                     city=lowered.get("city") or lowered.get("ort"),
                 )
                 how = "" if created else "über LEI"

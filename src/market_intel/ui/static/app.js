@@ -362,3 +362,17 @@
   }
   if (best) { best.classList.add("active"); best.setAttribute("aria-current", "page"); }
 })();
+
+/* Bearbeitername merken (nur in diesem Browser/Fenster), damit Entscheidungen schnell gehen. */
+(function () {
+  "use strict";
+  var KEY = "mi-author";
+  var saved = null;
+  try { saved = window.localStorage.getItem(KEY); } catch (e) { saved = null; }
+  document.querySelectorAll('input[name="author"]').forEach(function (input) {
+    if (saved && !input.value) input.value = saved;
+    if (input.form) input.form.addEventListener("submit", function () {
+      try { if (input.value.trim()) window.localStorage.setItem(KEY, input.value.trim()); } catch (e) { /* ohne Speicher */ }
+    });
+  });
+})();

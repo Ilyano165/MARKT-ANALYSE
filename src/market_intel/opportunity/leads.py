@@ -48,6 +48,7 @@ LEAD_COLUMNS = (
     "aktualitaet",
     "modell",
     "firma_id",
+    "website_status",  # Phase G: angehängt, damit bestehende Spaltenpositionen gleich bleiben
 )
 
 
@@ -114,6 +115,9 @@ def lead_rows(
                 select(db.company.c.id).where(db.company.c.entity_kind == "public_buyer")
             ).scalars()
         }
+    from ..websites import STATE_LABELS, website_state
+
+    site_states = website_state(engine)
     best: dict[int, dict[str, Any]] = {}
     for row in latest_assessments(engine):
         if row["company_id"] not in best:
@@ -149,6 +153,7 @@ def lead_rows(
             {
                 "firma": company["display_name"],
                 "website": company["website_domain"] or "",
+                "website_status": STATE_LABELS[site_states.get(company_id, "keine")],
                 "land": company["country_code"] or "",
                 "branche": industries,
                 "anwendungsfall": details["use_case_name"],

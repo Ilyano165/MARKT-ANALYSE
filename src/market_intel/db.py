@@ -32,7 +32,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.types import TypeDecorator
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 class DecimalText(TypeDecorator[Decimal]):
@@ -140,6 +140,8 @@ company = Table(
     Column("country_code", String(2)),
     Column("registered_city", Text),
     Column("website_domain", Text),
+    # Herkunft: manuell | bestaetigt | quelle:<Quelle> | None (vor Version 0.7 unbekannt)
+    Column("website_source", String(40)),
     Column("status", String(20), nullable=False, default="unknown"),
     Column("entity_kind", String(30), nullable=False, default="legal_entity"),
     Column("merged_into_id", Integer, ForeignKey("company.id")),
@@ -737,6 +739,42 @@ company_edit = Table(  # manuelle Datenpflege (Website, Name, Land, Zusammenfüh
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
+website_candidate = Table(  # Website-Ermittlung (Schema 7): Vorschläge mit Belegen
+    "website_candidate",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("company_id", Integer, ForeignKey("company.id"), nullable=False),
+    Column("domain", Text, nullable=False),
+    Column("url", Text, nullable=False),  # geprüfte Start-URL (nach Weiterleitungen)
+    # vorgeschlagen | bestaetigt | abgelehnt | nicht_gewaehlt
+    Column("status", String(20), nullable=False),
+    Column("score", Integer, nullable=False, default=0),
+    # eindeutig | wahrscheinlich | unklar | widerspricht | nicht_erreichbar
+    Column("verdict", String(20), nullable=False),
+    Column("sources", Text, nullable=False, default="[]"),  # woher der Vorschlag stammt
+    Column("details", Text, nullable=False, default="{}"),  # Kriterien, Für/Gegen, Belege
+    Column("document_ids", Text, nullable=False, default="[]"),
+    Column("search_basis", String(64), nullable=False, default=""),  # Fingerabdruck der Suche
+    Column("research_run_id", Integer),
+    Column("found_at", DateTime(timezone=True), nullable=False),
+    Column("checked_at", DateTime(timezone=True), nullable=False),
+    Column("decided_at", DateTime(timezone=True)),
+    Column("decided_by", Text),
+    Column("decision_reason", Text),
+    UniqueConstraint("company_id", "domain"),
+)
+
+website_search = Table(  # Protokoll je Suche und Quelle (auch: nicht erreichbar, gesperrt)
+    "website_search",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("company_id", Integer, ForeignKey("company.id"), nullable=False),
+    Column("searched_at", DateTime(timezone=True), nullable=False),
+    Column("search_basis", String(64), nullable=False),
+    Column("outcome", Text, nullable=False, default="{}"),  # Quelle → Status, Treffer, Fehler
+    Column("research_run_id", Integer),
+)
+
 schema_info = Table(
     "schema_info",
     metadata,
@@ -824,6 +862,8 @@ def make_engine(url: str) -> Engine:
 
 _ADDED_COLUMNS = {  # Spalten, die nach Version 1 hinzukamen (für bestehende Datenbanken)
     "research_task": {"step": "INTEGER NOT NULL DEFAULT 0", "label": "TEXT NOT NULL DEFAULT ''"},
+    # Version 7: Herkunft der Website (manuell | bestaetigt | quelle:wikidata | quelle:liste …)
+    "company": {"website_source": "VARCHAR(40)"},
     # Version 3
     "financial_observation": {"segment": "VARCHAR(80) NOT NULL DEFAULT ''"},
     "employee_observation": {"segment": "VARCHAR(80) NOT NULL DEFAULT ''"},

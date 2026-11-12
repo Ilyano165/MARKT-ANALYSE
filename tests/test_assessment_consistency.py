@@ -224,3 +224,31 @@ def test_cli_reassess_check_and_run(world: dict[str, Any], engine: Engine, capsy
     assert main(["--db", url, "reassess"]) == 0
     assert "Neu bewertet: 1" in capsys.readouterr().out
     assert freshness(engine, *_ctx(world))[cid].current
+
+
+def test_rules_digest_is_identical_across_processes() -> None:
+    """Regression (Phase G): ``repr(frozenset)`` hängt vom Hash-Seed ab – nach jedem Neustart
+    der Anwendung galten alle Bewertungen als „veraltet – Regeln geändert“."""
+    import os
+    import subprocess
+    import sys
+
+    code = (
+        "from market_intel.products import load_products;"
+        "from market_intel.usecases import load_use_cases;"
+        "from market_intel.opportunity.model import load_model;"
+        "from market_intel.opportunity.current import rules_digest;"
+        "print(rules_digest(load_use_cases(), load_products(), load_model()))"
+    )
+    src = str(Path(__file__).resolve().parents[1] / "src")
+    digests = {
+        subprocess.run(
+            [sys.executable, "-c", code],
+            env={**os.environ, "PYTHONHASHSEED": seed, "PYTHONPATH": src},
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        for seed in ("1", "2", "3", "4")
+    }
+    assert len(digests) == 1, digests

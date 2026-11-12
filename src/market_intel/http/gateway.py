@@ -134,7 +134,10 @@ class FetchGateway:
         # Host → Grund: Host hat den Zugriff verweigert (401/403, Bot-Abwehr, Proxy-Sperre).
         # Weitere Abrufe in dieser Sitzung unterbleiben – Sperren werden respektiert.
         self._denied_hosts: dict[str, str] = {}
-        self._throttled: dict[str, int] = {}  # Host → Abrufe in Folge, die an 429 scheiterten
+        self._throttled: dict[str, int] = {}
+        # Host → Fehler: Verbindung nach allen Versuchen gescheitert (z. B. Domain existiert
+        # nicht). Weitere Abrufe in dieser Sitzung scheitern sofort, ohne neue Versuche.
+        self._unreachable: dict[str, str] = {}  # Host → Abrufe in Folge, die an 429 scheiterten
         self._robots: dict[str, urllib.robotparser.RobotFileParser | None] = {}
         self.user_agent = user_agent
         self.run_id: int | None = None
@@ -175,8 +178,10 @@ class FetchGateway:
         respect_robots: bool = False,
         max_bytes: int = MAX_BYTES_DEFAULT,
         title: str | None = None,
+        attempts: int | None = None,
     ) -> FetchResult:
-        """GET mit allen Schutzmechanismen."""
+        """GET mit allen Schutzmechanismen. ``attempts``: höchstens so viele Versuche (z. B. 1
+        für vermutete Domains, deren Nichtexistenz kein Ausfall ist)."""
         full_url = f"{url}?{urlencode(sorted(params.items()))}" if params else url
         return self._fetch(
             source_key,
@@ -189,6 +194,7 @@ class FetchGateway:
             respect_robots=respect_robots,
             max_bytes=max_bytes,
             title=title,
+            attempts=attempts,
         )
 
     def post_json(
@@ -231,8 +237,10 @@ class FetchGateway:
         respect_robots: bool,
         max_bytes: int,
         title: str | None,
+        attempts: int | None = None,
     ) -> FetchResult:
         body_hash = hashlib.sha256(body or b"").hexdigest()
+        max_attempts = max(1, min(self._max_attempts, attempts or self._max_attempts))
         cache_key = hashlib.sha256(f"{method} {url} {body_hash}".encode()).hexdigest()
         try:
             self._check_policy(source_key)
@@ -243,8 +251,15 @@ class FetchGateway:
                     FetchStatus.BLOCKED_POLICY,
                     f"{denied} – keine weiteren Abrufe dieses Hosts in diesem Lauf",
                 )
+            unreachable = self._unreachable.get(urlsplit(url).hostname or "")
+            if unreachable:  # Verbindung schon gescheitert: nicht erneut versuchen
+                return self._log(
+                    source_key, method, url, purpose, FetchStatus.NETWORK_ERROR, None,
+                    f"Host in diesem Lauf nicht erreichbar ({unreachable}) – kein neuer Versuch",
+                    1, 0, None,
+                )  # fmt: skip
             if respect_robots:
-                self._check_robots(source_key, url)
+                self._check_robots(source_key, url, purpose, max_attempts)
         except PolicyBlocked as blocked:
             return self._log(
                 source_key, method, url, purpose, blocked.status, None, blocked.reason, 1, 0, None
@@ -277,7 +292,7 @@ class FetchGateway:
 
         last_error = ""
         last_status: int | None = None
-        for attempt in range(1, self._max_attempts + 1):
+        for attempt in range(1, max_attempts + 1):
             if self.stats.requests + self.requests_offset >= self._max_requests:
                 return self._log(
                     source_key,
@@ -346,9 +361,13 @@ class FetchGateway:
                     self._elapsed(started),
                     None,
                 )
-                if attempt < self._max_attempts and not policy_block:
+                if attempt < max_attempts and not policy_block:
                     self._sleep(2.0 ** (attempt - 1))
                     continue
+                if SOURCE_BY_KEY[source_key].source_type == "company_website":
+                    # nur Firmenwebsites: ein kurzer Ausfall einer Datenquelle (GLEIF, TED …)
+                    # soll den restlichen Lauf nicht abschalten
+                    self._unreachable.setdefault(urlsplit(url).hostname or "", last_error[:120])
                 return FetchResult(FetchStatus.NETWORK_ERROR, url, error=last_error)
 
             duration = self._elapsed(started)
@@ -505,24 +524,27 @@ class FetchGateway:
                     FetchStatus.BLOCKED_SSRF, f"{host} zeigt auf nicht-öffentliche Adresse {ip}"
                 )
 
-    def _check_robots(self, source_key: str, url: str) -> None:
+    def _check_robots(
+        self, source_key: str, url: str, purpose: str = "", attempts: int | None = None
+    ) -> None:
         parts = urlsplit(url)
         origin = f"{parts.scheme}://{parts.netloc}"
         if origin not in self._robots:
-            self._robots[origin] = self._load_robots(source_key, origin)
+            self._robots[origin] = self._load_robots(source_key, origin, purpose, attempts)
         parser = self._robots[origin]
         if parser is not None and not parser.can_fetch(self.user_agent, url):
             raise PolicyBlocked(FetchStatus.BLOCKED_ROBOTS, f"robots.txt verbietet {parts.path}")
 
     def _load_robots(
-        self, source_key: str, origin: str
+        self, source_key: str, origin: str, purpose: str = "", attempts: int | None = None
     ) -> urllib.robotparser.RobotFileParser | None:
         robots_url = f"{origin}/robots.txt"
         result = self._fetch(
             source_key,
             "GET",
             robots_url,
-            purpose="robots.txt",
+            purpose=f"robots.txt ({purpose})" if purpose else "robots.txt",
+            attempts=attempts,
             body=None,
             headers=None,
             ttl=timedelta(hours=24),

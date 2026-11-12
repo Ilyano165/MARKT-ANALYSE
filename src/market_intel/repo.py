@@ -167,9 +167,11 @@ def create_company(
     website: str | None = None,
     status: str = "unknown",
     entity_kind: str = "legal_entity",
+    website_source: str = "quelle:unbekannt",
 ) -> int:
-    """Legt eine Firma an."""
+    """Legt eine Firma an. ``website_source``: Herkunft einer mitgegebenen Website."""
     now = db.utcnow()
+    domain = normalize_domain(website) if website else None
     return int(
         conn.execute(
             insert(db.company).values(
@@ -178,7 +180,8 @@ def create_company(
                 legal_form=legal_form,
                 country_code=country_code,
                 registered_city=city,
-                website_domain=normalize_domain(website) if website else None,
+                website_domain=domain,
+                website_source=website_source if domain else None,
                 status=status,
                 entity_kind=entity_kind,
                 created_at=now,
@@ -194,6 +197,7 @@ def resolve_or_create(
     identifiers: Sequence[tuple[str, str]],
     *,
     document_id: int | None,
+    website_source: str = "quelle:unbekannt",
     **company_fields: Any,
 ) -> tuple[int, bool]:
     """Firma über starke Identifikatoren finden, sonst neu anlegen. Gibt (id, neu) zurück."""
@@ -203,16 +207,18 @@ def resolve_or_create(
             if found is not None:
                 for s, v in identifiers:
                     add_identifier(conn, found, s, v, document_id)
-                fill_company_fields(conn, found, **company_fields)
+                fill_company_fields(conn, found, website_source, **company_fields)
                 return found, False
-    company_id = create_company(conn, display_name, **company_fields)
+    company_id = create_company(conn, display_name, website_source=website_source, **company_fields)
     for scheme, value in identifiers:
         add_identifier(conn, company_id, scheme, value, document_id)
     add_alias(conn, company_id, display_name, "display_name", document_id)
     return company_id, True
 
 
-def fill_company_fields(conn: Connection, company_id: int, **fields: Any) -> None:
+def fill_company_fields(
+    conn: Connection, company_id: int, website_source: str = "quelle:unbekannt", **fields: Any
+) -> None:
     """Füllt nur leere Stammdatenfelder; vorhandene Angaben bleiben unverändert."""
     row = conn.execute(select(db.company).where(db.company.c.id == company_id)).mappings().one()
     mapping = {"city": "registered_city", "website": "website_domain"}
@@ -222,6 +228,8 @@ def fill_company_fields(conn: Connection, company_id: int, **fields: Any) -> Non
         if value in (None, "") or row[column] not in (None, "", "unknown"):
             continue
         changes[column] = normalize_domain(value) if column == "website_domain" else value
+        if column == "website_domain" and changes[column]:
+            changes["website_source"] = website_source
     if changes:
         changes["updated_at"] = db.utcnow()
         conn.execute(update(db.company).where(db.company.c.id == company_id).values(**changes))
